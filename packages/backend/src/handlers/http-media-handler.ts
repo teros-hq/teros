@@ -17,6 +17,7 @@ import { basename, dirname, extname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { config } from '../config';
 import { applyDownloadSafetyHeaders, sanitizeContentDispositionFilename } from '../lib/content-safety';
+import { extractSessionToken } from '../lib/session-cookie';
 import type { AuthService } from '../auth/auth-service';
 import type { McaContainerManager } from '../services/mca-container-manager';
 
@@ -321,13 +322,13 @@ async function handleMediaServe(res: ServerResponse, mediaId: string): Promise<v
     // be.teros.ai. applyDownloadSafetyHeaders forces attachment + nosniff for
     // browser-executable types (kept in sync with the static-file handler) and
     // sanitizes the user-supplied filename before it reaches the header.
+    // ACAO is set by the main request handler via resolveAllowedOrigin().
     const headers = applyDownloadSafetyHeaders(
       {
         'Content-Type': metadata.mimeType,
         'Content-Length': fileBuffer.length.toString(),
         'Content-Disposition': `inline; filename="${sanitizeContentDispositionFilename(metadata.filename)}"`,
         'Cache-Control': 'public, max-age=86400',
-        'Access-Control-Allow-Origin': '*',
       },
       metadata.mimeType,
       metadata.filename,
@@ -355,9 +356,10 @@ export class HttpMediaHandler {
    * Returns null if missing or invalid.
    */
   private async getUserId(req: IncomingMessage): Promise<string | null> {
-    const authHeader = req.headers['authorization'];
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.slice(7);
+    // Bearer header (primary) or teros_session cookie (F2: web after reload
+    // has no in-memory token; the cookie is httpOnly and same-site).
+    const token = extractSessionToken(req);
+    if (token) {
       const result = await this.authService.validateSession(token);
       return result.success ? (result.user?.userId ?? null) : null;
     }

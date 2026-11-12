@@ -72,6 +72,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies Zendesk credentials and connectivity.',
   parameters: { type: 'object', properties: {} },
   handler: async (_args, context) => {

@@ -11,12 +11,13 @@ import {
   IconChip,
   IconTile,
   ResourceCard,
-  colors as globalColors,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
-import { GITHUB_PALETTE, GitHubToolShell } from './shared';
+import { GITHUB_PALETTE, GitHubToolShell, actionLabel } from './shared';
 
 export function DispatchEventRenderer({ toolName, status, error, duration, input }: ToolCallRendererProps) {
+  const c = useColors();
   const owner = (input?.owner as string | undefined) ?? '?';
   const repo = (input?.repo as string | undefined) ?? '?';
   const eventType = (input?.event_type as string | undefined) ?? 'event';
@@ -24,7 +25,7 @@ export function DispatchEventRenderer({ toolName, status, error, duration, input
     input?.client_payload && typeof input.client_payload === 'object' && Object.keys(input.client_payload).length > 0;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, eventType, `${owner}/${repo}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && (
         <ResourceCard
@@ -34,7 +35,7 @@ export function DispatchEventRenderer({ toolName, status, error, duration, input
           verb="created"
           meta={<IconChip text="dispatched" accent={GITHUB_PALETTE.queued} />}
         >
-          <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+          <Text color={c.text2} fontSize={9} fontFamily="$mono">
             repository_dispatch event sent{hasPayload ? ' (with payload)' : ''}. Any workflow with
             <Text> </Text>
             <Text fontWeight="600">on: repository_dispatch</Text>

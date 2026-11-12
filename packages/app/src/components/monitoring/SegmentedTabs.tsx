@@ -1,21 +1,23 @@
 /**
- * SegmentedTabs — an in-window tab bar for the monitoring suite (the design has
- * no tabs primitive; cross-window navigation lives in MonitoringHeader, this is
- * for switching sub-views WITHIN a window). Styled with the same tokens as the
- * MonitoringHeader chips / ProviderChip (active = bgPress + borderHover; inactive
- * = transparent over the strip's bgInner; disabled = dimmed, non-interactive).
+ * SegmentedTabs — the in-window tab bar of the monitoring suite, drawn as the
+ * OS prototype's `PTabs` (washed track, the active tab lifts to a card with the
+ * accent glyph). Cross-window navigation lives in MonitoringHeader; this is for
+ * switching sub-views WITHIN a window.
  *
  * Accessibility: `role="tablist"` / `role="tab"` + `aria-selected` / `aria-disabled`.
  */
 
-import type { Activity } from "@tamagui/lucide-icons"
-import { Text, XStack } from "tamagui"
-import { tokens } from "./colors"
+import type { ComponentType } from "react"
+import { Platform, Pressable, View } from "react-native"
+import { useColors } from "../mca/primitives/useColors"
+import { Ph } from "../ui/ds/Icon"
+import { T } from "../ui/ds/Text"
 
 export interface SegmentTab {
   key: string
   label: string
-  icon?: typeof Activity
+  /** Phosphor name (preferred) or a legacy icon component. */
+  icon?: string | ComponentType<{ size?: number; color?: string }>
   /** Progressive disclosure: a tab with no data is shown dimmed and non-clickable. */
   disabled?: boolean
 }
@@ -29,49 +31,74 @@ export function SegmentedTabs({
   active: string
   onChange: (key: string) => void
 }) {
+  const c = useColors()
   return (
-    <XStack
-      ai="center"
-      gap={2}
-      padding={3}
-      borderRadius={10}
-      borderWidth={1}
-      borderColor={tokens.border}
-      backgroundColor={tokens.bgInner}
-      flexWrap="wrap"
-      role="tablist"
+    <View
+      style={{
+        flexDirection: "row",
+        gap: 4,
+        padding: 4,
+        borderRadius: 10,
+        backgroundColor: c.wash,
+        alignSelf: "flex-start",
+        flexWrap: "wrap",
+      }}
+      {...({ role: "tablist" } as any)}
     >
       {tabs.map((t) => {
         const isActive = t.key === active
         const disabled = !!t.disabled
         const interactive = !disabled && !isActive
+        const fg = isActive ? c.text : c.text2
         return (
-          <XStack
+          <Pressable
             key={t.key}
-            ai="center"
-            gap={7}
-            paddingVertical={7}
-            paddingHorizontal={13}
-            borderRadius={8}
-            backgroundColor={isActive ? tokens.bgPress : "transparent"}
-            borderWidth={1}
-            borderColor={isActive ? tokens.borderHover : "transparent"}
-            opacity={disabled ? 0.4 : 1}
-            cursor={interactive ? "pointer" : "default"}
-            hoverStyle={interactive ? { backgroundColor: tokens.bgHover } : {}}
             onPress={interactive ? () => onChange(t.key) : undefined}
-            role="tab"
-            aria-selected={isActive}
-            aria-disabled={disabled}
-            aria-label={t.label}
+            disabled={!interactive}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: isActive, disabled }}
+            accessibilityLabel={t.label}
+            {...({
+              role: "tab",
+              "aria-selected": isActive,
+              "aria-disabled": disabled,
+              "aria-label": t.label,
+            } as any)}
+            style={({ pressed }) => [
+              {
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                height: 36,
+                paddingHorizontal: 16,
+                borderRadius: 10,
+                backgroundColor: isActive ? c.bgStep : "transparent",
+                opacity: disabled ? 0.4 : 1,
+                transform: pressed && interactive ? [{ scale: 0.97 }] : undefined,
+              },
+              Platform.OS === "web"
+                ? ({
+                    cursor: interactive ? "pointer" : "default",
+                    transition: "background 0.25s, box-shadow 0.25s",
+                    boxShadow: isActive ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                    whiteSpace: "nowrap",
+                  } as any)
+                : null,
+            ]}
           >
-            {t.icon ? <t.icon size={14} color={isActive ? tokens.text : tokens.textSecondary} /> : null}
-            <Text fontSize={13} fontWeight={isActive ? "600" : "500"} color={isActive ? tokens.text : tokens.textSecondary}>
+            {t.icon ? (
+              typeof t.icon === "string" ? (
+                <Ph name={t.icon} size={15} color={isActive ? c.accent : c.text2} />
+              ) : (
+                <t.icon size={14} color={isActive ? c.accent : c.text2} />
+              )
+            ) : null}
+            <T step="sm" color={fg} numberOfLines={1}>
               {t.label}
-            </Text>
-          </XStack>
+            </T>
+          </Pressable>
         )
       })}
-    </XStack>
+    </View>
   )
 }

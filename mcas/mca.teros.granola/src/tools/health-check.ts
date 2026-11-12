@@ -3,6 +3,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk'
 import { getGranolaClient } from '../lib'
 
 export const healthCheck: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Internal health check tool. Verifies Granola API key and connectivity.',
   parameters: {

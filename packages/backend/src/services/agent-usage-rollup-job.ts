@@ -8,12 +8,16 @@
  *       sessions that cross midnight.
  *
  *   - agent_usage_rollups_user_hourly (per user × workspace) with
- *       userActiveMs = union of session intervals coalesced in JS.
+ *       userActiveMs = union of session intervals coalesced in JS (decision
+ *       #26, analytical) and userWorkMs = SUM of per-session overlaps
+ *       (decision #29, the billed quota metric — parallel agents each count).
  *
  * Cutoff policy (decision #20): a session is included in the hour `h` if
  * `endedAt <= h.end`. Sessions still running across the cutoff are picked
- * up in the next run when they close. Idempotent via the unique compound
- * index on `(hourBucket, groupKey...)`.
+ * up in the next run when they close — so an hour is only marked complete
+ * once no recent session overlapping it is still open (BIL-2), and the
+ * agent-hours tracker bills only completed hours (see computeBillableHorizon).
+ * Idempotent via the unique compound index on `(hourBucket, groupKey...)`.
  *
  * Catch-up: at every tick, scans the last `catchUpHours` (default 72h,
  * configurable via ROLLUP_CATCHUP_HOURS) for missing hour buckets and processes
@@ -26,7 +30,7 @@
  * — the public API (`runOnce`, `processHour`) is shaped to make that swap
  * mechanical (no shared state with the request path).
  *
- *
+ * Design doc: docs/usage-instrumentation.md §9 — Job de rollup horario
  */
 
 import { generateUsageRollupId } from "@teros/core"
@@ -189,9 +193,11 @@ export class AgentUsageRollupJob {
     try {
       const now = new Date()
       const currentHour = truncateToHourUTC(now)
-      // Process up to the previous closed hour
+      // Process closed hours only once `offsetMin` has passed after their end
+      // (BIL-2: the option was declared but never read, so an hour could be
+      // rolled up seconds after it closed, before its last sessions landed).
       const start = new Date(currentHour.getTime() - this.opts.catchUpHours * 3_600_000)
-      const buckets = enumerateHourBuckets(start, currentHour)
+      const buckets = enumerateHourBuckets(start, rollupCutoff(now, this.opts.offsetMin))
 
       let hoursProcessed = 0
       let docsWritten = 0
@@ -245,51 +251,81 @@ export class AgentUsageRollupJob {
 
     const aggregates = await this.collectHourAggregates(hourBucket, hourEnd)
 
-    const agentDocsWritten = await this.persistAgentRollups(
+    const agent = await this.persistAgentRollups(
       aggregates.perAgent,
       hourBucket,
       computedAt,
       jobRunId,
     )
-    const userDocsWritten = await this.persistUserRollups(
+    const user = await this.persistUserRollups(
       aggregates.perUserIntervals,
       aggregates.perUserTotals,
+      aggregates.perUserWorkMs,
       hourBucket,
       computedAt,
       jobRunId,
     )
 
-    // Mark the hour done ONLY when it produced real rollups. An empty hour (no
-    // real sessions, or only demo/still-running ones) is left unmarked so a late
-    // session that closes within the catch-up window still gets rolled — this
-    // preserves the old exists-check's reprocessing of doc-less hours while
-    // fixing the demo/partial-write skip.
-    if (agentDocsWritten + userDocsWritten > 0) {
-      await this.markHourComplete(hourBucket, jobRunId, agentDocsWritten, userDocsWritten)
+    // Mark the hour complete only when its numbers are final (BIL-2):
+    //   - no recent session overlapping the hour is still open — it will add
+    //     time to this hour when it closes, and the tracker must not bill the
+    //     hour before that (it never revisits a billed hour);
+    //   - every upsert landed — a failed write used to be swallowed and the
+    //     hour marked anyway, losing that user's time for good.
+    // Empty hours are marked too: the tracker bills only up to the first
+    // unmarked hour, so a gap would stall billing (and every tick re-scanned
+    // them). A late session for an empty hour is what the open-session guard
+    // and the offsetMin grace are for.
+    if (aggregates.openSessions === 0 && agent.errors + user.errors === 0) {
+      await this.markHourComplete(hourBucket, jobRunId, agent.written, user.written)
+    } else {
+      this.log.info(
+        { hourBucket, openSessions: aggregates.openSessions, errors: agent.errors + user.errors },
+        "agent-usage-rollup-job: hour not final yet, left unmarked",
+      )
     }
 
-    return agentDocsWritten + userDocsWritten
+    return agent.written + user.written
   }
 
   /**
-   * Compute (WITHOUT persisting) the coalesced `userActiveMs` per user for one
-   * hour bucket — the same non-billable guard + interval clamp + union that
-   * `processHour` persists, summed across workspaces so the key is the bare
-   * userId (how the tracker/reconciler aggregate a user's billed hours).
+   * Compute (WITHOUT persisting) the per-user billed-time metrics for one hour
+   * bucket — the same non-billable guard + interval clamp the persisted rollups
+   * use, summed across workspaces so the key is the bare userId (how the
+   * tracker/reconciler aggregate a user's billed hours).
    *
    * Read-only sibling of `processHour`, used by the phantom-billing remediation
-   * (TER-652) to measure the correction in dry-run and verify it on apply,
-   * sharing this job's exact aggregation logic instead of reimplementing it.
+   * (TER-652) and the unbilled-hours estimate to measure the correction in
+   * dry-run and verify it on apply, sharing this job's exact aggregation logic
+   * instead of reimplementing it.
+   *
+   * @param metric 'work' → sum of per-session overlaps (decision #29, what the
+   *               tracker bills); 'active' → coalesced union (decision #26,
+   *               legacy/analytical). Defaults to 'work' — every billing reader
+   *               must use the same one or the canary sings eternal drift.
    */
-  async computeUserActiveMsForHour(hourBucket: Date): Promise<Map<string, number>> {
+  async computeUserBilledMsForHour(
+    hourBucket: Date,
+    metric: "work" | "active" = "work",
+  ): Promise<Map<string, number>> {
     const hourEnd = new Date(hourBucket.getTime() + 3_600_000)
-    const { perUserIntervals } = await this.collectHourAggregates(hourBucket, hourEnd)
+    const { perUserIntervals, perUserWorkMs } = await this.collectHourAggregates(hourBucket, hourEnd)
     const byUser = new Map<string, number>()
     for (const [userKey, intervals] of perUserIntervals) {
       const [userId] = userKey.split("|")
-      byUser.set(userId, (byUser.get(userId) ?? 0) + unionOfIntervalsMs(intervals))
+      const ms = metric === "work" ? (perUserWorkMs.get(userKey) ?? 0) : unionOfIntervalsMs(intervals)
+      byUser.set(userId, (byUser.get(userId) ?? 0) + ms)
     }
     return byUser
+  }
+
+  /**
+   * Compute the coalesced `userActiveMs` per user for one hour bucket.
+   * Legacy alias of `computeUserBilledMsForHour(bucket, 'active')` kept for
+   * callers that specifically want the union metric (analytics).
+   */
+  async computeUserActiveMsForHour(hourBucket: Date): Promise<Map<string, number>> {
+    return this.computeUserBilledMsForHour(hourBucket, "active")
   }
 
   /**
@@ -317,7 +353,8 @@ export class AgentUsageRollupJob {
       jobRunId,
       agentDocsWritten,
       userDocsWritten,
-      schemaVersion: 1,
+      // 2 = user_hourly docs of this hour carry userWorkMs (decision #29).
+      schemaVersion: 2,
     }
     await this.runsCol.updateOne({ hourBucket }, { $set: marker }, { upsert: true })
   }
@@ -340,6 +377,14 @@ export class AgentUsageRollupJob {
     const perAgent = new Map<string, RollupAccumulator>()
     const perUserIntervals = new Map<string, Interval[]>()
     const perUserTotals = new Map<string, UserAggregate>()
+    // Sum of per-session overlaps per userKey — the billed quota metric
+    // (decision #29). Unlike `perUserIntervals` this is NOT coalesced: two
+    // parallel agents working the same minutes each contribute their work.
+    const perUserWorkMs = new Map<string, number>()
+    let openSessions = 0
+    // Sessions open longer than this are presumed zombies the reconciler failed
+    // to close; they must not hold the hour (and with it all billing) forever.
+    const openSince = Date.now() - OPEN_SESSION_BLOCK_MAX_MS
 
     const cursor = this.sessionsCol.find(overlapFilter)
     try {
@@ -349,7 +394,11 @@ export class AgentUsageRollupJob {
         // The overlap filter already excludes null startedAt; this also narrows
         // the type from `Date | null` to `Date` for the arithmetic below.
         if (!session.startedAt) continue
-        if (!session.endedAt) continue // exclude still-running per cutoff policy
+        if (!session.endedAt) {
+          // Excluded per cutoff policy, but it keeps the hour from being final
+          if (session.startedAt.getTime() >= openSince) openSessions++
+          continue
+        }
         // Sessions that did no real LLM work never bill agent-hours (TER-650).
         // Keeps reconciler zombies and failed 0-token turns out of BOTH the
         // per-agent and per-user (billed) aggregates.
@@ -367,8 +416,10 @@ export class AgentUsageRollupJob {
         this.accumulateUser(
           perUserIntervals,
           perUserTotals,
+          perUserWorkMs,
           session,
           fraction,
+          overlapMs,
           start.getTime(),
           end.getTime(),
         )
@@ -377,7 +428,7 @@ export class AgentUsageRollupJob {
       await cursor.close()
     }
 
-    return { perAgent, perUserIntervals, perUserTotals }
+    return { perAgent, perUserIntervals, perUserTotals, perUserWorkMs, openSessions }
   }
 
   private accumulateAgent(
@@ -398,8 +449,10 @@ export class AgentUsageRollupJob {
   private accumulateUser(
     perUserIntervals: Map<string, Interval[]>,
     perUserTotals: Map<string, UserAggregate>,
+    perUserWorkMs: Map<string, number>,
     session: AgentUsageSession,
     fraction: number,
+    overlapMs: number,
     startMs: number,
     endMs: number,
   ): void {
@@ -407,6 +460,10 @@ export class AgentUsageRollupJob {
     const intervals = perUserIntervals.get(userKey) ?? []
     intervals.push({ start: startMs, end: endMs })
     perUserIntervals.set(userKey, intervals)
+
+    // Billed work metric (decision #29): SUM of per-session overlaps — each
+    // parallel agent's time counts, no coalescing.
+    perUserWorkMs.set(userKey, (perUserWorkMs.get(userKey) ?? 0) + overlapMs)
 
     const userTotal = perUserTotals.get(userKey) ?? {
       totalTokens: 0,
@@ -428,8 +485,9 @@ export class AgentUsageRollupJob {
     hourBucket: Date,
     computedAt: Date,
     jobRunId: string,
-  ): Promise<number> {
+  ): Promise<{ written: number; errors: number }> {
     let docsWritten = 0
+    let errors = 0
     for (const [, agg] of perAgent) {
       const doc = agg.toDoc({
         rollupId: generateUsageRollupId(),
@@ -451,26 +509,31 @@ export class AgentUsageRollupJob {
         )
         docsWritten++
       } catch (err) {
+        errors++
         this.rollup_errors++
         this.log.error({ err, hourBucket }, "agent-usage-rollup-job: hourly upsert failed")
       }
     }
-    return docsWritten
+    return { written: docsWritten, errors }
   }
 
   /**
    * Phase 3 — upsert one `agent_usage_rollups_user_hourly` doc per user
    * bucket. `userActiveMs` is the union of session intervals coalesced in
-   * JS by `unionOfIntervalsMs`.
+   * JS by `unionOfIntervalsMs` (decision #26, analytical). `userWorkMs` is
+   * the SUM of per-session overlaps (decision #29) — the metric the agent-hours
+   * tracker bills: parallel agents each burn quota.
    */
   private async persistUserRollups(
     perUserIntervals: Map<string, Interval[]>,
     perUserTotals: Map<string, UserAggregate>,
+    perUserWorkMs: Map<string, number>,
     hourBucket: Date,
     computedAt: Date,
     jobRunId: string,
-  ): Promise<number> {
+  ): Promise<{ written: number; errors: number }> {
     let docsWritten = 0
+    let errors = 0
     for (const [userKey, intervals] of perUserIntervals) {
       const [userId] = userKey.split("|")
       const totals = perUserTotals.get(userKey)
@@ -481,12 +544,13 @@ export class AgentUsageRollupJob {
         hourBucket,
         groupKey: { userId, workspaceId: totals.workspaceId },
         userActiveMs: unionOfIntervalsMs(intervals),
+        userWorkMs: perUserWorkMs.get(userKey) ?? 0,
         sessionCount: totals.sessionCount,
         totalTokens: totals.totalTokens,
         costUsd: totals.costUsd,
         computedAt,
         jobRunId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         createdAt: computedAt,
       }
 
@@ -502,11 +566,12 @@ export class AgentUsageRollupJob {
         )
         docsWritten++
       } catch (err) {
+        errors++
         this.rollup_errors++
         this.log.error({ err, hourBucket }, "agent-usage-rollup-job: user_hourly upsert failed")
       }
     }
-    return docsWritten
+    return { written: docsWritten, errors }
   }
 
   private async latestRollupBucket(): Promise<Date | null> {
@@ -538,6 +603,52 @@ interface HourAggregates {
   perAgent: Map<string, RollupAccumulator>
   perUserIntervals: Map<string, Interval[]>
   perUserTotals: Map<string, UserAggregate>
+  /** Sum of per-session overlaps per userKey — the billed quota metric (decision #29). */
+  perUserWorkMs: Map<string, number>
+  /** Recent sessions overlapping the hour that are still open (not rolled yet). */
+  openSessions: number
+}
+
+/**
+ * An open session older than this no longer holds its hours back from
+ * completion. The reconciler closes sessions after 15 min, so a real one never
+ * gets near it; it bounds the damage if the reconciler stops.
+ */
+export const OPEN_SESSION_BLOCK_MAX_MS = 2 * 3_600_000
+
+/**
+ * The hour (exclusive) up to which closed hours may be rolled up at `now`:
+ * an hour is eligible once `offsetMin` minutes have passed after its end.
+ */
+export function rollupCutoff(now: Date, offsetMin: number): Date {
+  return truncateToHourUTC(new Date(now.getTime() - offsetMin * 60_000))
+}
+
+/**
+ * The hour (exclusive) up to which agent-hours may be billed (BIL-3).
+ *
+ * The tracker bills rollups with `hourBucket > cursor` and then moves the
+ * cursor to the newest billed hour, never looking back. So it must only see
+ * hours whose rollups are final: everything before the first hour, within the
+ * rollup catch-up window, that has no completion marker. A failed or
+ * still-open hour now holds the cursor back instead of being skipped forever.
+ */
+export async function computeBillableHorizon(
+  db: Db,
+  now: Date,
+  opts: Pick<RollupJobOptions, "offsetMin" | "catchUpHours"> = DEFAULT_ROLLUP_OPTS,
+): Promise<Date> {
+  const cutoff = rollupCutoff(now, opts.offsetMin)
+  const start = new Date(truncateToHourUTC(now).getTime() - opts.catchUpHours * 3_600_000)
+  const markers = await db
+    .collection<AgentUsageRollupRun>("agent_usage_rollup_runs")
+    .find({ hourBucket: { $gte: start, $lt: cutoff } }, { projection: { hourBucket: 1 } })
+    .toArray()
+  const completed = new Set(markers.map((m) => m.hourBucket.getTime()))
+  for (const bucket of enumerateHourBuckets(start, cutoff)) {
+    if (!completed.has(bucket.getTime())) return bucket
+  }
+  return cutoff
 }
 
 /**

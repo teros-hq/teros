@@ -250,12 +250,12 @@ export function Context7ToolShell({
   defaultExpanded,
   children,
 }: Context7ToolShellProps): React.ReactNode {
-  const verbLabel = description ?? TOOL_LABELS[toolName] ?? toolName;
+  const label = description ?? TOOL_LABELS[toolName] ?? toolName;
   const expanded = defaultExpanded ?? DEFAULT_EXPANDED_TOOLS.has(toolName);
   return (
     <ToolCallCard
       status={statusType(status)}
-      verb={verbLabel}
+      description={label}
       iconUri={appIcon}
       badge={badge}
       defaultExpanded={expanded}

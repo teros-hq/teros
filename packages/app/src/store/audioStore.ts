@@ -21,9 +21,14 @@ interface AudioStoreState {
 const MAX_BASE64_SIZE = 4 * 1024 * 1024
 const EXPIRY_MS = 5 * 60 * 1000
 
+const noopStorage = {
+  getItem: async () => null,
+  setItem: async () => {},
+  removeItem: async () => {},
+}
 const platformStorage = () => {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return window.localStorage
+  if (Platform.OS === 'web') {
+    return typeof window !== 'undefined' ? window.localStorage : noopStorage
   }
   return AsyncStorage
 }

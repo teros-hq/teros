@@ -8,7 +8,7 @@ import type { Migration } from './types.js';
  * non-destructive. Existing usage tracking (conversation_usage, llm_usage,
  * usage_windows) is untouched and continues to function.
  *
- *
+ * Design doc: docs/usage-instrumentation.md
  */
 
 const TTL_180_DAYS = 60 * 60 * 24 * 180;

@@ -1,0 +1,475 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.microsoft.word",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "read-document",
+      "description": "Read a Word document as markdown (default) or HTML. Returns prose, not structure — use list-paragraphs when you need indices to edit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names, not pre-encoded ones."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "markdown",
+              "html"
+            ],
+            "description": "Output format. Defaults to markdown."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-document-info",
+      "description": "Get a Word document's OneDrive metadata, its Word document properties, and its paragraph and word counts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names, not pre-encoded ones."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-paragraphs",
+      "description": "List a Word document's paragraphs with the stable indices that append-paragraphs, delete-paragraph, and the other edit tools target. Call this before editing to find the paragraph you mean. Text inside tables is not listed and cannot be targeted by index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names, not pre-encoded ones."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-comments",
+      "description": "Read the review comments in a Word document, with their authors and dates. Returns an empty list when the document has none.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-document",
+      "description": "Create a new Word document from structured paragraphs. Fails if a file already exists at the path unless overwrite is set — an existing document is not recoverable from here except through OneDrive version history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Destination path relative to the drive root, ending in .docx. Pass literal names, not pre-encoded ones."
+          },
+          "paragraphs": {
+            "type": "array",
+            "description": "The document body, in order. Each entry is { text, style?, bold?, italic? }; style may be Heading1, Heading2, or Heading3.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "style": {
+                  "type": "string",
+                  "enum": [
+                    "Heading1",
+                    "Heading2",
+                    "Heading3"
+                  ]
+                },
+                "bold": {
+                  "type": "boolean"
+                },
+                "italic": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "text"
+              ]
+            }
+          },
+          "title": {
+            "type": "string",
+            "description": "Optional document title property."
+          },
+          "creator": {
+            "type": "string",
+            "description": "Optional document author property."
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Replace an existing file at this path. Defaults to false, which fails instead."
+          }
+        },
+        "required": [
+          "path",
+          "paragraphs"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "replace-text",
+      "description": "Replace text in a Word document, matching text as the reader sees it even when Word has split it across formatting runs. Text inside tables is not searched or replaced. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names, not pre-encoded ones."
+          },
+          "search": {
+            "type": "string",
+            "description": "Exact text to find. Not a regular expression."
+          },
+          "replacement": {
+            "type": "string",
+            "description": "Text to put in its place. May be empty to delete."
+          },
+          "paragraphIndex": {
+            "type": "number",
+            "description": "Optional paragraph index from list-paragraphs. Omit to replace throughout the document."
+          }
+        },
+        "required": [
+          "search",
+          "replacement"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "append-paragraphs",
+      "description": "Add paragraphs to the end of a Word document, leaving everything already there untouched. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names."
+          },
+          "paragraphs": {
+            "type": "array",
+            "description": "Paragraphs to append, in order. Each is { text, style? }.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "style": {
+                  "type": "string",
+                  "enum": [
+                    "Heading1",
+                    "Heading2",
+                    "Heading3"
+                  ]
+                }
+              },
+              "required": [
+                "text"
+              ]
+            }
+          }
+        },
+        "required": [
+          "paragraphs"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-paragraph",
+      "description": "Delete one paragraph from a Word document by its index from list-paragraphs. Indices shift after a delete, so re-list before deleting again. Cannot delete table content. Recoverable only through OneDrive version history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names."
+          },
+          "paragraphIndex": {
+            "type": "number",
+            "description": "Zero-based paragraph index, as reported by list-paragraphs."
+          }
+        },
+        "required": [
+          "paragraphIndex"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "insert-table",
+      "description": "Append a table to a Word document. Rows are plain strings; the first can be styled as a header. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names."
+          },
+          "rows": {
+            "type": "array",
+            "description": "Table contents as an array of rows, each an array of cell strings. Every row must have the same number of cells.",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "headerRow": {
+            "type": "boolean",
+            "description": "Render the first row in bold as a header. Defaults to false."
+          }
+        },
+        "required": [
+          "rows"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "insert-page-break",
+      "description": "Append a page break to a Word document, so subsequent content starts on a new page. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "insert-image",
+      "description": "Embed a PNG or JPEG image at the end of a Word document. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names."
+          },
+          "imageBase64": {
+            "type": "string",
+            "description": "The image bytes, base64-encoded. PNG or JPEG."
+          },
+          "fileName": {
+            "type": "string",
+            "description": "Name to store the image under inside the document, e.g. \"chart.png\". No directory separators."
+          },
+          "widthInches": {
+            "type": "number",
+            "description": "Displayed width in inches. Defaults to 3."
+          },
+          "heightInches": {
+            "type": "number",
+            "description": "Displayed height in inches. Defaults to 2."
+          }
+        },
+        "required": [
+          "imageBase64",
+          "fileName"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-document-properties",
+      "description": "Set a Word document's title, author, subject, or description — the properties Word shows in File → Info. Leaves the document body untouched. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names."
+          },
+          "title": {
+            "type": "string",
+            "description": "Document title."
+          },
+          "creator": {
+            "type": "string",
+            "description": "Document author."
+          },
+          "subject": {
+            "type": "string",
+            "description": "Document subject."
+          },
+          "description": {
+            "type": "string",
+            "description": "Document description or comments."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "convert-to-pdf",
+      "description": "Convert a Word document to PDF and save it to OneDrive. Fails if a file already exists at the destination unless overwrite is set.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "OneDrive item id of the .docx. Takes precedence over path, but requires destinationPath since there is no name to derive one from."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the .docx relative to the drive root. Pass literal names, not pre-encoded ones."
+          },
+          "destinationPath": {
+            "type": "string",
+            "description": "Where to save the PDF. Defaults to the source path with its extension changed to .pdf."
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Replace an existing file at the destination. Defaults to false, which fails."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    }
+  ]
+}

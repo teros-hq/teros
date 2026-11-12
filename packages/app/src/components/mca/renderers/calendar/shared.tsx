@@ -51,6 +51,7 @@ import {
   XCircle,
 } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
+import { backendUrl } from "../../../../config/runtime"
 
 // ============================================================================
 // Brand identity — logo + official Google Calendar palette
@@ -60,7 +61,7 @@ import type { ToolCallRendererProps } from "../../types"
  * Logo oficial servido por el backend. Pasarlo al `iconUri` de
  * `<ToolCallCard/>` para reconocimiento visual inmediato.
  */
-export const CALENDAR_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/mcas/mca.google.calendar/icon.png`
+export const CALENDAR_ICON = `${backendUrl()}/static/mcas/mca.google.calendar/icon.svg`;
 
 /**
  * Los 11 colores oficiales de Google Calendar. Hex validados contra la UI

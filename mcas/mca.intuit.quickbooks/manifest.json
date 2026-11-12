@@ -1,0 +1,73 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.intuit.quickbooks",
+  "name": "QuickBooks Online",
+  "version": "1.0.0",
+  "description": "QuickBooks Online Accounting API — manage customers, invoices, payments, vendors, bills, accounts, items, and financial reports.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": [
+    "quickbooks",
+    "intuit",
+    "accounting",
+    "invoices",
+    "payments",
+    "vendors",
+    "bills",
+    "finance",
+    "bookkeeping"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "intuit",
+      "systemSecrets": [
+        "CLIENT_ID",
+        "CLIENT_SECRET"
+      ],
+      "userSecrets": [
+        "ACCESS_TOKEN",
+        "REFRESH_TOKEN",
+        "REALM_ID",
+        "EXPIRY_DATE"
+      ],
+      "authorizeUrl": "https://appcenter.intuit.com/connect/oauth2",
+      "tokenUrl": "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+      "scopes": [
+        "com.intuit.quickbooks.accounting"
+      ],
+      "pkce": false
+    },
+    "agent": false
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-09-20",
+      "notes": "Initial scaffold — OAuth 2.0 with Intuit, health check, and company info retrieval"
+    }
+  ]
+}

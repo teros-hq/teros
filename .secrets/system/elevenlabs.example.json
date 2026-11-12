@@ -1,3 +1,4 @@
 {
-  "apiKey": "xi_YOUR_ELEVENLABS_API_KEY_HERE"
+  "apiKey": "xi_YOUR_ELEVENLABS_API_KEY_HERE",
+  "agentId": "agent_YOUR_ELEVENLABS_AGENT_ID_HERE"
 }

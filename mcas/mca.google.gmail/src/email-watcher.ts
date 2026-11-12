@@ -4,6 +4,14 @@
  * Background polling loop that detects new unread emails and emits
  * `gmail.email.received` events via the backend MCA event system.
  *
+ * v1.4.4 (unified subscriptions): the watcher is an INTERNAL implementation
+ * detail of the app. Agents no longer start/stop it — they subscribe with the
+ * reserved `gmail__subscribe(event: 'email.received')` tool and the app keeps
+ * its own watcher running while any `gmail.email.received` subscription
+ * exists (checked against the backend every WATCHER_CHECK_INTERVAL_MS; the
+ * subscription state itself lives in the backend, never here). The legacy
+ * start/stop/status tools remain as deprecated wrappers.
+ *
  * Limitations (MVP):
  * - State (known message IDs) is kept in-memory only. Process restart loses
  *   state and may re-report older unread emails.
@@ -299,4 +307,62 @@ async function performCheck(isInitial: boolean): Promise<void> {
   }
 
   state.lastCheckedAt = Date.now();
+}
+
+// =============================================================================
+// SUBSCRIPTION-DRIVEN LIFECYCLE (v1.4.4)
+//
+// The watcher runs while at least one `gmail.email.received` subscription
+// exists anywhere (subscriptions_channel in the backend). A light periodic
+// check starts it when the first subscription appears and stops it when the
+// last one goes away — the agent never manages the watcher manually.
+// =============================================================================
+
+const WATCHER_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
+let watcherCheckIntervalId: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start the subscription-driven lifecycle loop. Called once at MCA startup
+ * (after the backend client is available). No-op when already running.
+ */
+export function startSubscriptionDrivenWatcher(
+  getBackendClient: () => McaBackendClient | null,
+  intervalMinutes = 5,
+): void {
+  if (watcherCheckIntervalId) return;
+  watcherCheckIntervalId = setInterval(() => {
+    void (async () => {
+      const backendClient = getBackendClient();
+      if (!backendClient) return;
+      try {
+        const has = await backendClient.invokeAction('subscriptions/has-subscribers', {
+          topic: 'gmail.email.received',
+        }) as { hasSubscribers?: boolean };
+        if (has?.hasSubscribers && !getWatcherStatus().active) {
+          await startEmailWatcher(backendClient, intervalMinutes);
+        } else if (!has?.hasSubscribers && getWatcherStatus().active) {
+          stopEmailWatcher();
+        }
+      } catch (err: any) {
+        console.error('[EmailWatcher] Subscription check failed:', err?.message || err);
+      }
+    })();
+  }, WATCHER_CHECK_INTERVAL_MS);
+  // Run the first check immediately so a respawn with live subscriptions
+  // starts polling without waiting a full interval.
+  void (async () => {
+    const backendClient = getBackendClient();
+    if (!backendClient) return;
+    try {
+      const has = await backendClient.invokeAction('subscriptions/has-subscribers', {
+        topic: 'gmail.email.received',
+      }) as { hasSubscribers?: boolean };
+      if (has?.hasSubscribers) {
+        await startEmailWatcher(backendClient, intervalMinutes);
+      }
+    } catch {
+      // Backend not reachable yet — the interval will retry.
+    }
+  })();
+  console.error('[EmailWatcher] Subscription-driven lifecycle active (checks every 60s)');
 }

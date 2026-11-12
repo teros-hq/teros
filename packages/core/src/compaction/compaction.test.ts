@@ -13,6 +13,7 @@ import { countTokensForProvider } from "../llm/token-counter"
 import { assertInvariantINV1 } from "../prompts/PromptBuilder"
 import type { MessageWithParts, ToolState } from "../session/types"
 import {
+  type CompactionConfig,
   CompactionService,
   estimateConversationTokens,
   estimateMessageTokens,
@@ -96,7 +97,7 @@ function service(
     targetSize: number
     protectRecent: number
     contextSize: number
-    prune: { minSavings: number; protectRecent: number; enabled: boolean }
+    prune: { minSavings: number; protectRecent: number; enabled: boolean; maxToolOutputTokens?: number }
     provider: string
   }> = {},
 ) {
@@ -105,7 +106,9 @@ function service(
     targetSize: cfg.targetSize ?? 600,
     protectRecent: cfg.protectRecent ?? 100,
     contextSize: cfg.contextSize ?? 2000,
-    prune: cfg.prune,
+    prune: cfg.prune
+      ? { maxToolOutputTokens: 10_000, ...cfg.prune }
+      : undefined,
     provider: cfg.provider,
   })
 }
@@ -346,6 +349,7 @@ describe("prune", () => {
     expect(result).toEqual({
       pruned: true,
       partsPruned: 1,
+      partsTruncated: 0,
       tokensBefore: estimateConversationTokens(msgs),
       tokensAfter: estimateConversationTokens(messages),
       tokensSaved: estimateConversationTokens(msgs) - estimateConversationTokens(messages),
@@ -685,5 +689,188 @@ describe("compact", () => {
     const result = await svc.compact(msgs)
     const protectedWindow = msgs.slice(-(msgs.length - result.messagesCompacted))
     expect(assertInvariantINV1(protectedWindow).ok).toBe(true)
+  })
+})
+
+// ============================================================================
+// Truncation of oversized tool outputs — prevents compaction spiral
+// ============================================================================
+
+describe("prune: maxToolOutputTokens truncation", () => {
+  it("trunca un tool output de 200K chars (~80K tokens) aunque esté en la ventana protegida", () => {
+    // Simulate the incident: a `cat` of an SVG with embedded base64 PNG
+    // 200,083 chars → ~80K tokens. With maxToolOutputTokens=10K, the output
+    // must be truncated even though protectedToolTokens starts at 0 < 40K.
+    const hugeOutput = "A".repeat(200_083) // ~80K tokens
+    const msgs = [toolMsg(hugeOutput)]
+    const { client } = mockLLM()
+    const svc = service(client, {
+      prune: { enabled: true, minSavings: 1, protectRecent: 40_000, maxToolOutputTokens: 10_000 },
+    })
+    const { messages, result } = svc.prune(msgs)
+
+    // The output should have been truncated, not pruned to a placeholder
+    expect(result.partsTruncated).toBe(1)
+    expect(result.partsPruned).toBe(0) // not fully pruned, just truncated
+    expect(result.pruned).toBe(true)
+
+    // The output should be much smaller than the original 200K chars
+    const truncatedOutput = (messages[0].parts[0] as any).state.output
+    expect(truncatedOutput.length).toBeLessThan(30_000) // ~10K tokens * 2.5 chars + suffix
+    expect(truncatedOutput).toContain("[... Output truncated")
+
+    // Tokens should have dropped significantly
+    expect(result.tokensSaved).toBeGreaterThan(50_000) // saved ~70K tokens
+  })
+
+  it("un output dentro del límite maxToolOutputTokens no se trunca", () => {
+    // 5000 chars = 2000 tokens, well under 10K limit
+    const normalOutput = "B".repeat(5000)
+    const msgs = [toolMsg(normalOutput)]
+    const { client } = mockLLM()
+    const svc = service(client, {
+      prune: { enabled: true, minSavings: 1, protectRecent: 40_000, maxToolOutputTokens: 10_000 },
+    })
+    const { messages, result } = svc.prune(msgs)
+
+    expect(result.partsTruncated).toBe(0)
+    expect(result.partsPruned).toBe(0) // protected, not pruned
+    expect(result.pruned).toBe(false) // nothing to prune
+    expect((messages[0].parts[0] as any).state.output).toBe(normalOutput)
+  })
+
+  it("trunca múltiples outputs oversized en la misma pasada", () => {
+    const huge1 = "X".repeat(200_000)
+    const huge2 = "Y".repeat(150_000)
+    const msgs = [toolMsg(huge1), toolMsg(huge2)]
+    const { client } = mockLLM()
+    const svc = service(client, {
+      prune: { enabled: true, minSavings: 1, protectRecent: 40_000, maxToolOutputTokens: 10_000 },
+    })
+    const { messages, result } = svc.prune(msgs)
+
+    expect(result.partsTruncated).toBe(2)
+    // Both outputs should be truncated
+    const out0 = (messages[0].parts[0] as any).state.output
+    const out1 = (messages[1].parts[0] as any).state.output
+    expect(out0.length).toBeLessThan(30_000)
+    expect(out1.length).toBeLessThan(30_000)
+    expect(out0).toContain("[... Output truncated")
+    expect(out1).toContain("[... Output truncated")
+  })
+
+  it("NO muta los mensajes originales al truncar", () => {
+    const hugeOutput = "A".repeat(200_000)
+    const msgs = [toolMsg(hugeOutput)]
+    const snapshot = JSON.parse(JSON.stringify(msgs))
+    const { client } = mockLLM()
+    const svc = service(client, {
+      prune: { enabled: true, minSavings: 1, protectRecent: 40_000, maxToolOutputTokens: 10_000 },
+    })
+    svc.prune(msgs)
+    expect(msgs).toEqual(snapshot)
+  })
+
+  it("un output oversized que también está fuera de la ventana protegida se trunca (no se poda a placeholder)", () => {
+    // Two huge outputs: the second (recent) fills the protectRecent budget
+    // with its truncated size (10K), so the first (old) is also oversized →
+    // truncated, not pruned to placeholder.
+    const huge1 = "A".repeat(200_000)
+    const huge2 = "B".repeat(200_000)
+    const msgs = [toolMsg(huge1), toolMsg(huge2)]
+    const { client } = mockLLM()
+    const svc = service(client, {
+      prune: { enabled: true, minSavings: 1, protectRecent: 5_000, maxToolOutputTokens: 10_000 },
+    })
+    const { messages, result } = svc.prune(msgs)
+
+    // Both are oversized → both truncated
+    expect(result.partsTruncated).toBe(2)
+    expect(result.partsPruned).toBe(0)
+    const out0 = (messages[0].parts[0] as any).state.output
+    expect(out0).toContain("[... Output truncated")
+  })
+})
+
+// ============================================================================
+// Cooldown config — prevents compaction spiral with rapid-fire triggers
+// ============================================================================
+
+describe("CompactionConfig cooldown defaults", () => {
+  it("cooldownMs y minNewUserMessages son opcionales con defaults sensatos", () => {
+    const { client } = mockLLM()
+    const svc = new CompactionService(client, {
+      triggerAt: 1000,
+      targetSize: 600,
+      protectRecent: 100,
+      contextSize: 2000,
+    })
+    // The service should construct fine without cooldown config
+    expect(svc).toBeDefined()
+  })
+})
+
+
+// ============================================================================
+// CTX-020 — summaryModel: route the summarization call through a fast model
+// ============================================================================
+
+describe("CTX-020: summaryModel override", () => {
+  /** Mock que captura el `model` per-request de streamMessage. */
+  function modelCapturingLLM() {
+    const calls: Array<{ model?: string; systemPrompt?: string }> = []
+    const client = {
+      streamMessage: async (args: any) => {
+        calls.push({ model: args.model, systemPrompt: args.systemPrompt })
+        for (const c of ["resumen ", "flash"]) args.callbacks?.onText?.(c)
+        return { usage: { inputTokens: 10, outputTokens: 2 } }
+      },
+    } as unknown as ILLMClient
+    return { client, calls }
+  }
+
+  it("sin summaryModel → NO se envía model (comportamiento previo)", async () => {
+    const { client, calls } = modelCapturingLLM()
+    const svc = service(client, { targetSize: 100, protectRecent: 10 })
+    // 10 mensajes de ~10 tokens; protectRecent 10 → compacta los 9 primeros
+    const msgs = Array.from({ length: 10 }, (_, i) =>
+      textMsg(i % 2 ? "assistant" : "user", "x".repeat(25)),
+    )
+    const result = await svc.compact(msgs)
+    expect(result.success).toBe(true)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].model).toBeUndefined()
+  })
+
+  it("con summaryModel → streamMessage recibe EXACTAMENTE ese model", async () => {
+    const { client, calls } = modelCapturingLLM()
+    const svc = service(client, { targetSize: 100, protectRecent: 10 })
+    ;(svc as unknown as { config: CompactionConfig }).config.summaryModel =
+      "accounts/fireworks/models/glm-5p3-flash"
+    const msgs = Array.from({ length: 10 }, (_, i) =>
+      textMsg(i % 2 ? "assistant" : "user", "x".repeat(25)),
+    )
+    const result = await svc.compact(msgs)
+    expect(result.success).toBe(true)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].model).toBe("accounts/fireworks/models/glm-5p3-flash")
+  })
+
+  it("summaryModel NO altera el conteo de tokens ni el split (solo la llamada LLM)", async () => {
+    const { client: c1, calls: k1 } = modelCapturingLLM()
+    const { client: c2, calls: k2 } = modelCapturingLLM()
+    const msgs = Array.from({ length: 10 }, (_, i) =>
+      textMsg(i % 2 ? "assistant" : "user", "x".repeat(25)),
+    )
+    const plain = service(c1, { targetSize: 100, protectRecent: 10 })
+    const overridden = service(c2, { targetSize: 100, protectRecent: 10 })
+    ;(overridden as unknown as { config: CompactionConfig }).config.summaryModel = "fast-model"
+    const r1 = await plain.compact(msgs)
+    const r2 = await overridden.compact(msgs)
+    // Same compaction decisions — only the routed model differs.
+    expect(r2.messagesCompacted).toBe(r1.messagesCompacted)
+    expect(r2.tokensAfter).toBe(r1.tokensAfter)
+    expect(k1[0].model).toBeUndefined()
+    expect(k2[0].model).toBe("fast-model")
   })
 })

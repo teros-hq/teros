@@ -1,30 +1,41 @@
 /**
  * Users Window Content
  *
- * Admin Users panel, rebuilt on the Monitoring design system (TER-683 · PR2):
- * - A two-view shell: a sortable/filterable `DataTable` LIST and a per-user
- *   DETAIL drill-in (a stub here; PR3 fills it in).
- * - Server-side search + filters (Estado / Rol / Plan / Cuota) + numbered
- *   pagination, so the panel scales past the old 100-user cap.
- * - A clickable KPI strip (Cerca del límite / Agotadas jump to the Cuota filter).
+ * Admin Users panel in the OS prototype vocabulary (design-testing, Oct 2026):
+ * - `Page` + `PageHead` (eyebrow · serif title · lead) → a `Stats` row of KPI
+ *   tiles (the quota ones are clickable and jump to the Cuota filter) → a
+ *   filter row (search `Field`, `ChipBtn` groups for Estado / Rol, `Select`
+ *   pickers for Plan / Cuota) → the users as `LGroup`/`LRow` rows with a
+ *   codenote header → numbered pill pagination.
+ * - A per-user DETAIL drill-in (`UserDetailView`).
+ * - Server-side search + filters + pagination, so the panel scales past the old
+ *   100-user cap.
  *
  * Layer separation: the backend returns DATA (ids + resolved names + a `pct`);
- * this file composes the UI. All colours come from `monitoring/colors` tokens.
+ * this file composes the UI. All colours come from `useColors()`.
  */
 
-import { ChevronLeft, ChevronRight, Search, Users, X } from "@tamagui/lucide-icons"
-import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
+import { Fragment, type ReactNode, useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Pressable, TextInput } from "react-native"
-import { ScrollView, Text, XStack, YStack } from "tamagui"
-import { Avatar, Badge, Empty } from "../../components/mca/primitives"
-import { AppSpinner } from "../../components/ui/AppSpinner"
-import { scrollbarThin, tokens } from "../../components/monitoring/colors"
-import { type Column, DataTable } from "../../components/monitoring/DataTable"
-import { KpiStrip, KpiTile } from "../../components/monitoring/Kpi"
-import { SegmentedTabs } from "../../components/monitoring/SegmentedTabs"
-import { Sparkline } from "../../components/monitoring/Sparkline"
-import { ProviderIcon } from "../../components/providers/ProviderIcons"
+import { ActivityIndicator, View } from "react-native"
+import { Avatar } from "../../components/Avatar"
+import { useColors } from "../../components/mca/primitives/useColors"
+import {
+  Badge,
+  Btn,
+  Card,
+  ChipBtn,
+  EmptyState,
+  Field,
+  IconBtn,
+  LGroup,
+  LRow,
+  Page,
+  Ph,
+  Stat,
+  Stats,
+  T,
+} from "../../components/ui/ds"
 import type { UsageFilter, UserRole, UserStatus, UserSummary } from "../../services/AdminApi"
 import { getTerosClient } from "../../services/terosClientSingleton"
 import { UserDetailView } from "./detail/UserDetailView"
@@ -32,13 +43,14 @@ import { Select } from "./Select"
 import { UsersHeader } from "./UsersHeader"
 import {
   formatRelative,
-  hoursColor,
+  hoursTone,
   hoursUsage,
-  lastAccessSortValue,
   planBadge,
-  roleBadgeVariant,
+  planTone,
+  roleTone,
   USAGE_FILTER_OPTIONS,
   userStatusMeta,
+  userStatusTone,
 } from "./usersModel"
 
 const PAGE_SIZE = 50
@@ -46,7 +58,7 @@ const PAGE_SIZE = 50
 type StatusFilter = UserStatus | "all"
 type RoleFilter = UserRole | "all"
 type UsageFilterAll = UsageFilter | "all"
-type View = { mode: "list" } | { mode: "detail"; userId: string }
+type ViewMode = { mode: "list" } | { mode: "detail"; userId: string }
 
 interface Summary {
   total: number
@@ -63,51 +75,20 @@ export interface UsersWindowContentProps {
   windowId: string
 }
 
-// Priority for the responsive column set (high → low). `user` is never dropped.
-const COLUMN_PRIORITY = [
-  "user",
-  "plan",
-  "hours",
-  "status",
-  "activity",
-  "providers",
-  "role",
-  "lastAccess",
-  "apps",
-  "convs",
-]
-const TABLE_H_PADDING = 24 // DataTable inner horizontal padding (12 + 12)
-const TABLE_COL_GAP = 12
-
-/**
- * Greedily keep the highest-priority columns that FIT the measured width, so the
- * table always fits the window — never a horizontal scrollbar. Whatever a dropped
- * column would show is still on the user's detail view (drill-in).
- */
-function pickVisibleColumns(columns: Column<UserSummary>[], width: number): Column<UserSummary>[] {
-  if (width <= 0) return columns // before measurement: render all
-  const byKey = new Map(columns.map((c) => [c.key, c]))
-  const keep = new Set<string>()
-  let used = TABLE_H_PADDING
-  for (const key of COLUMN_PRIORITY) {
-    const col = byKey.get(key)
-    if (!col) continue
-    const needed = col.width + (keep.size > 0 ? TABLE_COL_GAP : 0)
-    if (keep.size === 0 || used + needed <= width) {
-      used += needed
-      keep.add(key)
-    } else {
-      break // stop at the first priority column that no longer fits
-    }
-  }
-  return columns.filter((c) => keep.has(c.key))
-}
+// Column widths of the list (the user column takes the rest).
+const COL = { role: 84, plan: 110, hours: 150, last: 84, caret: 16 }
+const ROW_GAP = 14
+// Below these measured list widths the lower-priority columns are dropped
+// (whatever they show is still on the detail view).
+const HIDE_LAST_BELOW = 640
+const HIDE_PLAN_BELOW = 520
 
 export function UsersWindowContent(_props: UsersWindowContentProps) {
   const client = getTerosClient()
   const { t } = useTranslation()
+  const c = useColors()
 
-  const [view, setView] = useState<View>({ mode: "list" })
+  const [view, setView] = useState<ViewMode>({ mode: "list" })
   const [selectedUser, setSelectedUser] = useState<UserSummary | null>(null)
 
   const [users, setUsers] = useState<UserSummary[]>([])
@@ -224,227 +205,25 @@ export function UsersWindowContent(_props: UsersWindowContentProps) {
     setUsers((prev) => prev.map((u) => (u.userId === userId ? { ...u, ...patch } : u)))
   }, [])
 
-  // Measured width of the table area → responsive column set (no h-scroll).
-  const [tableWidth, setTableWidth] = useState(0)
-
-  const columns = useMemo<Column<UserSummary>[]>(
-    () => [
-      {
-        key: "user",
-        header: t("windows.usersPanel.columns.user"),
-        width: 210,
-        flex: 2,
-        sortable: true,
-        sortValue: (u) => (u.profile.displayName ?? u.profile.email ?? "").toLowerCase(),
-        // Name + email STACKED (like the old card) so email stays visible without
-        // eating its own column — key to fitting everything on a narrow window.
-        render: (u) => (
-          <XStack ai="center" gap={8} minWidth={0} width="100%">
-            <Avatar
-              src={u.profile.avatarUrl}
-              name={u.profile.displayName ?? u.profile.email}
-              size={24}
-            />
-            <YStack flex={1} minWidth={0}>
-              <Text fontSize={12} color={tokens.text} numberOfLines={1} ellipsizeMode="tail">
-                {u.profile.displayName ?? u.profile.email ?? "—"}
-              </Text>
-              {u.profile.email ? (
-                <Text fontSize={10} color={tokens.textMuted} numberOfLines={1} ellipsizeMode="tail">
-                  {u.profile.email}
-                </Text>
-              ) : null}
-            </YStack>
-          </XStack>
-        ),
-      },
-      {
-        key: "role",
-        header: t("windows.usersPanel.columns.role"),
-        width: 84,
-        render: (u) => (
-          <Badge text={t(`windows.usersPanel.role.${u.role}`)} variant={roleBadgeVariant(u.role)} />
-        ),
-      },
-      {
-        key: "status",
-        header: t("windows.usersPanel.columns.status"),
-        width: 116,
-        render: (u) => {
-          const m = userStatusMeta(u.status)
-          return (
-            <XStack ai="center" gap={6} minWidth={0}>
-              <YStack
-                width={7}
-                height={7}
-                borderRadius={9999}
-                backgroundColor={m.color}
-                flexShrink={0}
-              />
-              <Text fontSize={12} color={tokens.textSecondary} numberOfLines={1}>
-                {t(m.labelKey)}
-              </Text>
-            </XStack>
-          )
-        },
-      },
-      {
-        key: "plan",
-        header: t("windows.usersPanel.columns.plan"),
-        width: 116,
-        render: (u) => {
-          if (!u.billing) return "—"
-          const pb = planBadge(u.billing.planId, u.billing.planName)
-          return (
-            <XStack
-              ai="center"
-              paddingHorizontal={8}
-              paddingVertical={2}
-              borderRadius={9999}
-              borderWidth={1}
-              borderColor={`${pb.color}33`}
-              backgroundColor={`${pb.color}1A`}
-              minWidth={0}
-            >
-              <Text fontSize={11} color={pb.color} numberOfLines={1}>
-                {pb.label}
-              </Text>
-            </XStack>
-          )
-        },
-      },
-      {
-        key: "apps",
-        header: t("windows.usersPanel.columns.apps"),
-        width: 60,
-        align: "right",
-        sortable: true,
-        sortValue: (u) => u.stats.apps,
-        color: (u) => (u.stats.apps > 0 ? tokens.textSecondary : tokens.textMuted),
-        render: (u) => String(u.stats.apps),
-      },
-      {
-        key: "convs",
-        header: t("windows.usersPanel.columns.convs"),
-        width: 62,
-        align: "right",
-        sortable: true,
-        sortValue: (u) => u.stats.channels,
-        color: (u) => (u.stats.channels > 0 ? tokens.textSecondary : tokens.textMuted),
-        render: (u) => String(u.stats.channels),
-      },
-      {
-        key: "providers",
-        header: t("windows.usersPanel.columns.providers"),
-        width: 104,
-        render: (u) => {
-          if (u.providers.length === 0)
-            return (
-              <Text fontSize={12} color={tokens.textMuted}>
-                —
-              </Text>
-            )
-          // Dedupe by type so a user with two keys of the same provider shows one icon.
-          const types = [...new Set(u.providers.map((p) => p.providerType))]
-          const shown = types.slice(0, 5)
-          return (
-            <XStack ai="center" gap={4} minWidth={0}>
-              {shown.map((tp) => (
-                <XStack
-                  key={tp}
-                  ai="center"
-                  jc="center"
-                  width={18}
-                  height={18}
-                  borderRadius={5}
-                  borderWidth={1}
-                  borderColor={tokens.border}
-                  backgroundColor={tokens.bgInner}
-                >
-                  <ProviderIcon providerType={tp} size={11} />
-                </XStack>
-              ))}
-              {types.length > shown.length ? (
-                <Text fontSize={11} color={tokens.textMuted}>
-                  +{types.length - shown.length}
-                </Text>
-              ) : null}
-            </XStack>
-          )
-        },
-      },
-      {
-        key: "activity",
-        header: t("windows.usersPanel.columns.activity"),
-        width: 88,
-        render: (u) => {
-          const values = u.activity.map((a) => a.count)
-          const total = values.reduce((s, n) => s + n, 0)
-          // Sparkline needs a visible baseline; render a muted dash for zero activity.
-          return total > 0 ? (
-            <Sparkline values={values} height={20} color={tokens.accent} />
-          ) : (
-            <Text fontSize={12} color={tokens.textMuted}>
-              —
-            </Text>
-          )
-        },
-      },
-      {
-        key: "hours",
-        header: t("windows.usersPanel.columns.hours"),
-        width: 96,
-        align: "right",
-        sortable: true,
-        sortValue: (u) => hoursUsage(u.billing).pct ?? -1,
-        color: (u) => {
-          const h = hoursUsage(u.billing)
-          return hoursColor(h.pct, h.unmetered)
-        },
-        render: (u) => hoursUsage(u.billing).label,
-      },
-      {
-        key: "lastAccess",
-        header: t("windows.usersPanel.columns.lastAccess"),
-        width: 108,
-        align: "right",
-        sortable: true,
-        sortValue: (u) => lastAccessSortValue(u.lastLoginAt),
-        color: () => tokens.textTertiary,
-        render: (u) => formatRelative(u.lastLoginAt),
-      },
-    ],
-    [t],
-  )
-
-  const visibleColumns = useMemo(
-    () => pickVisibleColumns(columns, tableWidth),
-    [columns, tableWidth],
-  )
+  // Measured width of the list → responsive column set (never a horizontal scrollbar).
+  const [listWidth, setListWidth] = useState(0)
+  const showLast = listWidth === 0 || listWidth >= HIDE_LAST_BELOW
+  const showPlan = listWidth === 0 || listWidth >= HIDE_PLAN_BELOW
 
   // ── FORBIDDEN: keep the full-window block (admin/super only) ──────────────────
   if (forbidden) {
     return (
-      <YStack
-        flex={1}
-        backgroundColor={tokens.bg}
-        justifyContent="center"
-        alignItems="center"
-        padding={24}
-        gap={12}
-      >
-        <Users size={48} color={tokens.error} />
-        <Text color={tokens.error} textAlign="center" fontWeight="600">
-          {t("errors.users.adminRequired")}
-        </Text>
-        <Text color={tokens.textTertiary} fontSize={13} textAlign="center">
-          {t("errors.users.privilegesRequired")}
-        </Text>
-      </YStack>
+      <Page>
+        <EmptyState
+          icon="shield-check"
+          title={t("errors.users.adminRequired")}
+          text={t("errors.users.privilegesRequired")}
+        />
+      </Page>
     )
   }
 
-  // ── DETAIL (PR3): the fragmented per-user drill-in ────────────────────────────
+  // ── DETAIL: the fragmented per-user drill-in ──────────────────────────────────
   if (view.mode === "detail") {
     const detailUser =
       selectedUser?.userId === view.userId
@@ -453,13 +232,14 @@ export function UsersWindowContent(_props: UsersWindowContentProps) {
     if (!detailUser) {
       // The row left the current page (filters/page changed) — offer a way back.
       return (
-        <YStack flex={1} backgroundColor={tokens.bg}>
+        <Page>
           <UsersHeader
             crumbs={[
               { label: t("windows.usersPanel.title"), onPress: () => setView({ mode: "list" }) },
+              { label: t("windows.usersPanel.detail.thisUser") },
             ]}
           />
-        </YStack>
+        </Page>
       )
     }
     return (
@@ -526,106 +306,87 @@ export function UsersWindowContent(_props: UsersWindowContentProps) {
     })
   }
 
-  const searchBox = (
-    <XStack
-      ai="center"
-      gap={8}
-      flex={1}
-      minWidth={220}
-      paddingHorizontal={12}
-      paddingVertical={8}
-      borderRadius={10}
-      borderWidth={1}
-      borderColor={tokens.border}
-      backgroundColor={tokens.bgInner}
-    >
-      <Search size={15} color={tokens.textMuted} />
-      <TextInput
-        testID="users-search"
-        style={{ flex: 1, color: tokens.text, fontSize: 14, outlineStyle: "none" } as any}
-        value={searchInput}
-        onChangeText={setSearchInput}
-        placeholder={t("windows.usersPanel.searchPlaceholder")}
-        placeholderTextColor={tokens.textMuted}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-      {searchInput.length > 0 ? (
-        <Pressable
-          onPress={() => setSearchInput("")}
-          hitSlop={8}
-          aria-label={t("windows.usersPanel.clear")}
-        >
-          <X size={15} color={tokens.textTertiary} />
-        </Pressable>
-      ) : null}
-    </XStack>
-  )
-
   return (
-    <YStack flex={1} backgroundColor={tokens.bg}>
+    <Page>
       <UsersHeader
         crumbs={[{ label: t("windows.usersPanel.title") }]}
         statusText={
           summary ? t("windows.usersPanel.statusUsers", { count: summary.total }) : undefined
         }
-        controls={searchBox}
       />
 
       {summary ? (
-        <KpiStrip>
-          <KpiTile label={t("windows.usersPanel.kpi.total")} value={String(summary.total)} />
-          <KpiTile
+        <Stats cols={5}>
+          <Stat v={summary.total} label={t("windows.usersPanel.kpi.total")} />
+          <Stat
+            v={summary.active}
             label={t("windows.usersPanel.kpi.active")}
-            value={String(summary.active)}
-            valueColor={summary.active > 0 ? tokens.success : undefined}
+            sub={t("users.kpi.activeSub", {
+              defaultValue: "de {{total}} con acceso",
+              total: summary.total,
+            })}
           />
-          <ClickableKpi
+          <Stat v={summary.admins} label={t("windows.usersPanel.kpi.admins")} />
+          <KpiStat
             testID="kpi-near"
             active={usageFilter === "near"}
             onPress={() => changeUsage("near")}
-          >
-            <KpiTile
-              label={t("windows.usersPanel.kpi.nearLimit")}
-              value={String(summary.nearLimit)}
-              valueColor={summary.nearLimit > 0 ? tokens.warning : undefined}
-            />
-          </ClickableKpi>
-          <ClickableKpi
+            v={summary.nearLimit}
+            label={t("windows.usersPanel.kpi.nearLimit")}
+            sub={t("users.kpi.filterHint", { defaultValue: "pulsa para filtrar" })}
+            tone={summary.nearLimit > 0 ? "a" : undefined}
+          />
+          <KpiStat
             testID="kpi-exhausted"
             active={usageFilter === "exhausted"}
             onPress={() => changeUsage("exhausted")}
-          >
-            <KpiTile
-              label={t("windows.usersPanel.kpi.exhausted")}
-              value={String(summary.exhausted)}
-              valueColor={summary.exhausted > 0 ? tokens.error : undefined}
-            />
-          </ClickableKpi>
-          <KpiTile label={t("windows.usersPanel.kpi.admins")} value={String(summary.admins)} />
-        </KpiStrip>
+            v={summary.exhausted}
+            label={t("windows.usersPanel.kpi.exhausted")}
+            sub={t("users.kpi.filterHint", { defaultValue: "pulsa para filtrar" })}
+            tone={summary.exhausted > 0 ? "r" : undefined}
+          />
+        </Stats>
       ) : null}
 
-      {/* Filter bar */}
-      <YStack paddingHorizontal={16} paddingVertical={12} gap={10} zIndex={10}>
-        <XStack gap={16} flexWrap="wrap" ai="flex-end">
-          <FilterGroup label={t("windows.usersPanel.filters.status")}>
-            <SegmentedTabs
-              tabs={STATUS_KEYS.map((k) => ({
-                key: k,
-                label:
-                  k === "all" ? t("windows.usersPanel.status.all") : t(userStatusMeta(k).labelKey),
-              }))}
-              active={statusFilter}
-              onChange={(k) => changeStatus(k as StatusFilter)}
+      {/* Filter row */}
+      <View style={{ marginTop: 20, gap: 12, zIndex: 10 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 14 }}>
+          <View style={{ flexGrow: 1, flexBasis: 240, minWidth: 200 }}>
+            <Field
+              testID="users-search"
+              icon="magnifying-glass"
+              value={searchInput}
+              onChangeText={setSearchInput}
+              placeholder={t("windows.usersPanel.searchPlaceholder")}
+              autoCapitalize="none"
+              autoCorrect={false}
+              right={
+                searchInput.length > 0 ? (
+                  <IconBtn
+                    icon="x"
+                    plain
+                    sm
+                    onPress={() => setSearchInput("")}
+                    aria-label={t("windows.usersPanel.clear")}
+                    style={{ marginRight: -8 }}
+                  />
+                ) : undefined
+              }
             />
+          </View>
+          <FilterGroup label={t("windows.usersPanel.filters.status")}>
+            {STATUS_KEYS.map((k) => (
+              <ChipBtn key={k} on={statusFilter === k} onPress={() => changeStatus(k)}>
+                {k === "all" ? t("windows.usersPanel.status.all") : t(userStatusMeta(k).labelKey)}
+              </ChipBtn>
+            ))}
           </FilterGroup>
           <FilterGroup label={t("windows.usersPanel.filters.role")}>
-            <SegmentedTabs
-              tabs={ROLE_KEYS.map((k) => ({ key: k, label: t(`windows.usersPanel.role.${k}`) }))}
-              active={roleFilter}
-              onChange={(k) => changeRole(k as RoleFilter)}
-            />
+            {ROLE_KEYS.map((k) => (
+              <ChipBtn key={k} on={roleFilter === k} onPress={() => changeRole(k)}>
+                {t(`windows.usersPanel.role.${k}`)}
+              </ChipBtn>
+            ))}
           </FilterGroup>
           <FilterGroup label={t("windows.usersPanel.filters.plan")}>
             <Select
@@ -645,10 +406,10 @@ export function UsersWindowContent(_props: UsersWindowContentProps) {
               ariaLabel={t("windows.usersPanel.filters.usage")}
             />
           </FilterGroup>
-        </XStack>
+        </View>
 
         {activeChips.length > 0 ? (
-          <XStack gap={6} ai="center" flexWrap="wrap">
+          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
             {activeChips.map((chip) => (
               <FilterChip
                 key={chip.key}
@@ -657,151 +418,313 @@ export function UsersWindowContent(_props: UsersWindowContentProps) {
                 removeLabel={t("windows.usersPanel.clear")}
               />
             ))}
-            <Pressable onPress={resetFilters}>
-              <Text fontSize={12} fontWeight="600" color={tokens.accent}>
-                {t("windows.usersPanel.clear")}
-              </Text>
-            </Pressable>
-          </XStack>
+            <Btn variant="ghost" size="sm" onPress={resetFilters}>
+              {t("windows.usersPanel.clear")}
+            </Btn>
+          </View>
         ) : null}
-      </YStack>
+      </View>
 
-      <ScrollView
-        flex={1}
-        // @ts-expect-error — RN-Web thin scrollbar (Teros standard)
-        style={scrollbarThin}
-      >
-        <YStack paddingHorizontal={16} paddingBottom={16} gap={12}>
-          {error ? (
-            <XStack
-              ai="center"
-              gap={10}
-              paddingHorizontal={12}
-              paddingVertical={9}
-              borderRadius={10}
-              borderWidth={1}
-              borderColor={`${tokens.error}38`}
-              backgroundColor={`${tokens.error}1A`}
-            >
-              <Text flex={1} fontSize={13} color={tokens.error} numberOfLines={2}>
-                {error}
-              </Text>
-              <Pressable onPress={() => loadUsers()}>
-                <Text fontSize={12} fontWeight="600" color={tokens.text}>
-                  {t("windows.usersPanel.retry")}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setError(null)}
-                hitSlop={8}
-                aria-label={t("windows.usersPanel.clear")}
-              >
-                <X size={15} color={tokens.textTertiary} />
-              </Pressable>
-            </XStack>
-          ) : null}
-
-          {loading ? (
-            <YStack padding={24} ai="center" gap={8}>
-              <AppSpinner size="md" color={tokens.accent} />
-              <Text color={tokens.textTertiary} fontSize={12}>
-                {t("common.loading")}
-              </Text>
-            </YStack>
-          ) : users.length === 0 ? (
-            <Empty
-              icon={<Users size={40} color={tokens.textMuted} />}
-              message={
-                hasFilters
-                  ? t("windows.usersPanel.empty.noMatch")
-                  : t("windows.usersPanel.empty.none")
-              }
-              hint={hasFilters ? t("windows.usersPanel.empty.clearHint") : undefined}
+      <View style={{ marginTop: 16, gap: 12 }}>
+        {error ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 12,
+              backgroundColor: c.tint.r.bg,
+              borderWidth: 1,
+              borderColor: c.tint.r.bd,
+            }}
+          >
+            <T step="sm" color={c.tint.r.tx} numberOfLines={2} style={{ flex: 1 }}>
+              {error}
+            </T>
+            <Btn variant="ghost" size="sm" icon="arrows-clockwise" onPress={() => loadUsers()}>
+              {t("windows.usersPanel.retry")}
+            </Btn>
+            <IconBtn
+              icon="x"
+              plain
+              sm
+              onPress={() => setError(null)}
+              aria-label={t("windows.usersPanel.clear")}
             />
-          ) : (
-            <YStack
-              onLayout={(e) => setTableWidth(e.nativeEvent.layout.width)}
-              minWidth={0}
-              width="100%"
-            >
-              <DataTable<UserSummary>
-                columns={visibleColumns}
-                rows={users}
-                rowKey={(u) => u.userId}
-                onRowPress={openDetail}
-              />
-            </YStack>
-          )}
+          </View>
+        ) : null}
 
-          {!loading && total > PAGE_SIZE ? (
-            <Pagination
-              page={page}
-              pageCount={pageCount}
-              total={total}
-              onChange={setPage}
-              rangeLabel={(from, to) =>
-                t("windows.usersPanel.pagination.range", { from, to, total })
-              }
-            />
-          ) : null}
-        </YStack>
-      </ScrollView>
-    </YStack>
+        {loading ? (
+          <View style={{ padding: 32, alignItems: "center", gap: 10 }}>
+            <ActivityIndicator color={c.accent} />
+            <T step="sm" tone="text3">
+              {t("common.loading")}
+            </T>
+          </View>
+        ) : users.length === 0 ? (
+          <EmptyState
+            icon="users-three"
+            title={
+              hasFilters
+                ? t("windows.usersPanel.empty.noMatch")
+                : t("windows.usersPanel.empty.none")
+            }
+            text={hasFilters ? t("windows.usersPanel.empty.clearHint") : undefined}
+            action={
+              hasFilters ? (
+                <Btn variant="sec" size="sm" onPress={resetFilters}>
+                  {t("windows.usersPanel.clear")}
+                </Btn>
+              ) : undefined
+            }
+          />
+        ) : (
+          <View onLayout={(e) => setListWidth(e.nativeEvent.layout.width)} style={{ minWidth: 0 }}>
+            <ListHeader showPlan={showPlan} showLast={showLast} />
+            <LGroup>
+              {users.map((u) => (
+                <UserRow
+                  key={u.userId}
+                  user={u}
+                  showPlan={showPlan}
+                  showLast={showLast}
+                  onPress={() => openDetail(u)}
+                />
+              ))}
+            </LGroup>
+          </View>
+        )}
+
+        {!loading && total > PAGE_SIZE ? (
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            total={total}
+            onChange={setPage}
+            rangeLabel={(from, to) => t("windows.usersPanel.pagination.range", { from, to, total })}
+          />
+        ) : null}
+      </View>
+    </Page>
   )
 }
 
-// ─── Local UI helpers (tokens only; no StyleSheet) ────────────────────────────
+// ─── List rows ──────────────────────────────────────────────────────────────────
+
+function ListHeader({ showPlan, showLast }: { showPlan: boolean; showLast: boolean }) {
+  const { t } = useTranslation()
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: ROW_GAP,
+        paddingHorizontal: 16,
+        paddingBottom: 8,
+      }}
+    >
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <T step="codenote" tone="text3">
+          {t("windows.usersPanel.columns.user")}
+        </T>
+      </View>
+      <View style={{ width: COL.role }}>
+        <T step="codenote" tone="text3">
+          {t("windows.usersPanel.columns.role")}
+        </T>
+      </View>
+      {showPlan ? (
+        <View style={{ width: COL.plan }}>
+          <T step="codenote" tone="text3">
+            {t("windows.usersPanel.columns.plan")}
+          </T>
+        </View>
+      ) : null}
+      <View style={{ width: COL.hours }}>
+        <T step="codenote" tone="text3">
+          {t("windows.usersPanel.columns.hours")}
+        </T>
+      </View>
+      {showLast ? (
+        <View style={{ width: COL.last, alignItems: "flex-end" }}>
+          <T step="codenote" tone="text3" numberOfLines={1}>
+            {t("windows.usersPanel.columns.lastAccess")}
+          </T>
+        </View>
+      ) : null}
+      <View style={{ width: COL.caret }} />
+    </View>
+  )
+}
+
+function UserRow({
+  user: u,
+  showPlan,
+  showLast,
+  onPress,
+}: {
+  user: UserSummary
+  showPlan: boolean
+  showLast: boolean
+  onPress: () => void
+}) {
+  const { t } = useTranslation()
+  const c = useColors()
+  const name = u.profile.displayName ?? u.profile.email ?? "—"
+  const status = userStatusMeta(u.status)
+  const pb = u.billing ? planBadge(u.billing.planId, u.billing.planName) : null
+
+  return (
+    <LRow onPress={onPress} gap={ROW_GAP} accessibilityRole="button">
+      <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <Avatar name={name} imageUrl={u.profile.avatarUrl} size={28} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <T step="sm" ellipsis style={{ flexShrink: 1 }}>
+              {name}
+            </T>
+            {u.status !== "active" ? (
+              <Badge tone={userStatusTone(u.status)} dot sm>
+                {t(status.labelKey)}
+              </Badge>
+            ) : null}
+          </View>
+          {u.profile.email ? (
+            <T step="12" tone="text3" ellipsis>
+              {u.profile.email}
+            </T>
+          ) : null}
+        </View>
+      </View>
+      <View style={{ width: COL.role }}>
+        <Badge tone={roleTone(u.role)}>{t(`windows.usersPanel.role.${u.role}`)}</Badge>
+      </View>
+      {showPlan ? (
+        <View style={{ width: COL.plan }}>
+          {pb ? (
+            <Badge tone={planTone(u.billing!.planId, u.billing!.planName)} pill>
+              {pb.label}
+            </Badge>
+          ) : (
+            <T step="code" tone="text3">
+              —
+            </T>
+          )}
+        </View>
+      ) : null}
+      <View style={{ width: COL.hours }}>
+        <HoursBar billing={u.billing} />
+      </View>
+      {showLast ? (
+        <View style={{ width: COL.last, alignItems: "flex-end" }}>
+          <T step="code" tone="text3">
+            {formatRelative(u.lastLoginAt)}
+          </T>
+        </View>
+      ) : null}
+      <View style={{ width: COL.caret, alignItems: "flex-end" }}>
+        <Ph name="caret-right" size={14} color={c.text3} />
+      </View>
+    </LRow>
+  )
+}
+
+/** Thin violet usage bar + mono percentage (amber from 80%, red at the limit). */
+function HoursBar({ billing }: { billing: UserSummary["billing"] }) {
+  const c = useColors()
+  const h = hoursUsage(billing)
+  const tone = hoursTone(h.pct, h.unmetered)
+  if (tone === "neutral") {
+    return (
+      <T step="code" tone="text3">
+        {h.label}
+      </T>
+    )
+  }
+  const pct = Math.max(0, Math.min(h.pct ?? 0, 1))
+  const fill = tone === "i" ? c.accent : c.tint[tone].tx
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <View
+        style={{
+          flex: 1,
+          height: 6,
+          borderRadius: 3,
+          backgroundColor: c.wash2,
+          overflow: "hidden",
+        }}
+        accessibilityLabel={h.label}
+      >
+        <View
+          style={{ width: `${pct * 100}%`, height: "100%", borderRadius: 3, backgroundColor: fill }}
+        />
+      </View>
+      <T
+        step="code"
+        color={tone === "i" ? c.text3 : fill}
+        style={{ width: 40, textAlign: "right" }}
+      >
+        {`${Math.round((h.pct ?? 0) * 100)} %`}
+      </T>
+    </View>
+  )
+}
+
+// ─── Local UI helpers ───────────────────────────────────────────────────────────
 
 function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <YStack gap={5} minWidth={0}>
-      <Text
-        fontSize={10}
-        fontWeight="600"
-        letterSpacing={0.5}
-        textTransform="uppercase"
-        color={tokens.textTertiary}
-      >
+    <View style={{ gap: 6, minWidth: 0 }}>
+      <T step="codenote" tone="text3">
         {label}
-      </Text>
-      {children}
-    </YStack>
+      </T>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>{children}</View>
+    </View>
   )
 }
 
-function ClickableKpi({
+/** A clickable `Stat` tile (same content), used by the quota KPIs that jump to a filter. */
+function KpiStat({
   testID,
   active,
   onPress,
-  children,
+  v,
+  label,
+  sub,
+  tone,
 }: {
   testID: string
   active: boolean
   onPress: () => void
-  children: ReactNode
+  v: number
+  label: string
+  sub: string
+  tone?: "a" | "r"
 }) {
+  const c = useColors()
+  const valueColor = active ? c.accent : tone ? c.tint[tone].tx : c.text
   return (
-    <YStack
-      testID={testID}
-      flex={1}
-      minWidth={0}
-      cursor="pointer"
-      hoverStyle={{ opacity: 0.85 }}
+    <Card
+      pad={20}
+      hov
+      accent
       onPress={onPress}
-      {...({
-        role: "button",
-        tabIndex: 0,
-        "aria-pressed": active,
-        onKeyDown: (e: { key: string; preventDefault: () => void }) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault()
-            onPress()
-          }
-        },
-      } as any)}
+      testID={testID}
+      style={{ minHeight: 100, borderColor: active ? c.borderAccentStrong : "transparent" }}
+      {...({ role: "button", "aria-pressed": active } as Record<string, unknown>)}
     >
-      {children}
-    </YStack>
+      <T step="sm" tone="text2">
+        {label}
+      </T>
+      <T step="2xl" color={valueColor} style={{ marginTop: 10, marginBottom: 6 }}>
+        {String(v)}
+      </T>
+      <T step="sm" color={active ? c.accent : c.text3}>
+        {sub}
+      </T>
+    </Card>
   )
 }
 
@@ -814,28 +737,18 @@ function FilterChip({
   onRemove: () => void
   removeLabel: string
 }) {
+  const c = useColors()
   return (
-    <XStack
-      ai="center"
-      gap={6}
-      paddingVertical={4}
-      paddingHorizontal={9}
-      borderRadius={9999}
-      borderWidth={1}
-      borderColor={tokens.borderHover}
-      backgroundColor={tokens.bgPress}
-    >
-      <Text fontSize={12} color={tokens.textSecondary} numberOfLines={1}>
+    <ChipBtn on onPress={onRemove} aria-label={`${removeLabel}: ${label}`}>
+      <T step="12" color={c.accent} numberOfLines={1}>
         {label}
-      </Text>
-      <Pressable onPress={onRemove} hitSlop={6} aria-label={removeLabel}>
-        <X size={12} color={tokens.textTertiary} />
-      </Pressable>
-    </XStack>
+      </T>
+      <Ph name="x" size={11} color={c.accent} />
+    </ChipBtn>
   )
 }
 
-// ─── Pagination (tokens only) ─────────────────────────────────────────────────
+// ─── Pagination ─────────────────────────────────────────────────────────────────
 
 /** Build a compact page-number window: 0 … (p-1) p (p+1) … last */
 function pageWindow(page: number, pageCount: number): number[] {
@@ -863,84 +776,59 @@ function Pagination({
   const atEnd = page >= pageCount - 1
 
   return (
-    <YStack gap={8} ai="center" paddingVertical={8}>
-      <XStack gap={6} ai="center" flexWrap="wrap" jc="center">
-        <PageButton
+    <View style={{ alignItems: "center", gap: 8, paddingVertical: 8 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 4,
+          flexWrap: "wrap",
+        }}
+      >
+        <IconBtn
+          icon="caret-left"
+          plain
+          sm
           disabled={atStart}
           onPress={() => !atStart && onChange(page - 1)}
           aria-label="Previous page"
-        >
-          <ChevronLeft size={15} color={atStart ? tokens.textMuted : tokens.textSecondary} />
-        </PageButton>
-
+        />
         {windowPages.map((p, i) => {
           const gap = i > 0 && p - windowPages[i - 1] > 1
           return (
             <Fragment key={p}>
               {gap ? (
-                <Text fontSize={12} color={tokens.textMuted} paddingHorizontal={2}>
+                <T step="code" tone="text3" style={{ paddingHorizontal: 2 }}>
                   …
-                </Text>
+                </T>
               ) : null}
-              <PageButton active={p === page} onPress={() => onChange(p)}>
-                <Text
-                  fontSize={12}
-                  fontWeight="600"
-                  color={p === page ? tokens.text : tokens.textSecondary}
-                >
-                  {p + 1}
-                </Text>
-              </PageButton>
+              <Btn
+                variant={p === page ? "ink" : "ghost"}
+                size="sm"
+                onPress={() => onChange(p)}
+                {...({ "aria-current": p === page ? "page" : undefined } as Record<
+                  string,
+                  unknown
+                >)}
+              >
+                {String(p + 1)}
+              </Btn>
             </Fragment>
           )
         })}
-
-        <PageButton
+        <IconBtn
+          icon="caret-right"
+          plain
+          sm
           disabled={atEnd}
           onPress={() => !atEnd && onChange(page + 1)}
           aria-label="Next page"
-        >
-          <ChevronRight size={15} color={atEnd ? tokens.textMuted : tokens.textSecondary} />
-        </PageButton>
-      </XStack>
-      <Text fontSize={11} color={tokens.textMuted}>
+        />
+      </View>
+      <T step="codenote" tone="text3">
         {rangeLabel(from, to)}
-      </Text>
-    </YStack>
-  )
-}
-
-function PageButton({
-  children,
-  onPress,
-  active,
-  disabled,
-  ...rest
-}: {
-  children: ReactNode
-  onPress: () => void
-  active?: boolean
-  disabled?: boolean
-  "aria-label"?: string
-}) {
-  return (
-    <XStack
-      minWidth={30}
-      height={30}
-      paddingHorizontal={8}
-      ai="center"
-      jc="center"
-      borderRadius={7}
-      borderWidth={1}
-      borderColor={active ? tokens.borderHover : tokens.border}
-      backgroundColor={active ? tokens.bgPress : tokens.bgInner}
-      opacity={disabled ? 0.4 : 1}
-      cursor={disabled ? "default" : "pointer"}
-      hoverStyle={disabled ? {} : { backgroundColor: tokens.bgHover }}
-      onPress={disabled ? undefined : onPress}
-      {...({ role: "button", tabIndex: disabled ? -1 : 0, ...rest } as any)}
-    >
-      {children}
-    </XStack>
+      </T>
+    </View>
   )
 }

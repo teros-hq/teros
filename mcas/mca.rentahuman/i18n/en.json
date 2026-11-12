@@ -24,7 +24,7 @@
     },
     "create-booking": {
       "name": "create-booking",
-      "description": "Book a human for a physical-world task. Requires a RENTAHUMAN_API_KEY. Creates a booking with task details, start time, and estimated duration. Returns payment instructions.",
+      "description": "Book a human for a physical-world task. Requires a RENTAHUMAN_API_KEY. Returns booking details and payment instructions.",
       "params": {
         "humanId": "The ID of the human to book",
         "taskTitle": "Brief title of the task (3-200 characters)",

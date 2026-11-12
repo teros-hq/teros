@@ -1,4 +1,5 @@
 import { Slot, useRouter } from "expo-router"
+import { windowRegistry } from "../src/services/windowRegistry"
 import { StatusBar } from "expo-status-bar"
 import { useEffect, useRef } from "react"
 import { Platform } from "react-native"
@@ -8,27 +9,26 @@ import { I18nextProvider } from "react-i18next"
 import { TamaguiProvider, Theme, YStack } from "tamagui"
 import { TerosToastProvider } from "../src/components/Toast"
 import i18n, { SUPPORTED_LOCALES } from "../src/i18n"
-import { PostHogProvider } from "posthog-react-native"
 import { initSentry, setUser as setSentryUser } from "../src/lib/sentry"
-import { identifyUser, initAnalytics, resetAnalytics } from "../src/lib/analytics"
 import { RootErrorBoundary } from "../src/components/RootErrorBoundary"
 import { surface } from "../src/components/mca/primitives/colors"
 import { getTerosClient } from "../src/services/terosClientSingleton"
 import { useAuthStore } from "../src/store/authStore"
-import { useFeatureFlagsStore } from "../src/store/featureFlagsStore"
+import { getResolvedFlag, useFeatureFlagsStore } from "../src/store/featureFlagsStore"
 import { useTilingStore } from "../src/store/tilingStore"
+import { useNavbarStore } from "../src/store/navbarStore"
 import { useUiPreferencesStore } from "../src/store/uiPreferencesStore"
+import { useChatStore } from "../src/store/chatStore"
 import { useWorkspaceStore } from "../src/store/workspaceStore"
 import { configurePersistedDriver } from "../src/services/storage"
 import { registerFileOpenHandler } from "../src/services/fileOpener"
 import { registerAllWindowTypes } from "../src/windows"
 import config from "../tamagui.config"
+import { installOsEffects } from "../src/styles/osEffects"
+import { wsUrl } from "../src/config/runtime"
 
 // Initialize Sentry as early as possible
 initSentry()
-
-// Initialize PostHog product analytics (no-op without EXPO_PUBLIC_POSTHOG_KEY)
-const posthogClient = initAnalytics()
 
 // Register window types on module load
 registerAllWindowTypes()
@@ -40,20 +40,28 @@ registerAllWindowTypes()
 //   - a workspaceId (when opened from the File Browser, which has no channelId)
 // workspaceId values start with "work_" or "ws_"; everything else is a channelId.
 function openMarkdownViewer(path: string, contextId: string) {
-  const isWorkspaceId = contextId.startsWith('work_') || contextId.startsWith('ws_')
-  useTilingStore.getState().openWindow(
-    'markdown-viewer',
-    isWorkspaceId
-      ? { filePath: path, workspaceId: contextId }
-      : { filePath: path, channelId: contextId },
-    false,
-  )
+  const isWorkspaceId = contextId.startsWith("work_") || contextId.startsWith("ws_")
+  useTilingStore
+    .getState()
+    .openWindow(
+      "markdown-viewer",
+      isWorkspaceId
+        ? { filePath: path, workspaceId: contextId }
+        : { filePath: path, channelId: contextId },
+      false,
+    )
 }
-registerFileOpenHandler('md', openMarkdownViewer)
-registerFileOpenHandler('markdown', openMarkdownViewer)
+registerFileOpenHandler("md", openMarkdownViewer)
+registerFileOpenHandler("markdown", openMarkdownViewer)
 
 // Wire up PersistedDriver workspace getter — done at module load after stores are available
 configurePersistedDriver(() => useWorkspaceStore.getState().activeWorkspaceId ?? null)
+
+// Window audience gate (every platform): the registry asks who is looking.
+windowRegistry.setViewer(() => ({
+  role: useAuthStore.getState().user?.role,
+  devtools: !!getResolvedFlag<boolean>(useFeatureFlagsStore.getState(), "devtools.enabled"),
+}))
 
 export default function RootLayout() {
   const router = useRouter()
@@ -61,14 +69,32 @@ export default function RootLayout() {
   const { hydrate, logout: authLogout, updateProfile, setProfileSynced } = useAuthStore()
   const theme = useUiPreferencesStore((s) => s.theme)
 
+  // OS prototype effects (web): keyframes + the cursor border-glow tracker.
+  useEffect(() => {
+    if (Platform.OS !== "web") return
+    return installOsEffects()
+  }, [])
+
   // Mark app as mounted for the loading watchdog in index.html
   useEffect(() => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      document.body.classList.add('app-mounted')
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.body.classList.add("app-mounted")
+      // Dev-only: expose the stores so visual checks (Playwright) can open any
+      // window directly — `window.__terosStores.tiling.getState().openWindow(...)`.
+      if (__DEV__) {
+        ;(window as any).__terosStores = {
+          tiling: useTilingStore,
+          navbar: useNavbarStore,
+          workspace: useWorkspaceStore,
+          auth: useAuthStore,
+          uiPreferences: useUiPreferencesStore,
+          chat: useChatStore,
+        }
+      }
     }
     return () => {
-      if (Platform.OS === 'web' && typeof document !== 'undefined') {
-        document.body.classList.remove('app-mounted')
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        document.body.classList.remove("app-mounted")
       }
     }
   }, [])
@@ -79,9 +105,9 @@ export default function RootLayout() {
     if (Platform.OS !== "web" || typeof document === "undefined") return
 
     const tokens = surface[theme]
-    document.body.style.backgroundColor = tokens.bgPage
+    document.body.style.backgroundColor = tokens.bgFrame
     document.body.style.color = tokens.text
-    document.documentElement.style.backgroundColor = tokens.bgPage
+    document.documentElement.style.backgroundColor = tokens.bgFrame
     document.documentElement.setAttribute("data-theme", theme)
 
     let viewport = document.querySelector('meta[name="viewport"]')
@@ -99,9 +125,7 @@ export default function RootLayout() {
       "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover",
     )
 
-    const autofillBg = theme === "dark"
-      ? "rgba(0, 0, 0, 0.95)"
-      : "rgba(252, 251, 248, 0.95)"
+    const autofillBg = theme === "dark" ? "#2C2836" : "#FFFFFF"
     const style = document.createElement("style")
     style.dataset.terosTheme = "1"
     style.textContent = `
@@ -153,26 +177,37 @@ export default function RootLayout() {
         i18n.changeLanguage(hydratedUser.locale)
       }
 
-      const { sessionToken, user } = useAuthStore.getState()
+      const { sessionToken, user, cookieAuth } = useAuthStore.getState()
 
-      if (!sessionToken || !user) {
+      if ((!sessionToken && !cookieAuth) || !user) {
         console.log("📍 No saved session")
         return
       }
 
       console.log("🔄 Restoring session:", user.email)
-      client.setSessionToken(sessionToken)
+      if (sessionToken) {
+        client.setSessionToken(sessionToken)
+      } else if (cookieAuth) {
+        // F2: web reload path — the token is not readable by JS. The WS
+        // authenticates with the httpOnly cookie on the upgrade request
+        // (auth method "cookie"); HTTP calls send it with credentials.
+        client.setCookieAuth(true)
+      }
       setSentryUser({ id: user.userId, email: user.email, username: user.name })
-      identifyUser({ userId: user.userId, email: user.email, name: user.name })
 
-      const serverUrl = process.env.EXPO_PUBLIC_WS_URL
+      const serverUrl = wsUrl()
       if (!serverUrl) {
-        console.error("EXPO_PUBLIC_WS_URL is not defined")
+        console.error("WebSocket URL is not configured")
         return
       }
 
       console.log("🔌 Connecting to Teros:", serverUrl)
       client.connect(serverUrl)
+
+      // Hydrate workspace store BEFORE the RootResolver runs — otherwise the
+      // resolver falls back to the private workspace on mobile (no URL).
+      const { hydrateActiveWorkspace } = useWorkspaceStore.getState()
+      await hydrateActiveWorkspace()
 
       const onConnected = async () => {
         console.log("✅ Connected to Teros")
@@ -184,7 +219,8 @@ export default function RootLayout() {
           // This prevents race conditions where the backend hasn't processed a recent
           // mutation (complete-onboarding, accept-terms) yet.
           const updates: Record<string, any> = {}
-          if (profile.onboardingCompletedAt) updates.onboardingCompletedAt = profile.onboardingCompletedAt
+          if (profile.onboardingCompletedAt)
+            updates.onboardingCompletedAt = profile.onboardingCompletedAt
           if (profile.termsAcceptedAt) updates.termsAcceptedAt = profile.termsAcceptedAt
           if (profile.locale && SUPPORTED_LOCALES.includes(profile.locale as any)) {
             updates.locale = profile.locale
@@ -193,6 +229,10 @@ export default function RootLayout() {
           // Sync lastChangelogSeen so the "What's New" modal knows which entries
           // the user has already seen. Always sync (including undefined → not seen).
           updates.lastChangelogSeen = profile.lastChangelogSeen
+          // ONB-REQ-1: edition comes from the backend, never from the bundle.
+          if (profile.edition) updates.edition = profile.edition
+          // CSUM-REQ-3: the new-conversation summary preference.
+          updates.conversationSummary = profile.conversationSummary
           updateProfile(updates)
         } catch (err) {
           console.warn("[Layout] Failed to sync profile from backend:", err)
@@ -200,31 +240,72 @@ export default function RootLayout() {
           // Always mark profile as synced so the onboarding guard can proceed
           setProfileSynced()
         }
-
-        // ── Feature flags initialization ──────────────────────────────────────
-        // Fetch all resolved flags for the current context and populate the store.
+      }
+      // ── Feature flags initialization ──────────────────────────────────────
+      // Fetch all resolved flags for the AUTHENTICATED context. This used to
+      // run from onConnected, which on an email/password sign-in fires before
+      // the auth frame (no session token yet) — the fetch ran anonymous and
+      // every user-scoped flag stayed at its default until a reload. The
+      // transport emits `authenticated` on every auth_success (token restore
+      // and credentials alike), so this is the one place to load them.
+      const onAuthenticated = async () => {
         try {
           useFeatureFlagsStore.getState().setLoading(true)
           const flags = await client.featureFlags.getAll()
           useFeatureFlagsStore.getState().setFlags(flags.flags)
-          console.log("🏳️ Feature flags loaded:", Object.keys(flags).length)
+          console.log("🏳️ Feature flags loaded:", Object.keys(flags.flags ?? {}).length)
         } catch (err) {
           console.warn("[Layout] Failed to load feature flags:", err)
           useFeatureFlagsStore.getState().setError("Failed to load feature flags")
         }
       }
       const onDisconnected = () => console.log("❌ Disconnected from Teros")
+
+      // ── client.refresh: admin/deploy "restart all browsers" signal ──────────
+      // Backend broadcast (admin-api.system-refresh-clients or the
+      // POST /admin/refresh-clients deploy webhook). Reload gracefully with a
+      // random jitter within maxDelayMs so thousands of clients don't reload
+      // simultaneously (thundering herd on nginx/backend).
+      // Web only — native apps update through the store, not reloads.
+      // Session survives the reload via the backend httpOnly cookie
+      // (restoreSessionFromCookie) and the window layout via persisted
+      // tilingStore — no login redirect, no lost windows.
+      let refreshTimer: ReturnType<typeof setTimeout> | null = null
+      const onClientRefresh = (data: any) => {
+        if (Platform.OS !== "web" || typeof window === "undefined") return
+        const maxDelayMs =
+          typeof data?.maxDelayMs === "number" && Number.isFinite(data.maxDelayMs) && data.maxDelayMs >= 0
+            ? Math.min(data.maxDelayMs, 300_000)
+            : 30_000
+        const delay = Math.floor(Math.random() * maxDelayMs)
+        const reason = typeof data?.reason === "string" ? data.reason : "unknown"
+        console.log(
+          `🔄 client.refresh received (reason=${reason}) — reloading in ${(delay / 1000).toFixed(1)}s (jitter window ${maxDelayMs / 1000}s)`,
+        )
+        // A second signal while one is pending replaces it (latest wins),
+        // never stacks two reloads.
+        if (refreshTimer) clearTimeout(refreshTimer)
+        refreshTimer = setTimeout(() => {
+          try {
+            window.location.reload()
+          } catch (err) {
+            console.error("client.refresh: reload failed", err)
+          }
+        }, delay)
+      }
+
       const onAuthFailed = async (data: any) => {
         console.log("🔐 Auth failed:", data)
         useFeatureFlagsStore.getState().clear()
         await authLogout()
         client.setSessionToken("")
         setSentryUser(null)
-        resetAnalytics()
         router.replace("/(auth)/login")
       }
       const onFeatureFlagsChanged = (data: any) => {
-        const changes = data?.changes as Array<{ flagKey: string; value: unknown; source: string }> | undefined
+        const changes = data?.changes as
+          | Array<{ flagKey: string; value: unknown; source: string }>
+          | undefined
         if (changes && changes.length > 0) {
           useFeatureFlagsStore.getState().updateFlags(changes)
           console.log("🏳️ Feature flags updated:", changes.map((c) => c.flagKey).join(", "))
@@ -232,45 +313,80 @@ export default function RootLayout() {
       }
 
       client.on("connected", onConnected)
+      client.on("authenticated", onAuthenticated)
       client.on("disconnected", onDisconnected)
       client.on("auth_failed", onAuthFailed)
       client.on("featureFlags.changed", onFeatureFlagsChanged)
+      client.on("client.refresh", onClientRefresh)
 
       cleanupRef.current = () => {
         client.off("connected", onConnected)
+        client.off("authenticated", onAuthenticated)
         client.off("disconnected", onDisconnected)
         client.off("auth_failed", onAuthFailed)
         client.off("featureFlags.changed", onFeatureFlagsChanged)
+        client.off("client.refresh", onClientRefresh)
+        if (refreshTimer) clearTimeout(refreshTimer)
       }
     }
 
     init()
 
-    // Re-hydrate when auth storage changes in another tab (e.g. OAuth popup)
+    // Re-hydrate when auth changes in another tab (e.g. OAuth popup).
+    // On web, the session token is no longer in localStorage (in-memory only),
+    // so we use a BroadcastChannel for cross-tab auth notifications.
+    // On native, we listen for storage events from SecureStorage.
     if (Platform.OS === "web" && typeof window !== "undefined") {
-      const handleStorageChange = async (e: StorageEvent) => {
-        if (e.key === "teros-auth" && e.newValue && !client.isConnectedOrConnecting()) {
-          console.log("🔄 Auth storage changed externally, re-hydrating")
-          await hydrate()
-          const { sessionToken, user } = useAuthStore.getState()
-          if (sessionToken && user) {
-            client.setSessionToken(sessionToken)
+      // BroadcastChannel for cross-tab auth notifications (web)
+      const authChannel =
+        typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("teros-auth") : null
+
+      const handleAuthBroadcast = async (event: MessageEvent) => {
+        if (
+          event.data?.type === "auth_login" &&
+          event.data.sessionToken &&
+          !client.isConnectedOrConnecting()
+        ) {
+          console.log("🔄 Auth broadcast received, restoring session")
+          // The login() call in the other tab already set the in-memory state
+          // via postMessage. This is a fallback for tabs that were already open.
+          const { user } = useAuthStore.getState()
+          if (user) {
+            client.setSessionToken(event.data.sessionToken)
             setSentryUser({ id: user.userId, email: user.email, username: user.name })
-            identifyUser({ userId: user.userId, email: user.email, name: user.name })
-            const serverUrl = process.env.EXPO_PUBLIC_WS_URL
+            const serverUrl = wsUrl()
             if (serverUrl) client.connect(serverUrl)
           }
         }
       }
 
+      // Storage event listener for user profile changes (still in localStorage)
+      const handleStorageChange = async (e: StorageEvent) => {
+        if (e.key === "teros-auth" && e.newValue && !client.isConnectedOrConnecting()) {
+          console.log("🔄 Auth storage changed externally, re-hydrating user profile")
+          await hydrate()
+          // On web, hydrate() restores the user but not the token (in-memory only).
+          // The token must come via BroadcastChannel or postMessage from the OAuth popup.
+        }
+      }
+
+      if (authChannel) {
+        authChannel.addEventListener("message", handleAuthBroadcast)
+      }
       window.addEventListener("storage", handleStorageChange)
       return () => {
+        if (authChannel) {
+          authChannel.removeEventListener("message", handleAuthBroadcast)
+          authChannel.close()
+        }
         window.removeEventListener("storage", handleStorageChange)
         cleanupRef.current?.()
       }
     }
 
-    return () => { cleanupRef.current?.() }
+    return () => {
+      cleanupRef.current?.()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -278,7 +394,10 @@ export default function RootLayout() {
     <I18nextProvider i18n={i18n}>
       <TerosToastProvider>
         <YStack flex={1} backgroundColor="$background">
-          <StatusBar style={theme === "dark" ? "light" : "dark"} backgroundColor={surface[theme].bgPage} />
+          <StatusBar
+            style={theme === "dark" ? "light" : "dark"}
+            backgroundColor={surface[theme].bgPage}
+          />
           <Slot />
         </YStack>
       </TerosToastProvider>
@@ -291,21 +410,7 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <TamaguiProvider config={config} defaultTheme={theme}>
             <Theme name={theme}>
-              {posthogClient ? (
-                <PostHogProvider
-                  client={posthogClient}
-                  // captureTouches OFF a propósito: el autocapture de taps captura el
-                  // text content de la jerarquía de vistas (burbujas de chat, nombres de
-                  // archivo, PII en menús) → no exfiltrar contenido de conversación a un
-                  // tercero. Los eventos de producto se capturan con track() explícito;
-                  // captureScreens solo registra nombres de ruta.
-                  autocapture={{ captureTouches: false, captureScreens: true }}
-                >
-                  {appContent}
-                </PostHogProvider>
-              ) : (
-                appContent
-              )}
+              {appContent}
             </Theme>
           </TamaguiProvider>
         </SafeAreaProvider>

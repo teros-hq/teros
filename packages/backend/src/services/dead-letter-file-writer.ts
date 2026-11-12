@@ -12,7 +12,7 @@
  * now treats this writer as an opaque dependency: it calls `write(batch)` and
  * lets the writer handle rotation transparently.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §7 — Bus de eventos (dead-letter)
  */
 
 import { appendFile, mkdir, readdir, stat } from "node:fs/promises"

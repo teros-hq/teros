@@ -1,0 +1,146 @@
+{
+  "name": "Telegram",
+  "description": "Integración completa de Telegram vía MTProto (teleproto). Conecta tu cuenta personal para leer chats e historial, enviar mensajes y archivos, buscar en todas tus conversaciones, gestionar grupos/canales y miembros, y recibir eventos de mensajes en tiempo real. La vinculación se hace desde el chat con el agente (código de verificación + contraseña 2FA si aplica).",
+  "changelog": [
+    {
+      "notes": "Versión inicial — conectar tu cuenta de Telegram, leer chats e historial, enviar mensajes y archivos, gestionar grupos y miembros, y recibir eventos de mensajes en tiempo real"
+    }
+  ],
+  "tools": {
+    "health-check": {
+      "name": "health-check",
+      "description": "Verificación interna. Comprueba la conectividad MTProto y el estado de vinculación de la cuenta."
+    },
+    "auth-status": {
+      "name": "auth-status",
+      "description": "Comprueba si hay una cuenta de Telegram vinculada y devuelve el perfil del usuario conectado (nombre, usuario, teléfono)."
+    },
+    "auth-send-code": {
+      "name": "auth-send-code",
+      "description": "Paso 1 de la vinculación: envía un código de verificación de Telegram al número indicado (llega por Telegram o SMS). Devuelve un phoneCodeHash que se usa en auth-sign-in.",
+      "params": {
+        "phoneNumber": "Número de teléfono con código de país, sin + ni espacios (ej. \"34612345678\")"
+      }
+    },
+    "auth-sign-in": {
+      "name": "auth-sign-in",
+      "description": "Paso 2 de la vinculación: completa el inicio de sesión con el código recibido. Si la cuenta tiene 2FA activada, pasa también la contraseña. La sesión queda persistida de forma segura en el volumen de la app.",
+      "params": {
+        "code": "Código de verificación recibido en Telegram/SMS (ej. \"12345\")",
+        "password": "Contraseña de 2FA (solo si la cuenta la tiene activada)"
+      }
+    },
+    "auth-disconnect": {
+      "name": "auth-disconnect",
+      "description": "Desvincula la cuenta de Telegram: cierra la sesión MTProto y borra la sesión persistida de este volumen."
+    },
+    "list-chats": {
+      "name": "list-chats",
+      "description": "Lista tus conversaciones de Telegram (diálogos): privados, grupos, supergrupos y canales, con el último mensaje y contadores de no leídos.",
+      "params": {
+        "limit": "Número máximo de chats a devolver (por defecto: 20, máximo: 100)",
+        "archived": "true para listar los chats archivados en vez de los principales"
+      }
+    },
+    "get-chat-history": {
+      "name": "get-chat-history",
+      "description": "Lee el historial de mensajes de un chat (privado, grupo o canal). Devuelve los mensajes de más reciente a más antiguo con autor, texto, media e IDs.",
+      "params": {
+        "chat": "Chat del que leer: ID de chat, @usuario o enlace t.me",
+        "limit": "Número de mensajes a devolver (por defecto: 20, máximo: 100)",
+        "offsetId": "ID de mensaje desde el que paginar hacia atrás (mensajes anteriores)",
+        "minId": "Devuelve solo mensajes con ID mayor que este",
+        "search": "Filtra el historial por texto",
+        "reverse": "true para obtener los mensajes más antiguos primero"
+      }
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "Busca mensajes por texto. Sin chat, busca en todas tus conversaciones (búsqueda global); con chat, busca solo en ese chat. Permite filtrar por autor.",
+      "params": {
+        "query": "Texto a buscar",
+        "chat": "Limita la búsqueda a un chat (ID, @usuario o enlace t.me)",
+        "limit": "Máximo de resultados (por defecto: 20, máximo: 100)",
+        "fromUser": "Filtra mensajes de un autor concreto (@usuario o ID)"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Envía un mensaje de texto a un chat individual, grupo o canal. Soporta responder a un mensaje concreto y formato Markdown/HTML de Telegram.",
+      "params": {
+        "chat": "Destinatario: ID de chat, @usuario o enlace t.me",
+        "text": "Texto del mensaje (soporta formato MarkdownV2/HTML de Telegram)",
+        "replyTo": "ID del mensaje al que responder",
+        "silent": "true para enviar sin notificación",
+        "noLinkPreview": "true para desactivar la vista previa de enlaces"
+      }
+    },
+    "send-media": {
+      "name": "send-media",
+      "description": "Envía un archivo o imagen a un chat desde una URL pública, una ruta accesible al contenedor o base64. Puede enviarlo como nota de voz o como documento.",
+      "params": {
+        "chat": "Destinatario: ID de chat, @usuario o enlace t.me",
+        "file": "Origen del archivo: URL https://, ruta /app-data/... o data URI base64",
+        "caption": "Texto adjunto al archivo",
+        "asVoice": "true para enviarlo como nota de voz (ogg/opus)",
+        "asDocument": "true para enviarlo sin compresión como documento",
+        "replyTo": "ID del mensaje al que responder"
+      }
+    },
+    "download-media": {
+      "name": "download-media",
+      "description": "Descarga el archivo adjunto de un mensaje (imagen, vídeo, documento, voz...) y lo guarda en /app-data/downloads. Devuelve la ruta local.",
+      "params": {
+        "chat": "Chat del mensaje: ID, @usuario o enlace t.me",
+        "messageId": "ID del mensaje que contiene el archivo",
+        "thumb": "true para descargar solo la miniatura"
+      }
+    },
+    "edit-message": {
+      "name": "edit-message",
+      "description": "Edita el texto de un mensaje propio ya enviado (en cualquier chat donde tengas permiso de edición).",
+      "params": {
+        "chat": "Chat del mensaje: ID, @usuario o enlace t.me",
+        "messageId": "ID del mensaje a editar",
+        "text": "Nuevo texto del mensaje"
+      }
+    },
+    "delete-messages": {
+      "name": "delete-messages",
+      "description": "Borra uno o más mensajes de un chat. Con revoke=true (por defecto) se borran para TODOS los participantes; con revoke=false solo para tu cuenta. Borrar mensajes de otros requiere ser admin.",
+      "params": {
+        "chat": "Chat de los mensajes: ID, @usuario o enlace t.me",
+        "messageIds": "IDs de los mensajes a borrar (uno o más)",
+        "revoke": "Borrar para todos (por defecto: true). false = borrar solo para ti"
+      }
+    },
+    "create-group": {
+      "name": "create-group",
+      "description": "Crea un grupo, supergrupo o canal de Telegram. kind=\"group\" crea un chat grupal pequeño con miembros iniciales; kind=\"supergroup\" un grupo grande; kind=\"channel\" un canal de difusión. Devuelve el ID del nuevo chat.",
+      "params": {
+        "title": "Nombre del grupo o canal",
+        "kind": "\"group\" (chat pequeño, por defecto), \"supergroup\" (grupo grande) o \"channel\" (difusión)",
+        "about": "Descripción opcional (supergroups y canales)",
+        "members": "Usuarios iniciales a invitar (@usuario o ID). Obligatorio para kind=\"group\""
+      }
+    },
+    "manage-members": {
+      "name": "manage-members",
+      "description": "Gestiona los miembros de un grupo/supergrupo/canal: listar miembros, invitar (añadir) un usuario, expulsar, banear o levantar el ban. Listar requiere acceso a la lista de miembros; expulsar/banear requieren ser admin.",
+      "params": {
+        "chat": "Grupo/canal: ID, @usuario o enlace t.me",
+        "action": "\"list\" (por defecto), \"add\", \"remove\", \"ban\" o \"unban\"",
+        "user": "Usuario objetivo: @usuario o ID (obligatorio salvo para list)",
+        "limit": "Para action=\"list\": máximo de miembros a devolver (por defecto: 50, máximo: 200)"
+      }
+    },
+    "mark-as-read": {
+      "name": "mark-as-read",
+      "description": "Marca los mensajes de un chat como leídos (limpia el contador de no leídos y las menciones).",
+      "params": {
+        "chat": "Chat a marcar como leído: ID, @usuario o enlace t.me",
+        "maxId": "Marcar como leídos hasta este ID de mensaje (por defecto: todos los actuales)"
+      }
+    }
+  }
+}

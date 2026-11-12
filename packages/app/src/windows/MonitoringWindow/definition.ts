@@ -7,13 +7,19 @@
 
 import { LayoutDashboard } from "@tamagui/lucide-icons"
 import type { WindowTypeDefinition } from "../../services/windowRegistry"
-import { MonitoringWindowContent, type MonitoringWindowProps } from "./MonitoringWindowContent"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+import type { MonitoringWindowProps } from "./MonitoringWindowContent"
+const MonitoringWindowContent = lazyWithRetry(() =>
+  import("./MonitoringWindowContent").then((m) => ({ default: m.MonitoringWindowContent })),
+)
 
 export const monitoringWindowDefinition: WindowTypeDefinition<MonitoringWindowProps> = {
   type: "monitoring",
+  audience: "admin",
   displayName: "Monitoring",
   icon: LayoutDashboard,
-  color: "#5E6AD2",
+  phIcon: "chart-line-up",
+  color: "#6F27FF",
   component: MonitoringWindowContent,
 
   defaultSize: { width: 1200, height: 820 },

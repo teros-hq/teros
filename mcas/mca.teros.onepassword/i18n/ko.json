@@ -1,0 +1,29 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. 볼트를 나열하여 1Password 서비스 계정 토큰과 연결성을 확인합니다."
+    },
+    "list-vaults": {
+      "name": "list-vaults",
+      "description": "연결된 서비스 계정이 접근할 수 있는 1Password 볼트를 나열합니다. 볼트 id, 제목, 설명, 유형 및 활성 항목 수를 반환합니다. list-items에 사용할 볼트 id를 찾으려면 이 도구를 먼저 사용하세요.",
+      "params": {}
+    },
+    "list-items": {
+      "name": "list-items",
+      "description": "1Password 볼트의 항목을 나열합니다. 항목 id, 제목, 카테고리, 태그 및 상태를 반환합니다(필드 값 제외). list-vaults로 볼트 id를, 이 도구로 get-item-fields에 사용할 항목 id를 찾으세요.",
+      "params": {
+        "vaultId": "항목을 나열할 볼트의 ID (list-vaults에서 가져오세요).",
+        "includeArchived": "보관된 항목을 목록에 포함합니다 (기본값: false)."
+      }
+    },
+    "get-item-fields": {
+      "name": "get-item-fields",
+      "description": "비밀 필드 값(비밀번호, API 키, 자격 증명)을 포함하여 1Password 항목의 필드를 가져옵니다. list-items로 항목 id를 찾으세요. 보안: 반환된 비밀 값을 민감하게 취급하세요 — 요청된 작업(예: 시크릿 파일 작성)에만 사용하고 다른 곳에 반복, 기록 또는 저장하지 마세요.",
+      "params": {
+        "vaultId": "항목이 포함된 볼트의 ID.",
+        "itemId": "읽을 항목의 ID (list-items에서 가져오세요)."
+      }
+    }
+  }
+}

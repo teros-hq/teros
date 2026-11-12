@@ -7,14 +7,18 @@
  * - test_provider: Test connection and discover models
  * - update_provider: Update provider settings (displayName, priority, status)
  * - delete_provider: Remove a provider
- * - list_agent_providers: List providers available for an agent
- * - set_agent_providers: Set availableProviders for an agent
- * - set_agent_preferred_provider: Set preferredProviderId for an agent
+ *
+ * The legacy agent-providers commands (list_agent_providers /
+ * set_agent_providers / set_agent_preferred_provider) were removed on
+ * 2026-10-21 with the availableProviders concept — they were never registered
+ * on any router (dead code). Agent model config lives in the agent domain:
+ * agent.list-providers / agent.set-model.
  */
 
 import type { WebSocket } from 'ws';
 import type { Db } from 'mongodb';
 import type { AuthManager } from '../../auth/auth-manager';
+import { isProviderTypeAllowedInEdition } from '@teros/shared';
 import type { ProviderService, UserProviderRecord } from '../../services/provider-service';
 import { PROVIDER_TYPES_WITHOUT_SECRETS } from '../../services/provider-service';
 import { VALID_PROVIDER_TYPES } from '../domains/provider/add';
@@ -87,6 +91,18 @@ export function createProviderCommands(deps: ProviderCommandsDeps) {
         // Validate providerType — import VALID_TYPES from add.ts keeps a single list
         if (!VALID_PROVIDER_TYPES.includes(providerType)) {
           sendError(ws, 'INVALID_PROVIDER_TYPE', `Invalid providerType: ${providerType}`);
+          return;
+        }
+
+        // Edition gate (TER-EDITION): parity with the provider.add domain handler —
+        // local Ollama is self-hosted-only, rejected before any record is created.
+        if (!isProviderTypeAllowedInEdition(providerType)) {
+          sendError(
+            ws,
+            'PROVIDER_NOT_AVAILABLE_IN_EDITION',
+            `Provider type '${providerType}' (local Ollama daemon) is only available in the self-hosted edition. ` +
+              `On Teros cloud, use the 'ollama-cloud' provider (hosted models, API key from ollama.com) instead.`,
+          );
           return;
         }
 
@@ -302,184 +318,6 @@ export function createProviderCommands(deps: ProviderCommandsDeps) {
       } catch (error) {
         console.error('❌ Error deleting provider:', error);
         sendError(ws, 'DELETE_PROVIDER_ERROR', 'Failed to delete provider');
-      }
-    },
-
-    /**
-     * Handle list_agent_providers - list providers available for an agent
-     */
-    async handleListAgentProviders(
-      ws: WebSocket,
-      userId: string,
-      message: { agentId: string },
-    ): Promise<void> {
-      try {
-        const { agentId } = message;
-
-        if (!agentId) {
-          sendError(ws, 'MISSING_AGENT_ID', 'agentId is required');
-          return;
-        }
-
-        // Get agent
-        const agent = await db.collection('agents').findOne({ agentId });
-        if (!agent) {
-          sendError(ws, 'AGENT_NOT_FOUND', 'Agent not found');
-          return;
-        }
-
-        const availableProviders: string[] = agent.availableProviders ?? [];
-
-        // Fetch provider details
-        let providerDetails: any[] = [];
-        if (availableProviders.length > 0) {
-          const records = await db
-            .collection<UserProviderRecord>('user_providers')
-            .find({ providerId: { $in: availableProviders } })
-            .toArray();
-
-          providerDetails = records.map((p) => ({
-            providerId: p.providerId,
-            providerType: p.providerType,
-            displayName: p.displayName,
-            status: p.status,
-            models: p.models,
-          }));
-        }
-
-        sendMessage(ws, {
-          type: 'agent_providers_list',
-          agentId,
-          availableProviders,
-          preferredProviderId: agent.preferredProviderId ?? null,
-          providers: providerDetails,
-        } as any);
-      } catch (error) {
-        console.error('❌ Error listing agent providers:', error);
-        sendError(ws, 'LIST_AGENT_PROVIDERS_ERROR', 'Failed to list agent providers');
-      }
-    },
-
-    /**
-     * Handle set_agent_providers - set availableProviders for an agent
-     */
-    async handleSetAgentProviders(
-      ws: WebSocket,
-      userId: string,
-      message: { agentId: string; availableProviders: string[] },
-    ): Promise<void> {
-      try {
-        const { agentId, availableProviders } = message;
-
-        if (!agentId) {
-          sendError(ws, 'MISSING_AGENT_ID', 'agentId is required');
-          return;
-        }
-
-        if (!Array.isArray(availableProviders)) {
-          sendError(ws, 'INVALID_INPUT', 'availableProviders must be an array');
-          return;
-        }
-
-        // Verify agent exists and user has permission (owner or workspace admin)
-        const agent = await db.collection('agents').findOne({ agentId });
-        if (!agent) {
-          sendError(ws, 'AGENT_NOT_FOUND', 'Agent not found');
-          return;
-        }
-
-        // TODO: Add proper permission check (owner or workspace admin)
-        // For now, allow if user owns the agent
-        if (agent.ownerId && agent.ownerId !== userId) {
-          sendError(ws, 'PERMISSION_DENIED', 'You do not have permission to modify this agent');
-          return;
-        }
-
-        await db.collection('agents').updateOne(
-          { agentId },
-          {
-            $set: {
-              availableProviders,
-              updatedAt: new Date().toISOString(),
-            },
-          },
-        );
-
-        sendMessage(ws, {
-          type: 'agent_providers_updated',
-          agentId,
-          availableProviders,
-        } as any);
-
-        console.log(`✅ Updated availableProviders for agent ${agentId}`);
-      } catch (error) {
-        console.error('❌ Error setting agent providers:', error);
-        sendError(ws, 'SET_AGENT_PROVIDERS_ERROR', 'Failed to set agent providers');
-      }
-    },
-
-    /**
-     * Handle set_agent_preferred_provider - set preferredProviderId for an agent
-     */
-    async handleSetAgentPreferredProvider(
-      ws: WebSocket,
-      userId: string,
-      message: { agentId: string; providerId: string | null },
-    ): Promise<void> {
-      try {
-        const { agentId, providerId } = message;
-
-        if (!agentId) {
-          sendError(ws, 'MISSING_AGENT_ID', 'agentId is required');
-          return;
-        }
-
-        // Verify agent exists
-        const agent = await db.collection('agents').findOne({ agentId });
-        if (!agent) {
-          sendError(ws, 'AGENT_NOT_FOUND', 'Agent not found');
-          return;
-        }
-
-        // Permission check
-        if (agent.ownerId && agent.ownerId !== userId) {
-          sendError(ws, 'PERMISSION_DENIED', 'You do not have permission to modify this agent');
-          return;
-        }
-
-        // If providerId is set, verify it's in availableProviders
-        if (providerId) {
-          const available: string[] = agent.availableProviders ?? [];
-          if (!available.includes(providerId)) {
-            sendError(
-              ws,
-              'PROVIDER_NOT_AVAILABLE',
-              'Provider must be in availableProviders before setting as preferred',
-            );
-            return;
-          }
-        }
-
-        await db.collection('agents').updateOne(
-          { agentId },
-          {
-            $set: {
-              preferredProviderId: providerId,
-              updatedAt: new Date().toISOString(),
-            },
-          },
-        );
-
-        sendMessage(ws, {
-          type: 'agent_preferred_provider_updated',
-          agentId,
-          preferredProviderId: providerId,
-        } as any);
-
-        console.log(`✅ Updated preferredProviderId for agent ${agentId} to ${providerId}`);
-      } catch (error) {
-        console.error('❌ Error setting agent preferred provider:', error);
-        sendError(ws, 'SET_PREFERRED_PROVIDER_ERROR', 'Failed to set preferred provider');
       }
     },
 

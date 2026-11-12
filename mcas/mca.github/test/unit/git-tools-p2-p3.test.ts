@@ -5,11 +5,14 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 import {
+  gitBisect,
   gitBlame,
   gitCherryPick,
   gitConfig,
   gitFetch,
   gitMerge,
+  gitPull,
+  gitPush,
   gitRebase,
   gitRemote,
   gitReset,
@@ -28,7 +31,6 @@ const ctx: MockContext = {
     USER_REFRESH_TOKEN: 'ghr_test',
     USER_TOKEN_EXPIRES_AT: new Date(Date.now() + 3_600_000).toISOString(),
     USER_LOGIN: 'tester',
-    INSTALLATION_ID: '1',
   }),
   getSystemSecrets: async () => ({
     GITHUB_APP_ID: '1',
@@ -238,6 +240,195 @@ describe('git-remote', () => {
     >;
     expect(after.remotes.find((r: any) => r.name === 'upstream')).toBeUndefined();
   });
+
+  // ==========================================================================
+  // URL policy (audit 2026-10-01, MEDIUM): add/set-url only accept clean
+  // github.com HTTPS URLs.
+  // ==========================================================================
+
+  it('accepts a clean github.com HTTPS URL (with and without .git)', async () => {
+    await gitRemote.handler(
+      { repoPath, action: 'add', name: 'origin', url: 'https://github.com/foo/bar.git' },
+      ctx as never,
+    );
+    await gitRemote.handler(
+      { repoPath, action: 'set-url', name: 'origin', url: 'https://github.com/foo/bar' },
+      ctx as never,
+    );
+    const cfg = execSync(`git -C ${repoPath} remote get-url origin`, {
+      encoding: 'utf-8',
+    }).trim();
+    expect(cfg).toBe('https://github.com/foo/bar');
+  });
+
+  it('rejects set-url with a token embedded in the URL (credential persistence)', async () => {
+    await gitRemote.handler(
+      { repoPath, action: 'add', name: 'origin', url: 'https://github.com/foo/bar.git' },
+      ctx as never,
+    );
+    await expect(
+      gitRemote.handler(
+        {
+          repoPath,
+          action: 'set-url',
+          name: 'origin',
+          url: 'https://x-access-token:gho_FAKE1234567890@github.com/foo/bar.git',
+        },
+        ctx as never,
+      ),
+    ).rejects.toThrow(/GIT_INVALID_INPUT/);
+    // Nothing was written to .git/config.
+    const cfg = execSync(`git -C ${repoPath} remote get-url origin`, {
+      encoding: 'utf-8',
+    }).trim();
+    expect(cfg).toBe('https://github.com/foo/bar.git');
+  });
+
+  it('rejects add with a foreign host (token exfiltration via remotes)', async () => {
+    await expect(
+      gitRemote.handler(
+        { repoPath, action: 'add', name: 'evil', url: 'https://attacker.com/foo/bar.git' },
+        ctx as never,
+      ),
+    ).rejects.toThrow(/GIT_INVALID_INPUT/);
+    const list = (await gitRemote.handler({ repoPath, action: 'list' }, ctx as never)) as Record<
+      string,
+      any
+    >;
+    expect(list.remotes.find((r: any) => r.name === 'evil')).toBeUndefined();
+  });
+
+  it('rejects non-https schemes (ssh://, git://)', async () => {
+    await expect(
+      gitRemote.handler(
+        { repoPath, action: 'add', name: 'origin', url: 'ssh://git@github.com/foo/bar.git' },
+        ctx as never,
+      ),
+    ).rejects.toThrow(/GIT_INVALID_INPUT/);
+    await expect(
+      gitRemote.handler(
+        { repoPath, action: 'add', name: 'origin', url: 'git://github.com/foo/bar.git' },
+        ctx as never,
+      ),
+    ).rejects.toThrow(/GIT_INVALID_INPUT/);
+  });
+
+  it('rejects lookalike hosts and ports', async () => {
+    for (const url of [
+      'https://github.com.evil.com/foo/bar.git',
+      'https://attacker.com/github.com/foo/bar.git',
+      'https://github.com:8443/foo/bar.git',
+      'https://github.com/foo/bar.git?x=1',
+    ]) {
+      await expect(
+        gitRemote.handler({ repoPath, action: 'add', name: 'origin', url }, ctx as never),
+      ).rejects.toThrow(/GIT_INVALID_INPUT/);
+    }
+  });
+
+  it('rejects remote names outside the safe charset', async () => {
+    for (const name of ['-evil', 'evil name', 'evil;rm', 'https://attacker.com/x.git']) {
+      await expect(
+        gitRemote.handler(
+          { repoPath, action: 'add', name, url: 'https://github.com/foo/bar.git' },
+          ctx as never,
+        ),
+      ).rejects.toThrow(/GIT_INVALID_INPUT/);
+    }
+  });
+});
+
+// ============================================================================
+// git-push / git-fetch / git-pull — token-exfiltration guard (audit 2026-10-01)
+// The extraheader credential is attached to every URL git contacts; a remote
+// pointing outside github.com would receive the user's token.
+// ============================================================================
+
+describe('git-push — remote guard', () => {
+  it('rejects a push to a foreign-host remote before token resolution', async () => {
+    execSync(`git -C ${repoPath} remote add evil https://attacker.com/foo/bar.git`);
+    await expect(
+      gitPush.handler({ repoPath, remote: 'evil', branch: 'main' }, ctx as never),
+    ).rejects.toThrow(/GIT_REMOTE_NOT_GITHUB/);
+  });
+
+  it('rejects a push whose remote is an inline URL (remote bypass)', async () => {
+    await expect(
+      gitPush.handler(
+        { repoPath, remote: 'https://attacker.com/foo/bar.git', branch: 'main' },
+        ctx as never,
+      ),
+    ).rejects.toThrow(/GIT_INVALID_INPUT/);
+  });
+
+  it('rejects a push whose remote has an explicit foreign push URL', async () => {
+    execSync(`git -C ${repoPath} remote add origin https://github.com/foo/bar.git`);
+    execSync(`git -C ${repoPath} remote set-url --push origin https://attacker.com/foo/bar.git`);
+    await expect(
+      gitPush.handler({ repoPath, remote: 'origin', branch: 'main' }, ctx as never),
+    ).rejects.toThrow(/GIT_REMOTE_NOT_GITHUB/);
+  });
+
+  it('passes the guard for a clean github.com remote (fails later on network, not on guard)', async () => {
+    execSync(`git -C ${repoPath} remote add origin https://github.com/foo/bar.git`);
+    const err = await gitPush
+      .handler({ repoPath, remote: 'origin', branch: 'main' }, ctx as never)
+      .then(() => 'ok')
+      .catch((e) => (e as Error).message);
+    // The guard passed — the failure (if any) is git's own network/refspec
+    // error, never the guard codes.
+    expect(err).not.toMatch(/GIT_REMOTE_NOT_GITHUB|GIT_INVALID_INPUT.*remote name/);
+  });
+});
+
+describe('git-fetch — remote guard', () => {
+  it('rejects a fetch from a foreign-host remote before token resolution', async () => {
+    execSync(`git -C ${repoPath} remote add evil https://attacker.com/foo/bar.git`);
+    await expect(gitFetch.handler({ repoPath, remote: 'evil' }, ctx as never)).rejects.toThrow(
+      /GIT_REMOTE_NOT_GITHUB/,
+    );
+  });
+
+  it('rejects a fetch whose remote is an inline URL (remote bypass)', async () => {
+    await expect(
+      gitFetch.handler({ repoPath, remote: 'https://attacker.com/foo/bar.git' }, ctx as never),
+    ).rejects.toThrow(/GIT_INVALID_INPUT/);
+  });
+
+  it('passes the guard for a clean github.com remote', async () => {
+    execSync(`git -C ${repoPath} remote add origin https://github.com/foo/bar.git`);
+    const err = await gitFetch
+      .handler({ repoPath, remote: 'origin' }, ctx as never)
+      .then(() => 'ok')
+      .catch((e) => (e as Error).message);
+    expect(err).not.toMatch(/GIT_REMOTE_NOT_GITHUB|GIT_INVALID_INPUT.*remote name/);
+  });
+});
+
+describe('git-pull — remote guard', () => {
+  it('rejects a pull with an explicit foreign-host remote before token resolution', async () => {
+    execSync(`git -C ${repoPath} remote add evil https://attacker.com/foo/bar.git`);
+    await expect(gitPull.handler({ repoPath, remote: 'evil' }, ctx as never)).rejects.toThrow(
+      /GIT_REMOTE_NOT_GITHUB/,
+    );
+  });
+
+  it('rejects a pull whose branch upstream tracks a foreign-host remote', async () => {
+    execSync(`git -C ${repoPath} remote add evil https://attacker.com/foo/bar.git`);
+    // Write the tracking config directly — `--set-upstream-to` would require
+    // the remote-tracking ref to exist (needs a fetch).
+    execSync(`git -C ${repoPath} config branch.main.remote evil`);
+    execSync(`git -C ${repoPath} config branch.main.merge refs/heads/main`);
+    await expect(gitPull.handler({ repoPath }, ctx as never)).rejects.toThrow(
+      /GIT_REMOTE_NOT_GITHUB/,
+    );
+  });
+
+  it('rejects a pull whose remote is an inline URL (remote bypass)', async () => {
+    await expect(
+      gitPull.handler({ repoPath, remote: 'https://attacker.com/foo/bar.git' }, ctx as never),
+    ).rejects.toThrow(/GIT_INVALID_INPUT/);
+  });
 });
 
 // ============================================================================
@@ -335,5 +526,159 @@ describe('git-fetch', () => {
       .then(() => 'ok')
       .catch((e) => (e as Error).message);
     expect(result).not.toBe('ok');
+  });
+});
+
+// ============================================================================
+// git-option injection hardening (audit 2026-10-01, MEDIUM)
+// ============================================================================
+
+describe('git-option injection hardening (audit 2026-10-01)', () => {
+  // A ref that starts with '-' would be parsed by git as an option of the
+  // subcommand (e.g. `--upload-pack=evil` on merge/cherry-pick). Every tool
+  // must reject it with GIT_INVALID_REF before git ever sees it.
+  const ATTACK_REF = '--upload-pack=evil';
+
+  it('git-merge rejects a dash-leading target', async () => {
+    await expect(gitMerge.handler({ repoPath, target: ATTACK_REF }, ctx as never)).rejects.toThrow(
+      /GIT_INVALID_REF/,
+    );
+  });
+
+  it('git-rebase rejects a dash-leading onto', async () => {
+    await expect(
+      gitRebase.handler({ repoPath, onto: ATTACK_REF }, ctx as never),
+    ).rejects.toThrow(/GIT_INVALID_REF/);
+  });
+
+  it('git-cherry-pick rejects a dash-leading commit', async () => {
+    await expect(
+      gitCherryPick.handler({ repoPath, commits: [ATTACK_REF] }, ctx as never),
+    ).rejects.toThrow(/GIT_INVALID_REF/);
+  });
+
+  it('git-cherry-pick rejects a dash-leading commit among valid ones', async () => {
+    await expect(
+      gitCherryPick.handler({ repoPath, commits: ['main', ATTACK_REF] }, ctx as never),
+    ).rejects.toThrow(/GIT_INVALID_REF/);
+  });
+
+  it('git-reset rejects a dash-leading target', async () => {
+    await expect(
+      gitReset.handler({ repoPath, mode: 'hard', target: ATTACK_REF }, ctx as never),
+    ).rejects.toThrow(/GIT_INVALID_REF/);
+  });
+
+  it('git-tag rejects a dash-leading tag name on create', async () => {
+    await expect(
+      gitTag.handler({ repoPath, action: 'create', name: ATTACK_REF }, ctx as never),
+    ).rejects.toThrow(/GIT_INVALID_REF/);
+  });
+
+  it('git-tag rejects a dash-leading tag name on delete', async () => {
+    await expect(
+      gitTag.handler({ repoPath, action: 'delete', name: ATTACK_REF }, ctx as never),
+    ).rejects.toThrow(/GIT_INVALID_REF/);
+  });
+
+  it('git-tag rejects a dash-leading ref on create', async () => {
+    await expect(
+      gitTag.handler(
+        { repoPath, action: 'create', name: 'v1', ref: ATTACK_REF },
+        ctx as never,
+      ),
+    ).rejects.toThrow(/GIT_INVALID_REF/);
+  });
+
+  it('git-bisect rejects a dash-leading bad rev on start', async () => {
+    await expect(
+      gitBisect.handler({ repoPath, action: 'start', bad: ATTACK_REF }, ctx as never),
+    ).rejects.toThrow(/GIT_INVALID_REF/);
+  });
+
+  it('git-bisect rejects a dash-leading good rev on start', async () => {
+    await expect(
+      gitBisect.handler(
+        { repoPath, action: 'start', bad: 'HEAD', good: ATTACK_REF },
+        ctx as never,
+      ),
+    ).rejects.toThrow(/GIT_INVALID_REF/);
+  });
+
+  it('git-bisect rejects a dash-leading ref on good/bad/skip', async () => {
+    await expect(
+      gitBisect.handler({ repoPath, action: 'good', ref: ATTACK_REF }, ctx as never),
+    ).rejects.toThrow(/GIT_INVALID_REF/);
+  });
+
+  it('git-merge still merges a normal branch after the hardening (regression)', async () => {
+    execSync(`git -C ${repoPath} checkout -q -b feature`);
+    writeFileSync(join(repoPath, 'feature.ts'), 'export const x = 1\n');
+    execSync(`git -C ${repoPath} add feature.ts && git -C ${repoPath} commit -q -m "feat: x"`);
+    execSync(`git -C ${repoPath} checkout -q main`);
+    const r = (await gitMerge.handler(
+      { repoPath, target: 'feature' },
+      ctx as never,
+    )) as Record<string, any>;
+    expect(r.branch).toBe('main');
+    expect(r.target).toBe('feature');
+  });
+
+  it('git-rebase still rebases onto a normal branch after the hardening (regression)', async () => {
+    execSync(`git -C ${repoPath} checkout -q -b feature`);
+    writeFileSync(join(repoPath, 'feature.ts'), 'export const x = 1\n');
+    execSync(`git -C ${repoPath} add feature.ts && git -C ${repoPath} commit -q -m "feat: x"`);
+    execSync(`git -C ${repoPath} checkout -q main`);
+    execSync(`git -C ${repoPath} checkout -q -b topic main~0`);
+    const r = (await gitRebase.handler(
+      { repoPath, onto: 'feature' },
+      ctx as never,
+    )) as Record<string, any>;
+    expect(r.mode).toBe('start');
+    expect(r.onto).toBe('feature');
+  });
+
+  it('git-cherry-pick still picks a normal SHA after the hardening (regression)', async () => {
+    execSync(`git -C ${repoPath} checkout -q -b feature`);
+    writeFileSync(join(repoPath, 'feature.ts'), 'export const x = 1\n');
+    execSync(`git -C ${repoPath} add feature.ts && git -C ${repoPath} commit -q -m "feat: x"`);
+    const sha = execSync(`git -C ${repoPath} rev-parse feature`, { encoding: 'utf-8' }).trim();
+    execSync(`git -C ${repoPath} checkout -q main`);
+    const base = execSync(`git -C ${repoPath} rev-parse main`, { encoding: 'utf-8' }).trim();
+    const r = (await gitCherryPick.handler(
+      { repoPath, commits: [sha] },
+      ctx as never,
+    )) as Record<string, any>;
+    const picked = execSync(`git -C ${repoPath} log -1 --format=%P%n%s%n%T ${r.head}`, { encoding: 'utf-8' }).trim().split('\n');
+    const featureTree = execSync(`git -C ${repoPath} rev-parse ${sha}^{tree}`, { encoding: 'utf-8' }).trim();
+    expect(picked).toEqual([base, 'feat: x', featureTree]);
+  });
+
+  it('git-tag create/list/delete still work after the hardening (regression)', async () => {
+    await gitTag.handler(
+      { repoPath, action: 'create', name: 'v0.1.0', message: 'release' },
+      ctx as never,
+    );
+    const list = (await gitTag.handler(
+      { repoPath, action: 'list', pattern: 'v*' },
+      ctx as never,
+    )) as Record<string, any>;
+    expect(list.tags).toContain('v0.1.0');
+    await gitTag.handler({ repoPath, action: 'delete', name: 'v0.1.0' }, ctx as never);
+    const after = (await gitTag.handler({ repoPath, action: 'list' }, ctx as never)) as Record<
+      string,
+      any
+    >;
+    expect(after.tags).not.toContain('v0.1.0');
+  });
+
+  it('git-bisect start/reset still work with normal revs after the hardening (regression)', async () => {
+    execSync(`git -C ${repoPath} commit -q --allow-empty -m "second"`);
+    const r = (await gitBisect.handler(
+      { repoPath, action: 'start', bad: 'HEAD', good: 'HEAD~1' },
+      ctx as never,
+    )) as Record<string, any>;
+    expect(r.action).toBe('start');
+    await gitBisect.handler({ repoPath, action: 'reset' }, ctx as never);
   });
 });

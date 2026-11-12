@@ -4,7 +4,7 @@
  * Events are bulk-inserted by the UsageEventBuffer in batches. The
  * EventApplier consumes them ordered by `appliedAt` and rebuilds projections.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §6 — Event sourcing y projection
  */
 
 import type { AnyBulkWriteOperation, Collection, Db } from "mongodb"

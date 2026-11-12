@@ -1,21 +1,35 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { resolveUserToken } from '../lib/github-user-token';
-import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
-import { throwClassifiedGitError } from './_git-error';
+import {
+  assertIsRepo,
+  githubSlugFromUrl,
+  oversizedBlobs,
+  readOriginUrl,
+  assertRemoteIsGithubHttps,
+  resolveRepoPath,
+  runGit,
+  stripEmbeddedCredentials,
+} from '../lib/git-local';
+import { FILE_TOO_LARGE_ACTION, classifiedGitErrorToError, classifyGitError, throwClassifiedGitError } from './_git-error';
+import { workflowPendingAction, workflowPermission } from '../lib/workflow-permission';
+import { recordPush } from '../lib/clone-cleanup';
+import { lockedGitTool } from './_locked';
 
 /**
- * Push commits to the remote. Uses the user's `USER_ACCESS_TOKEN` via the
- * `x-access-token:` credential pattern in the remote URL — same approach as
- * `clone-repo`. Falls back to the current `origin` URL if it already contains
- * embedded credentials.
+ * Push commits to the remote. Uses the user's `USER_ACCESS_TOKEN` injected
+ * ephemerally via `-c http.extraheader` — never embedded in the remote URL,
+ * so nothing lands in `.git/config` (same pattern as `clone-repo` since the
+ * 2026-10-01 audit fix). Legacy remotes with embedded credentials are
+ * sanitised on first touch (`stripEmbeddedCredentials`).
  *
  * `force: true` maps to `--force-with-lease` (NOT `--force`) — safer default
  * that refuses to overwrite remote work the local does not know about. Use
  * `forceUnsafe: true` for raw `--force` (destructive, declared in annotations).
  */
-export const gitPush: ToolConfig = {
+export const gitPush: ToolConfig = lockedGitTool('git-push', {
   description:
-    'Push commits to the remote. `force: true` uses `--force-with-lease`; `forceUnsafe: true` uses raw `--force` (destructive).',
+    'Push commits to the remote. `force: true` uses `--force-with-lease`; `forceUnsafe: true` uses raw `--force` (destructive).' +
+    ' Pushes that add or change files under .github/workflows/ need the installation to have accepted the Teros App\'s "Workflows" permission; if not, the error says where to accept it.',
   parameters: {
     type: 'object',
     properties: {
@@ -44,13 +58,20 @@ export const gitPush: ToolConfig = {
     };
     const repoPath = resolveRepoPath(a);
     assertIsRepo(repoPath);
+    // Lazy hygiene: strip credentials from legacy remote URLs (audit 2026-10-01).
+    await stripEmbeddedCredentials(repoPath);
 
     const remote = a.remote ?? 'origin';
+
+    // Token-exfiltration guard (audit 2026-10-01): the extraheader credential
+    // is attached to every URL git contacts — refuse before resolving the
+    // token unless the remote is a clean github.com HTTPS remote.
+    await assertRemoteIsGithubHttps(repoPath, remote);
 
     // Resolve current branch when not given.
     let branch = a.branch;
     if (!branch) {
-      const r = runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+      const r = await runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
       if (r.code !== 0) throwClassifiedGitError(r);
       branch = r.stdout.trim();
       if (!branch || branch === 'HEAD') {
@@ -71,8 +92,31 @@ export const gitPush: ToolConfig = {
     if (a.forceUnsafe) flags.push('--force');
     else if (a.force) flags.push('--force-with-lease');
 
-    const result = runGit(repoPath, [...cfgFlags, 'push', ...flags, remote, branch]);
-    if (result.code !== 0) throwClassifiedGitError(result);
+    const oversized = await oversizedBlobs(repoPath, remote, branch);
+    if (oversized.length > 0) {
+      throw new Error(
+        `[GIT_FILE_TOO_LARGE] Not pushed: ${oversized.map((f) => `\`${f.path}\` is ${(f.size / (1024 * 1024)).toFixed(1)} MB`).join(', ')}; GitHub refuses files over 100 MB.\n` +
+          `What to do: ${FILE_TOO_LARGE_ACTION}`,
+      );
+    }
+
+    const result = await runGit(repoPath, [...cfgFlags, 'push', ...flags, remote, branch]);
+    if (result.code !== 0) {
+      const classified = classifyGitError(result);
+      const owner = githubSlugFromUrl(readOriginUrl(repoPath) ?? '')?.split('/')[0];
+      if (classified.code === 'GIT_WORKFLOW_PERMISSION' && owner) {
+        const permission = await workflowPermission(context, owner);
+        classified.action = {
+          type: 'user_action',
+          description: workflowPendingAction(owner, permission.url),
+          ...(permission.url ? { url: permission.url } : {}),
+        };
+      }
+      throw classifiedGitErrorToError(classified);
+    }
+
+    const pushedSha = (await runGit(repoPath, ['rev-parse', branch])).stdout.trim();
+    if (pushedSha) recordPush(repoPath, branch, pushedSha);
 
     return {
       repoPath,
@@ -90,4 +134,4 @@ export const gitPush: ToolConfig = {
     idempotentHint: false,
     openWorldHint: true,
   },
-};
+});

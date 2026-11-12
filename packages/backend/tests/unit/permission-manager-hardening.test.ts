@@ -122,7 +122,7 @@ describe('GAP-7 — handleResponse is idempotent', () => {
 // ---------------------------------------------------------------------------
 
 describe('GAP-8 — onPendingPermission failure auto-denies and cleans up', () => {
-  it('rejecting onPendingPermission resolves the promise as denied and removes from pending', async () => {
+  it('rejecting onPendingPermission returns denied and removes from pending (v4: marker flow, no parked promise)', async () => {
     const { pm } = makeManager()
     const ask = pm.createAskPermissionCallback(
       'ch_g8',
@@ -143,11 +143,12 @@ describe('GAP-8 — onPendingPermission failure auto-denies and cleans up', () =
 })
 
 // ---------------------------------------------------------------------------
-// No expiry — a pending request waits for the user indefinitely
+// v4 permission cut — the ask returns the 'permission_requested' marker
+// (2026-10-27): the turn ends (endsTurn) and the resolution arrives later.
 // ---------------------------------------------------------------------------
 
-describe('no expiry — pending request waits until the user responds', () => {
-  it('an unanswered ask stays pending and resolves when handleResponse arrives late', async () => {
+describe('v4 permission cut — ask returns the marker, resolution runs server-side', () => {
+  it('an unanswered ask stays pending (registered) and handleResponse resolves server-side', async () => {
     const { broadcasts, pm } = makeManager()
     const ask = pm.createAskPermissionCallback(
       'ch_wait',
@@ -155,15 +156,16 @@ describe('no expiry — pending request waits until the user responds', () => {
       () => ({ messageId: 'm', toolCallId: 'tc' }),
       undefined,
     )
-    const promise = ask('t', 'a', {}, 'tc')
-
-    // Give the broadcast a chance to fire; the promise must NOT auto-resolve.
-    await new Promise((r) => setTimeout(r, 25))
+    // v4: the ask resolves IMMEDIATELY with the { kind: 'requested' } marker —
+    // no parked promise. The requestId travels in the marker so the executor
+    // can serialize it into the awaiting-user output.
+    const result = await ask('t', 'a', {}, 'tc')
+    expect(result.kind).toBe('requested')
+    expect(typeof result.requestId).toBe('string')
     expect(pm.getPendingCount()).toBe(1)
 
     const reqId = broadcasts.find((b) => b.type === 'tool_permission_request').requestId
     await pm.handleResponse(reqId, true)
-    expect(await promise).toBe('granted')
     expect(pm.getPendingCount()).toBe(0)
   })
 })
@@ -538,5 +540,247 @@ describe('GAP-F — multi-hop observer chain', () => {
     // ejecutor (ch_0) + 5 hops máx = 6 broadcasts
     expect(perms.length).toBeLessThanOrEqual(6)
     expect(perms.length).toBeGreaterThan(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PERMB-REQ-2 — a v4 request settled with the marker is still found as pending
+// ---------------------------------------------------------------------------
+
+describe('PERMB-REQ-2 — findPendingApprovals sees a request settled with the marker', () => {
+  it('[PERMB-AC-2] the pending_permission row kept by completeToolMessage is returned by findPendingApprovals', async () => {
+    const { createStreamingHelpers, createStreamingState } = require('../../src/handlers/message/streaming-state')
+    const rows = new Map<string, any>()
+    const channelManager = {
+      getMessage: async (messageId: string) => rows.get(messageId) ?? null,
+      updateMessageContent: async (messageId: string, content: any) => {
+        rows.set(messageId, { messageId, channelId: 'ch_permb', content })
+      },
+      updateMessageContentFields: async () => undefined,
+      createMessageId: () => 'msg_generated',
+      getChannel: async () => null,
+    }
+    const state = createStreamingState()
+    state.activeToolCalls.set('tc_1', {
+      messageId: 'msg_1',
+      toolCallId: 'tc_1',
+      toolName: 'notion_insert',
+      input: { a: 1 },
+    })
+    const helpers = createStreamingHelpers(state, {
+      channelManager,
+      channelId: 'ch_permb',
+      agentId: 'agent_1',
+      broadcastToChannel: () => {},
+    })
+    await helpers.updateToolStatus('pending_permission', {
+      toolCallId: 'tc_1',
+      permissionRequestId: 'perm_1',
+      appId: 'app_y',
+      workspaceId: 'work_1',
+    })
+    await helpers.completeToolMessage({
+      toolCallId: 'tc_1',
+      status: 'completed',
+      output: JSON.stringify({ status: 'permission_requested', permissionRequestId: 'perm_1' }),
+    })
+
+    // Minimal channel_messages fake answering the find() of findPendingApprovals.
+    const db: any = {
+      collection: () => ({
+        find: (q: any) => ({
+          toArray: async () =>
+            [...rows.values()].filter(
+              (r) =>
+                r.channelId === q.channelId &&
+                r.content?.type === q['content.type'] &&
+                r.content?.status === q['content.status'],
+            ),
+        }),
+        updateOne: async () => ({}),
+      }),
+    }
+    const pm = createPermissionManager({ broadcastToChannel: () => {}, db })
+    const pending = await pm.findPendingApprovals('ch_permb')
+    expect(pending).toEqual([
+      {
+        toolCallId: 'tc_1',
+        toolName: 'notion_insert',
+        appId: 'app_y',
+        // PERMW-REQ-2: rows also carry irreversible (and mcaId when persisted).
+        irreversible: false,
+        requestId: 'perm_1',
+        input: { a: 1 },
+        messageId: 'msg_1',
+        workspaceId: 'work_1',
+      },
+    ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PERMB-REQ-2 — a pending request never expires by age
+// ---------------------------------------------------------------------------
+
+describe('PERMB-REQ-2 — no TTL expiry for pending requests', () => {
+  function makeDbWithRow(requestedAt: string) {
+    const updates: any[] = []
+    const row = {
+      messageId: 'msg_old',
+      channelId: 'ch_old',
+      content: {
+        type: 'tool_execution',
+        status: 'pending_permission',
+        toolCallId: 'tc_old',
+        toolName: 'notion_insert',
+        input: { a: 1 },
+        permissionRequestId: 'perm_old',
+        appId: 'app_y',
+        permissionRequestedAt: requestedAt,
+        workspaceId: 'work_1',
+      },
+    }
+    const db: any = {
+      collection: (name: string) => ({
+        find: (q: any) => ({
+          toArray: async () =>
+            name === 'channel_messages' &&
+            (q.channelId === undefined || q.channelId === row.channelId) &&
+            row.content.status === q['content.status']
+              ? [row]
+              : [],
+        }),
+        findOne: async () => null,
+        updateOne: async (filter: any, update: any) => {
+          updates.push({ filter, update })
+          return {}
+        },
+      }),
+    }
+    return { db, updates }
+  }
+
+  const THREE_DAYS_AGO = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+
+  it('[PERMB-AC-2] a 3-day-old pending row is still returned by findPendingApprovals and not expired', async () => {
+    const { db, updates } = makeDbWithRow(THREE_DAYS_AGO)
+    const pm = createPermissionManager({ broadcastToChannel: () => {}, db })
+    const pending = await pm.findPendingApprovals('ch_old')
+    expect(pending.map((p) => p.requestId)).toEqual(['perm_old'])
+    expect(updates).toHaveLength(0)
+  })
+
+  it('[PERMB-AC-2] a 3-day-old pending row is still restored (registered and re-broadcast)', async () => {
+    const { db, updates } = makeDbWithRow(THREE_DAYS_AGO)
+    const broadcasts: any[] = []
+    const pm = createPermissionManager({
+      broadcastToChannel: (_ch: string, msg: any) => broadcasts.push(msg),
+      db,
+      validateToolExists: async () => true,
+    })
+    const restored = await pm.restorePendingApprovals('ch_old')
+    expect(restored).toBe(1)
+    expect(pm.getPendingCount()).toBe(1)
+    expect(broadcasts.some((b) => b.type === 'tool_permission_request' && b.requestId === 'perm_old')).toBe(true)
+    expect(updates).toHaveLength(0)
+  })
+
+  it('[PERMB-AC-2] the orphaned-permission sweeper no longer expires pending rows by age', () => {
+    const { db, updates } = makeDbWithRow(THREE_DAYS_AGO)
+    const pm = createPermissionManager({ broadcastToChannel: () => {}, db })
+    const originalSetInterval = globalThis.setInterval
+    const scheduled = mock(() => ({ unref: () => {} }))
+    ;(globalThis as any).setInterval = scheduled
+    try {
+      expect(pm.startOrphanedPermissionSweeper()).toBeUndefined()
+    } finally {
+      globalThis.setInterval = originalSetInterval
+    }
+    expect(scheduled).not.toHaveBeenCalled()
+    expect(updates).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PERMW-REQ-2 — the request event carries what the card needs
+// ---------------------------------------------------------------------------
+
+describe('PERMW-REQ-2 — tool_permission_request carries mcaId and irreversible', () => {
+  it('[PERMW-AC-2] the live broadcast carries mcaId from the tool call context and irreversible', async () => {
+    const { broadcasts, pm } = makeManager()
+    const ask = pm.createAskPermissionCallback(
+      'ch_permw_live',
+      'user_test',
+      () => ({ messageId: 'm', toolCallId: 'tc', toolName: 'hubspot_create-contact', mcaId: 'mca.hubspot' }),
+      undefined,
+    )
+    await ask('hubspot_create-contact', 'app_h', { email: 'a@b.c' }, true, 'tc')
+    const event = broadcasts.find((b) => b.type === 'tool_permission_request')
+    expect(event).toMatchObject({
+      toolName: 'hubspot_create-contact',
+      appId: 'app_h',
+      mcaId: 'mca.hubspot',
+      irreversible: true,
+      messageId: 'm',
+      toolCallId: 'tc',
+    })
+  })
+
+  it('[PERMW-AC-2] a reversible live request broadcasts irreversible: false', async () => {
+    const { broadcasts, pm } = makeManager()
+    const ask = pm.createAskPermissionCallback(
+      'ch_permw_live_rev',
+      'user_test',
+      () => ({ messageId: 'm', toolCallId: 'tc', mcaId: 'mca.hubspot' }),
+      undefined,
+    )
+    await ask('hubspot_list-contacts', 'app_h', {}, false, 'tc')
+    const event = broadcasts.find((b) => b.type === 'tool_permission_request')
+    expect(event.mcaId).toBe('mca.hubspot')
+    expect(event.irreversible).toBe(false)
+  })
+
+  it('[PERMW-AC-2] the restored broadcast carries mcaId and irreversible from the persisted row', async () => {
+    const row = {
+      messageId: 'msg_permw',
+      channelId: 'ch_permw_restore',
+      content: {
+        type: 'tool_execution',
+        status: 'pending_permission',
+        toolCallId: 'tc_permw',
+        toolName: 'hubspot_delete-contact',
+        mcaId: 'mca.hubspot',
+        irreversible: true,
+        input: { id: '1' },
+        permissionRequestId: 'perm_permw',
+        appId: 'app_h',
+      },
+    }
+    const db: any = {
+      collection: (name: string) => ({
+        find: () => ({ toArray: async () => (name === 'channel_messages' ? [row] : []) }),
+        findOne: async () => null,
+        updateOne: async () => ({}),
+      }),
+    }
+    const broadcasts: any[] = []
+    const pm = createPermissionManager({
+      broadcastToChannel: (_ch: string, msg: any) => broadcasts.push(msg),
+      db,
+      validateToolExists: async () => true,
+    })
+
+    const pending = await pm.findPendingApprovals('ch_permw_restore')
+    expect(pending[0]).toMatchObject({ mcaId: 'mca.hubspot', irreversible: true })
+
+    expect(await pm.restorePendingApprovals('ch_permw_restore')).toBe(1)
+    const event = broadcasts.find((b) => b.type === 'tool_permission_request')
+    expect(event).toMatchObject({
+      requestId: 'perm_permw',
+      appId: 'app_h',
+      mcaId: 'mca.hubspot',
+      irreversible: true,
+      restored: true,
+    })
   })
 })

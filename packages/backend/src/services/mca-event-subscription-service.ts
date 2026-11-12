@@ -17,17 +17,21 @@ import type { Db } from 'mongodb';
 import {
   type AgentEventSubscription,
   type ChannelEventSubscription,
+  type DeclaredEventFilters,
   type Rules,
-  ensureMcaEventSubscriptionIndexes,
+  type UnifiedFilter,
   generateCorrelationId,
   generateSubscriptionId,
   getAgentEventSubscriptionsCollection,
   getChannelEventSubscriptionsCollection,
   getSubscriptionCorrelationsCollection,
   topicMatches,
+  unifiedFilterMatches,
 } from '../models/mca-event-subscriptions';
 import type { ScheduledEvent } from '../handlers/event-handler';
 import type { PubSubService } from './pubsub-service';
+/** Events older than this at delivery time are dropped (stale re-sends never wake an agent). */
+const SCHEDULER_DISPATCH_TTL_MS = 2 * 60 * 1000;
 
 // ============================================================================
 // TYPES
@@ -77,6 +81,8 @@ export class MCAEventSubscriptionService {
   private getChannelOwnerUserIdFn?: GetChannelOwnerUserIdFn;
   private injectTextAndWakeFn?: InjectTextAndWakeFn;
   private pubSubService?: PubSubService;
+  private flowEventCallback?: (event: { topic: string; payload: Record<string, unknown> }) => Promise<{ matched: number; executed: number }>;
+  private automateEventCallback?: (event: { topic: string; payload: Record<string, unknown> }) => Promise<{ matched: number; executed: number }>;
 
   constructor(private db: Db) {}
 
@@ -84,8 +90,11 @@ export class MCAEventSubscriptionService {
   // INITIALIZATION
   // ============================================================================
 
+  /**
+   * Call once at startup. The subscriptions_* indexes are applied by
+   * ensureAllIndexes after migrations (src/db/indexes.ts, GOV-4).
+   */
   async init(): Promise<void> {
-    await ensureMcaEventSubscriptionIndexes(this.db);
     console.log('[MCAEventSubscriptionService] Initialized');
   }
 
@@ -118,6 +127,20 @@ export class MCAEventSubscriptionService {
     this.pubSubService = service;
   }
 
+  /**
+   * Inject the FlowEventService callback. When an event is dispatched,
+   * this callback is invoked so the FlowEventService can check for matching
+   * flow event triggers and execute the corresponding flows.
+   */
+  setFlowEventCallback(fn: (event: { topic: string; payload: Record<string, unknown> }) => Promise<{ matched: number; executed: number }>): void {
+    this.flowEventCallback = fn;
+  }
+
+  /** Inject the AutomateRunner callback — fires automate event starters. */
+  setAutomateEventCallback(fn: (event: { topic: string; payload: Record<string, unknown> }) => Promise<{ matched: number; executed: number }>): void {
+    this.automateEventCallback = fn;
+  }
+
   // ============================================================================
   // CHANNEL SUBSCRIPTIONS CRUD
   // ============================================================================
@@ -127,6 +150,13 @@ export class MCAEventSubscriptionService {
     channelId: string;
     rules?: Rules;
     mode: 'notify' | 'wake';
+    oneTime?: boolean;
+    /** Unified declarative filter (reserved _subscribe tools). */
+    filter?: UnifiedFilter;
+    /** Snapshot of the app's declared filter semantics for `filter`. */
+    filterSpec?: DeclaredEventFilters;
+    /** Full topics that wake the agent; absent = all matched events wake. */
+    wakeUpOn?: string[];
   }): Promise<ChannelEventSubscription> {
     const col = getChannelEventSubscriptionsCollection(this.db);
     const sub: ChannelEventSubscription = {
@@ -135,11 +165,15 @@ export class MCAEventSubscriptionService {
       channelId: input.channelId,
       rules: input.rules ?? [],
       mode: input.mode,
+      oneTime: input.oneTime ?? false,
+      ...(input.filter && Object.keys(input.filter).length > 0 ? { filter: input.filter } : {}),
+      ...(input.filterSpec ? { filterSpec: input.filterSpec } : {}),
+      ...(input.wakeUpOn && input.wakeUpOn.length > 0 ? { wakeUpOn: input.wakeUpOn } : {}),
       createdAt: new Date(),
       lastActivityAt: new Date(),
     };
     await col.insertOne(sub);
-    console.log(`[MCAEventSubscriptionService] Created channel subscription ${sub.id}: topic="${sub.topic}" channelId="${sub.channelId}" mode="${sub.mode}"`);
+    console.log(`[MCAEventSubscriptionService] Created channel subscription ${sub.id}: topic="${sub.topic}" channelId="${sub.channelId}" mode="${sub.mode}" oneTime=${sub.oneTime}`);
     return sub;
   }
 
@@ -175,6 +209,7 @@ export class MCAEventSubscriptionService {
       channelId: string;
       rules?: Rules;
       mode: 'notify' | 'wake';
+      oneTime?: boolean;
     }>,
   ): Promise<ChannelEventSubscription[]> {
     const col = getChannelEventSubscriptionsCollection(this.db);
@@ -184,6 +219,7 @@ export class MCAEventSubscriptionService {
       channelId: input.channelId,
       rules: input.rules ?? [],
       mode: input.mode,
+      oneTime: input.oneTime ?? false,
       createdAt: new Date(),
       lastActivityAt: new Date(),
     }));
@@ -203,6 +239,7 @@ export class MCAEventSubscriptionService {
     agentId: string;
     rules?: Rules;
     correlationKey: string;
+    oneTime?: boolean;
   }): Promise<AgentEventSubscription> {
     const col = getAgentEventSubscriptionsCollection(this.db);
     const sub: AgentEventSubscription = {
@@ -211,10 +248,11 @@ export class MCAEventSubscriptionService {
       agentId: input.agentId,
       rules: input.rules ?? [],
       correlationKey: input.correlationKey,
+      oneTime: input.oneTime ?? false,
       createdAt: new Date(),
     };
     await col.insertOne(sub);
-    console.log(`[MCAEventSubscriptionService] Created agent subscription ${sub.id}: topic="${sub.topic}" agentId="${sub.agentId}"`);
+    console.log(`[MCAEventSubscriptionService] Created agent subscription ${sub.id}: topic="${sub.topic}" agentId="${sub.agentId}" oneTime=${sub.oneTime}`);
     return sub;
   }
 
@@ -258,6 +296,26 @@ export class MCAEventSubscriptionService {
       this.dispatchToChannelSubscriptions(event),
       this.dispatchToAgentSubscriptions(event),
     ]);
+
+    // Also notify the FlowEventService so it can execute any flows
+    // that have event triggers matching this event topic.
+    if (this.flowEventCallback) {
+      try {
+        await this.flowEventCallback({ topic: event.topic, payload: event.payload });
+      } catch (err) {
+        console.error('[MCAEventSubscriptionService] Error in flowEventCallback:', err);
+      }
+    }
+
+    // Also notify the AutomateRunner so starters with event triggers fire.
+    if (this.automateEventCallback) {
+      try {
+        await this.automateEventCallback({ topic: event.topic, payload: event.payload });
+      } catch (err) {
+        console.error('[MCAEventSubscriptionService] Error in automateEventCallback:', err);
+      }
+    }
+
     return { channelMatched, agentMatched };
   }
 
@@ -277,7 +335,10 @@ export class MCAEventSubscriptionService {
     const allSubs = await col.find({}).toArray();
 
     const matching = allSubs.filter(
-      (sub) => topicMatches(sub.topic, event.topic) && this.rulesMatch(sub.rules, event.payload),
+      (sub) =>
+        topicMatches(sub.topic, event.topic) &&
+        this.rulesMatch(sub.rules, event.payload) &&
+        unifiedFilterMatches(sub.filter, sub.filterSpec, event.payload),
     );
 
     if (matching.length === 0) {
@@ -287,13 +348,46 @@ export class MCAEventSubscriptionService {
 
     console.log(`[MCAEventSubscriptionService] ${matching.length} channel subscription(s) matched topic="${event.topic}"`);
 
-    // Sliding TTL: update lastActivityAt for all matched subscriptions so MongoDB
-    // does not expire them while they are still actively receiving events.
-    const matchedIds = matching.map((sub) => sub.id);
-    await col.updateMany(
-      { id: { $in: matchedIds } },
-      { $set: { lastActivityAt: new Date() } },
+    // One-time subscriptions: atomically claim-and-delete BEFORE delivery.
+    // deleteOne({id, oneTime:true}) is the claim — if two events race for the
+    // same one-time sub, only the first delete wins (deletedCount=1); the second
+    // gets deletedCount=0 and must NOT deliver. This makes one-time delivery
+    // idempotent-by-design without locks.
+    const oneTimeSubs = matching.filter((sub) => sub.oneTime === true);
+    const ongoingSubs = matching.filter((sub) => sub.oneTime !== true);
+    const claimedOneTimeSubs: ChannelEventSubscription[] = [];
+    await Promise.all(
+      oneTimeSubs.map(async (sub) => {
+        try {
+          const result = await col.deleteOne({ id: sub.id, oneTime: true });
+          if (result.deletedCount === 1) {
+            claimedOneTimeSubs.push(sub);
+            console.log(`[MCAEventSubscriptionService] One-time channel subscription ${sub.id} claimed and deleted (topic="${event.topic}")`);
+          }
+        } catch (err) {
+          console.error(`[MCAEventSubscriptionService] Error deleting one-time channel subscription ${sub.id}:`, err);
+        }
+      }),
     );
+
+    // Effective set of subscriptions that will receive this event:
+    // ongoing subs always deliver; one-time subs only if we won the claim.
+    const deliverable = [...ongoingSubs, ...claimedOneTimeSubs];
+    if (deliverable.length === 0) {
+      console.log(`[MCAEventSubscriptionService] All matched channel subscriptions were one-time already claimed by a concurrent event (topic="${event.topic}")`);
+      return 0;
+    }
+
+    // Sliding TTL: update lastActivityAt for matched ONGOING subscriptions so MongoDB
+    // does not expire them while they are still actively receiving events.
+    // (One-time subs are already deleted — no TTL bump needed.)
+    const ongoingIds = ongoingSubs.map((sub) => sub.id);
+    if (ongoingIds.length > 0) {
+      await col.updateMany(
+        { id: { $in: ongoingIds } },
+        { $set: { lastActivityAt: new Date() } },
+      );
+    }
 
     // Group matching subscriptions by target channelId.
     // For each target channel, collapse all matching subscriptions into a single
@@ -301,10 +395,16 @@ export class MCAEventSubscriptionService {
     // This ensures that if a channel has both a wildcard notify and a specific wake
     // subscription for the same event, only ONE injection happens — with mode=wake.
     const byChannel = new Map<string, 'notify' | 'wake'>();
-    for (const sub of matching) {
+    for (const sub of deliverable) {
+      // wakeUpOn (unified subscriptions): a listed topic wakes, anything else
+      // delivers as notify only. Absent list = the subscription's own mode.
+      const wakes =
+        sub.mode === 'wake' &&
+        (!sub.wakeUpOn || sub.wakeUpOn.length === 0 || sub.wakeUpOn.includes(event.topic));
+      const effective: 'notify' | 'wake' = wakes ? 'wake' : 'notify';
       const current = byChannel.get(sub.channelId);
-      if (!current || sub.mode === 'wake') {
-        byChannel.set(sub.channelId, sub.mode);
+      if (!current || effective === 'wake') {
+        byChannel.set(sub.channelId, effective);
       }
     }
 
@@ -333,6 +433,25 @@ export class MCAEventSubscriptionService {
                 );
                 return; // abort este subscriber; el resto siguen
               }
+            }
+          }
+
+          // incident-2026-08-14: TTL freshness check for scheduler payloads.
+          // If the payload includes `dispatchedAt`, reject events older than
+          // SCHEDULER_DISPATCH_TTL_MS. This prevents re-envíos caducados
+          // (retry after subscription re-create, stale queue, etc.) from
+          // waking the agent with a message that is no longer relevant.
+          const dispatchedAt =
+            typeof event.payload.dispatchedAt === 'number'
+              ? event.payload.dispatchedAt
+              : undefined;
+          if (dispatchedAt !== undefined) {
+            const ageMs = Date.now() - dispatchedAt;
+            if (ageMs > SCHEDULER_DISPATCH_TTL_MS) {
+              console.warn(
+                `[MCAEventSubscriptionService] Discarding stale event topic="${event.topic}" channel=${channelId}: payload age ${ageMs}ms exceeds TTL ${SCHEDULER_DISPATCH_TTL_MS}ms`,
+              );
+              return;
             }
           }
 
@@ -394,10 +513,49 @@ export class MCAEventSubscriptionService {
 
     if (matching.length === 0) return 0;
 
+    // incident-2026-08-14: TTL freshness check — reject stale payloads early
+    // before creating/reusing channels or waking agents.
+    const dispatchedAt =
+      typeof event.payload.dispatchedAt === 'number'
+        ? event.payload.dispatchedAt
+        : undefined;
+    if (dispatchedAt !== undefined) {
+      const ageMs = Date.now() - dispatchedAt;
+      if (ageMs > SCHEDULER_DISPATCH_TTL_MS) {
+        console.warn(
+          `[MCAEventSubscriptionService] Discarding stale agent event topic="${event.topic}": payload age ${ageMs}ms exceeds TTL ${SCHEDULER_DISPATCH_TTL_MS}ms`,
+        );
+        return 0;
+      }
+    }
+
     const corrCol = getSubscriptionCorrelationsCollection(this.db);
 
+    // One-time subscriptions: atomically claim-and-delete BEFORE delivery.
+    // Same race-safe semantics as channel subscriptions: only the dispatch that
+    // wins the deleteOne delivers the event.
+    const oneTimeAgentSubs = matching.filter((sub) => sub.oneTime === true);
+    const ongoingAgentSubs = matching.filter((sub) => sub.oneTime !== true);
+    const claimedAgentSubs: AgentEventSubscription[] = [];
     await Promise.all(
-      matching.map(async (sub) => {
+      oneTimeAgentSubs.map(async (sub) => {
+        try {
+          const result = await col.deleteOne({ id: sub.id, oneTime: true });
+          if (result.deletedCount === 1) {
+            claimedAgentSubs.push(sub);
+            console.log(`[MCAEventSubscriptionService] One-time agent subscription ${sub.id} claimed and deleted (topic="${event.topic}")`);
+          }
+        } catch (err) {
+          console.error(`[MCAEventSubscriptionService] Error deleting one-time agent subscription ${sub.id}:`, err);
+        }
+      }),
+    );
+
+    const deliverableAgentSubs = [...ongoingAgentSubs, ...claimedAgentSubs];
+    if (deliverableAgentSubs.length === 0) return 0;
+
+    await Promise.all(
+      deliverableAgentSubs.map(async (sub) => {
         try {
           const correlationValue = String(event.payload[sub.correlationKey] ?? '');
           let channelId: string;
@@ -506,6 +664,28 @@ export class MCAEventSubscriptionService {
     if (event.topic === 'scheduler.recurring_task') {
       return p.message || 'Recurring task';
     }
+    if (event.topic === 'elevenlabs.post_call_transcription') {
+      // Flat aliases come from flattenElevenLabsPostCallPayload (webhook
+      // handler). Build a readable one-liner instead of a JSON dump — this is
+      // what the user sees in the channel and what the woken agent reads
+      // (spec 20261018_voice-events.md §3.3). No IDs in the message
+      // (product rule: users never see raw IDs).
+      const summary =
+        typeof p.transcriptSummary === 'string' ? p.transcriptSummary.trim() : '';
+      const dur =
+        typeof p.durationSecs === 'number' ? `${Math.round(p.durationSecs)}s` : undefined;
+      const ok = p.callSuccessful === true;
+      const reason =
+        !ok && typeof p.terminationReason === 'string' ? p.terminationReason : undefined;
+      const facts = [
+        ok ? 'call successful' : `call unsuccessful${reason ? ` — ${reason}` : ''}`,
+        dur,
+      ]
+        .filter(Boolean)
+        .join(', ');
+      if (summary) return `${summary} (${facts})`;
+      return `Call ${ok ? 'finished successfully' : `ended unsuccessfully${reason ? ` — ${reason}` : ''}`}${dur ? ` (${dur})` : ''}`;
+    }
     return `[${event.topic}] ${JSON.stringify(event.payload)}`;
   }
 
@@ -523,6 +703,7 @@ export class MCAEventSubscriptionService {
     if (topic === 'recurring_task') return 'recurring_task';
     if (topic === 'scheduler.reminder') return 'reminder';
     if (topic === 'scheduler.recurring_task') return 'recurring_task';
+    if (topic === 'elevenlabs.post_call_transcription') return 'voice.post_call';
     return 'task_update'; // generic fallback for MCA events
   }
 }

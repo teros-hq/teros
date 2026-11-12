@@ -5,7 +5,7 @@
  * outputSizeBytes via JSON.stringify when possible (best-effort: if the
  * input/output is not serializable, the field is omitted).
  *
- *
+ * Design doc: docs/usage-instrumentation.md §5 — Hooks
  */
 
 import { generateToolExecutionId, generateUsageEventId } from "@teros/core"

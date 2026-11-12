@@ -82,7 +82,7 @@ export function HealthCheckRenderer({
   if (uptime) rows.push({ key: 'uptime', value: uptime });
 
   return (
-    <ToolCallCard status={status} verb="Check health" badge={badge} iconUri={appIcon}>
+    <ToolCallCard status={status} description="Check health" badge={badge} iconUri={appIcon}>
       <YStack gap={8}>
         {error && <ErrorBlock error={error} />}
         {rows.length > 0 && <KeyValueGrid rows={rows} />}

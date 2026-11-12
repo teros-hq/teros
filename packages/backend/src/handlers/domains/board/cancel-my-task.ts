@@ -68,7 +68,7 @@ export function createCancelMyTaskHandler(
     // Clear running flag + stop request before archiving. Both flags no
     // longer apply to an archived task, and archiveTask below returns the
     // final state so there is no shape discrepancy.
-    await boardService.setRunning(taskId, false)
+    await boardService.setRunning(taskId, false, agentId)
     await boardService.clearStopRequest(taskId)
 
     // Archive the task in-place (no column move)
@@ -94,6 +94,7 @@ export function createCancelMyTaskHandler(
           columnId: updatedTask.columnId,
           archived: true,
           reason,
+          actorAgentId: agentId,
         },
       })
     }
@@ -127,6 +128,7 @@ export function createCancelMyTaskHandler(
                 tags: updatedDep.tags,
                 columnId: updatedDep.columnId,
                 note: warningNote,
+                actorAgentId: agentId,
               },
             })
           }

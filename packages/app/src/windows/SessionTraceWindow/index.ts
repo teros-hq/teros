@@ -1,2 +1,2 @@
 export { sessionTraceWindowDefinition } from "./definition"
-export { type SessionTraceWindowProps, SessionTraceWindowContent } from "./SessionTraceWindowContent"
+export type { SessionTraceWindowProps } from "./SessionTraceWindowContent";

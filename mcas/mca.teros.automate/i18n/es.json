@@ -1,0 +1,200 @@
+{
+  "name": "Automate",
+  "description": "Automatizaciones para agentes: recordatorios, horarios, webhooks y eventos que crean tareas, avisan en un canal o lanzan un flow. El mismo motor que la ventana Automate.",
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Comprobación interna. Verifica la conexión con el backend de Teros.",
+      "params": {}
+    },
+    "list-automations": {
+      "name": "list-automations",
+      "description": "Lista las automatizaciones del workspace: nombre, disparador (horario / una vez / webhook / evento), acción (crear tarea / avisar en canal / lanzar flow), estado, próxima ejecución y estadísticas de 7 días. Filtra por disparador, acción, estado o búsqueda por nombre; pagina con limit + cursor.",
+      "params": {
+        "trigger": "Solo este tipo de disparador.",
+        "action": "Solo este tipo de acción.",
+        "status": "Solo activas o solo desactivadas.",
+        "search": "Subcadena del nombre (sin distinguir mayúsculas).",
+        "limit": "Tamaño de página (1-200, por defecto todas).",
+        "cursor": "nextCursor de la página anterior.",
+        "timezone": "Zona horaria IANA para los tiempos legibles (por defecto la del entorno)."
+      }
+    },
+    "get-automation": {
+      "name": "get-automation",
+      "description": "Devuelve una automatización por id: configuración completa de disparador y acción, nombres resueltos y estadísticas. Nunca devuelve tokens de webhook.",
+      "params": {
+        "automationId": "Id de la automatización (starter_…).",
+        "timezone": "Zona horaria IANA para los tiempos legibles."
+      }
+    },
+    "list-executions": {
+      "name": "list-executions",
+      "description": "Historial de ejecuciones de una automatización, de más reciente a más antigua: qué la disparó (horario / una vez / webhook / evento), si tuvo éxito, la tarea o ejecución de flow producida y el error si lo hubo. Las filas con skipped:true no llegaron a correr: un guardián las rechazó. Un error que empieza por \"quota-automate_daily_limit\" significa que el usuario agotó las ejecuciones diarias de Automate de su plan ese día UTC (ver get-quota: explica el límite, el reinicio a las 00:00 UTC y las salidas: espaciar el horario, desactivar una automatización ruidosa o subir de plan); uno que empieza por \"billing-\" significa que lo bloquearon sus horas de agente o un pago.",
+      "params": {
+        "automationId": "Id de la automatización (starter_…).",
+        "limit": "Tamaño de página (1-200, por defecto 50).",
+        "cursor": "nextCursor de la página anterior."
+      }
+    },
+    "get-quota": {
+      "name": "get-quota",
+      "description": "Presupuesto diario de Automate del usuario: cuántas ejecuciones al día (UTC) permite su plan (todas las automatizaciones y tipos de disparo juntos: horarios, recordatorios, webhooks y eventos), cuántas han corrido hoy, cuántas quedan, cuándo se reinicia (00:00 UTC) y qué automatizaciones han corrido más. Úsala antes de crear un horario frecuente y cuando una automatización \"no saltó\": si used >= limit se están saltando ejecuciones hasta el reinicio. Salidas: espaciar el horario, desactivar una automatización ruidosa o subir de plan (Perfil → Plan). limit 0 significa sin límite.",
+      "params": {}
+    },
+    "list-webhook-calls": {
+      "name": "list-webhook-calls",
+      "description": "Últimos payloads recibidos por una automatización webhook, de más reciente a más antiguo (máx. 50): cuándo, discriminador, si se creó o actualizó una tarea y el payload.",
+      "params": {
+        "automationId": "Id de la automatización webhook (starter_…).",
+        "limit": "Máximo de llamadas (1-50, por defecto 50)."
+      }
+    },
+    "list-upcoming": {
+      "name": "list-upcoming",
+      "description": "Qué se disparará a continuación: automatizaciones activas de horario y de una vez ordenadas por próxima ejecución, dentro de una ventana (7 días por defecto). Opcionalmente solo las que avisan en un canal.",
+      "params": {
+        "days": "Ventana en días (1-90, por defecto 7).",
+        "channelId": "Solo automatizaciones cuya acción apunta a este canal.",
+        "limit": "Máximo de elementos (por defecto 50).",
+        "timezone": "Zona horaria IANA para los tiempos legibles."
+      }
+    },
+    "list-event-topics": {
+      "name": "list-event-topics",
+      "description": "El catálogo de eventos del workspace: cada topic que las apps instaladas declaran emitir (mensajes de Telegram, cambios de tareas del board, …) con los campos del payload usables en filtros y plantillas, más templateSyntax: la gramática exacta de las plantillas. Llámala antes de crear una automatización por evento.",
+      "params": {
+        "appId": "Solo topics de esta app instalada.",
+        "search": "Subcadena del topic o del nombre de la app."
+      }
+    },
+    "parse-time-expression": {
+      "name": "parse-time-expression",
+      "description": "Previsualiza una expresión de tiempo sin crear nada. Acepta lenguaje natural (\"mañana a las 9\", \"en 2 horas\", \"tomorrow at 9am\"), ISO 8601 o un cron de 5 campos. Devuelve el tipo (once | cron), la hora resuelta o la descripción del cron y las próximas ocurrencias.",
+      "params": {
+        "expression": "Lenguaje natural, ISO 8601 o cron de 5 campos.",
+        "timezone": "Zona horaria IANA (por defecto la del entorno).",
+        "locale": "Idioma del lenguaje natural (por defecto en).",
+        "previewCount": "Cuántas ocurrencias previsualizar (1-10, por defecto 3).",
+        "reference": "Instante ISO de referencia para expresiones relativas (por defecto ahora)."
+      }
+    },
+    "create-automation": {
+      "name": "create-automation",
+      "description": "Crea una automatización: un disparador (horario, una vez, webhook o evento) unido a una acción (crear una tarea, avisar en un canal, lanzar un flow). Devuelve la automatización y, para webhooks, la URL secreta, que se muestra una sola vez. Para disparadores de evento devuelve además los campos del payload del topic y avisa si un filtro o plantilla usa campos que el evento no lleva. Usa idempotencyKey para que los reintentos sean seguros.",
+      "params": {
+        "name": "Nombre corto que se ve en la ventana Automate.",
+        "trigger": "Cuándo se dispara. {type:\"schedule\", cron, timezone?} (cron de 5 campos) | {type:\"once\", at, timezone?, locale?} (lenguaje natural o ISO; una sola vez) | {type:\"webhook\"} (se genera una URL secreta) | {type:\"event\", topic, filters?} (topic y campos de list-event-topics; filters = lista de objetos {campo: valor}, unidos por OR).",
+        "action": "Qué pasa. {type:\"create-task\", projectId, agentId?, columnId?, titleTemplate, instructionsTemplate, descriptionTemplate?} | {type:\"channel-event\", channelId?, agentId?, messageTemplate} (por defecto: canal y agente actuales) | {type:\"start-flow\", flowId, projectId, inputMapping?}. Plantillas: {{campo}} / {{payload.campo}} / {{topic}} / {{payload}} (JSON) / {{a || b || \"literal\"}} (gana el primero no vacío); nada más ({{#if}} etc. se rechaza). Título, instrucciones y mensaje son obligatorios y no pueden renderizar vacíos; el payload del disparador pasa a ser el artefacto de entrada de la tarea.",
+        "enabled": "Por defecto true.",
+        "idempotencyKey": "La misma clave dos veces → se devuelve la primera automatización, sin duplicar."
+      }
+    },
+    "schedule-reminder": {
+      "name": "schedule-reminder",
+      "description": "Recuerda algo a una hora: el mensaje se entrega una vez en el canal (por defecto esta conversación) y el agente actúa. time: lenguaje natural (\"mañana a las 9\", \"en 2 horas\", \"el lunes a las 10\") o ISO 8601.",
+      "params": {
+        "time": "Lenguaje natural o ISO 8601, en el futuro.",
+        "message": "Lo que recibe el agente cuando se dispara (máx. 4000 caracteres).",
+        "channelId": "Canal destino (por defecto el actual).",
+        "timezone": "Zona horaria IANA en la que está expresada la hora (por defecto la del entorno).",
+        "locale": "Idioma del lenguaje natural (por defecto en).",
+        "idempotencyKey": "Clave segura ante reintentos."
+      }
+    },
+    "create-recurring-task": {
+      "name": "create-recurring-task",
+      "description": "Entrega un mensaje en un canal según un cron (canal por defecto: esta conversación); el agente actúa cada vez. cron: 5 campos \"min hora día mes díaSemana\", p. ej. \"0 9 * * 1-5\" (laborables a las 09:00).",
+      "params": {
+        "cron": "Expresión cron de 5 campos.",
+        "message": "Lo que recibe el agente en cada ejecución (máx. 4000 caracteres).",
+        "channelId": "Canal destino (por defecto el actual).",
+        "timezone": "Zona horaria IANA del cron (por defecto la del entorno).",
+        "name": "Nombre en la ventana Automate (por defecto el mensaje).",
+        "idempotencyKey": "Clave segura ante reintentos."
+      }
+    },
+    "create-webhook": {
+      "name": "create-webhook",
+      "description": "Crea un webhook: una URL secreta a la que sistemas externos hacen POST de JSON; cada llamada ejecuta la acción (crear una tarea, con deduplicación por discriminador; avisar en un canal; o lanzar un flow). La URL se devuelve una sola vez.",
+      "params": {
+        "name": "Nombre corto, p. ej. \"Issues de GitHub → tareas\".",
+        "action": "Qué pasa. {type:\"create-task\", projectId, agentId?, columnId?, titleTemplate, instructionsTemplate, descriptionTemplate?} | {type:\"channel-event\", channelId?, agentId?, messageTemplate} (por defecto: canal y agente actuales) | {type:\"start-flow\", flowId, projectId, inputMapping?}. Plantillas: {{campo}} / {{payload.campo}} / {{topic}} / {{payload}} (JSON) / {{a || b || \"literal\"}} (gana el primero no vacío); nada más ({{#if}} etc. se rechaza). Título, instrucciones y mensaje son obligatorios y no pueden renderizar vacíos; el payload del disparador pasa a ser el artefacto de entrada de la tarea.",
+        "idempotencyKey": "Clave segura ante reintentos."
+      }
+    },
+    "update-automation": {
+      "name": "update-automation",
+      "description": "Cambia una automatización: nombre, disparador, acción y/o activada. Disparador y acción usan las mismas formas que create-automation y sustituyen a los anteriores; el estado de ejecución (contadores, token del webhook) se conserva. Si el disparador pasa a webhook, devuelve una URL nueva una sola vez.",
+      "params": {
+        "automationId": "Id de la automatización (starter_…).",
+        "trigger": "Nuevo disparador (ver create-automation).",
+        "action": "Nueva acción (ver create-automation)."
+      }
+    },
+    "enable-automation": {
+      "name": "enable-automation",
+      "description": "Activa (reanuda) una automatización. Idempotente. Un horario desactivado se rearma en su siguiente slot del cron.",
+      "params": {
+        "automationId": "Id de la automatización (starter_…)."
+      }
+    },
+    "disable-automation": {
+      "name": "disable-automation",
+      "description": "Desactiva (pausa) una automatización sin borrarla. Idempotente. Conserva su configuración e historial.",
+      "params": {
+        "automationId": "Id de la automatización (starter_…)."
+      }
+    },
+    "snooze-reminder": {
+      "name": "snooze-reminder",
+      "description": "Pospone una automatización de una vez (recordatorio) un intervalo —\"30m\", \"2h\", \"1d\"— sobre su hora actual. La rearma si ya se disparó.",
+      "params": {
+        "automationId": "Id del recordatorio (starter_…).",
+        "delay": "\"30m\", \"2h\", \"1d\" (s/m/h/d)."
+      }
+    },
+    "regenerate-webhook-url": {
+      "name": "regenerate-webhook-url",
+      "description": "Rota la URL secreta de una automatización webhook. La URL anterior deja de funcionar al instante; la nueva se devuelve una sola vez.",
+      "params": {
+        "automationId": "Id de la automatización webhook (starter_…)."
+      }
+    },
+    "test-webhook": {
+      "name": "test-webhook",
+      "description": "Dispara una automatización webhook con un payload de prueba, exactamente como lo haría un POST externo (deduplicación, auditoría, estadísticas). La acción se ejecuta de verdad.",
+      "params": {
+        "automationId": "Id de la automatización webhook (starter_…).",
+        "payload": "Objeto JSON que la acción recibe como {{payload}}."
+      }
+    },
+    "delete-automation": {
+      "name": "delete-automation",
+      "description": "Borra definitivamente una automatización. Deja de dispararse al instante; las tareas, mensajes y ejecuciones de flow que ya produjo se conservan. Irreversible.",
+      "params": {
+        "automationId": "Id de la automatización (starter_…)."
+      }
+    },
+    "cancel-reminder": {
+      "name": "cancel-reminder",
+      "description": "Cancela un recordatorio pendiente (automatización de una vez). Idempotente: si ya se disparó o no existe devuelve noop.",
+      "params": {
+        "automationId": "Id del recordatorio (starter_…)."
+      }
+    },
+    "bulk-cancel": {
+      "name": "bulk-cancel",
+      "description": "Borra varias automatizaciones a la vez: por ids, o todas las que apuntan a un canal, opcionalmente solo un tipo de disparador y solo las que se ejecutarían antes de una fecha ISO. Máximo 100 por llamada. Irreversible.",
+      "params": {
+        "automationIds": "Ids explícitos (máx. 100).",
+        "channelId": "Todas las automatizaciones cuya acción apunta a este canal.",
+        "trigger": "Restringe a un tipo de disparador.",
+        "before": "Fecha ISO: solo automatizaciones cuya próxima ejecución es anterior."
+      }
+    }
+  },
+  "changelog": {
+    "1.0.0": "Primera versión — automatizaciones (horario / una vez / webhook / evento × crear tarea / avisar en canal / lanzar flow) sobre la API automate.* del backend; absorbe el MCA scheduler (recordatorios, tareas recurrentes, snooze, cancelación masiva, próximas, parseo de tiempo)."
+  }
+}

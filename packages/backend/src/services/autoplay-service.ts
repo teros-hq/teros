@@ -2,7 +2,7 @@
  * Autoplay Service — Board Autoplay v2
  *
  * Implements per-agent slot-based scheduling.
-
+ * See: docs/specs/20260412_autoplay-v2.md
  *
  * Core function: scheduleAgentTasks(projectId, agentId)
  * Triggered by:
@@ -14,11 +14,14 @@
  */
 
 import type { Db } from 'mongodb'
+import { COLLECTIONS, ensureIndexesFor } from '../db'
 import type { PubSubService } from './pubsub-service'
 import type { ChannelManager } from './channel-manager'
+import { SYSTEM_SENDER } from './board-service'
 import type { AgentProjectRelationship, AgentUsageTriggerKind } from '../types/database'
 import type { ScheduledEvent } from '../handlers/event-handler'
 import { buildTaskInitialMessage } from './board-service'
+import { cappedPush, TASK_ACTIVITY_CAP } from '../lib/task-arrays'
 
 /**
  * Minimal surface of the EventHandler that autoplay needs — just to notify the
@@ -438,12 +441,12 @@ export class AutoplayService {
       {
         $set: { columnId: blockedCol.columnId, running: false, updatedAt: now },
         $push: {
-          activity: {
+          activity: cappedPush({
             eventType: 'moved',
-            actor: 'system:autoplay',
+            actor: task.assignedAgentId || 'system:autoplay',
             timestamp: now,
             details: { toColumn: 'Blocked', reason: 'auto_wakes_exhausted', wakes: this.autoWakeCap },
-          },
+          }, TASK_ACTIVITY_CAP),
         } as any,
       },
     )
@@ -518,23 +521,32 @@ export class AutoplayService {
             updatedAt: now,
           },
           $push: {
-            activity: {
+            activity: cappedPush({
               eventType: 'started',
-              actor: 'system:autoplay',
+              actor: agentId,
               timestamp: now,
               details: { fromColumn: 'To Do', toColumn: 'In Progress', agentId },
-            },
+            }, TASK_ACTIVITY_CAP),
           } as any,
         },
       )
 
       // Create channel for this task, owned by the workspace owner so the
       // autonomous run bills a real user (TER-650/G3).
+      // TER-157: Board task channels are headless — no human is watching directly.
+      // If the task has an originChannelId (the manager channel that created it),
+      // pass it as the observer so the dual-broadcast (TER-338) can surface
+      // permission prompts there. Without headless, tools with 'ask' permission
+      // block the turn indefinitely waiting for a human who never comes.
       const channel = await this.channelManager.createChannel(
         ownerUserId,
         agentId,
         { name: task.title },
-        { workspaceId },
+        {
+          workspaceId,
+          headless: true,
+          ...(task.originChannelId && { originChannelId: task.originChannelId }),
+        },
       )
 
       // Link channel to task
@@ -543,12 +555,12 @@ export class AutoplayService {
         {
           $set: { channelId: channel.channelId, updatedAt: now },
           $push: {
-            activity: {
+            activity: cappedPush({
               eventType: 'linked',
-              actor: 'system:autoplay',
+              actor: agentId,
               timestamp: now,
               details: { channelId: channel.channelId },
-            },
+            }, TASK_ACTIVITY_CAP),
           } as any,
         },
       )
@@ -558,8 +570,10 @@ export class AutoplayService {
         taskId: task.taskId,
         title: task.title,
         description: task.description,
+        instructions: task.instructions,
         priority: task.priority ?? 'medium',
         tags: task.tags ?? [],
+        input: task.input,
       })
 
       // Fetch updated task for broadcast
@@ -577,12 +591,7 @@ export class AutoplayService {
       if (this.wakeUpCallback) {
         const msgId = this.channelManager.createMessageId()
         const msgTimestamp = new Date().toISOString()
-        const sender =
-          (await this.channelManager.getUserSender(ownerUserId)) || {
-            type: 'user' as const,
-            id: ownerUserId,
-            name: 'System',
-          }
+        const sender = SYSTEM_SENDER
 
         await this.channelManager.saveMessage({
           messageId: msgId,
@@ -648,8 +657,83 @@ export class AutoplayService {
 
     console.log(`[AutoplayService] Periodic schedule: ${activeRels.length} active agent(s)`)
 
+    // Clean up zombie tasks BEFORE scheduling — tasks with running=true whose
+    // linked channels are no longer running. These block autoplay slots and
+    // prevent new tasks from being picked up. The mismatch happens when
+    // processAgentResponse crashes or the backend restarts mid-turn and the
+    // finally block never executes.
+    await this._cleanupZombieTasks()
+
     for (const rel of activeRels) {
       await this.scheduleAgentTasks(rel.projectId, rel.agentId)
+    }
+  }
+
+  // ==========================================================================
+  // ZOMBIE TASK CLEANUP
+  // ==========================================================================
+
+  /**
+   * Find tasks with running=true whose linked channels are NOT running, and
+   * reset them to running=false. These "zombie tasks" happen when:
+   *   - The backend crashes mid-turn (finally block never runs)
+   *   - processAgentResponse throws before reaching the finally block
+   *   - The channel worker dies (fatal event) but the task flag isn't cleared
+   *
+   * Without this cleanup, zombie tasks permanently consume autoplay slots and
+   * block new tasks from being picked up. The periodic scheduler runs this
+   * every 60s as a safety net.
+   */
+  private async _cleanupZombieTasks(): Promise<void> {
+    try {
+      // Find all tasks with running=true that have a linked channel
+      const zombieCandidates = await this.db
+        .collection('tasks')
+        .find({ running: true, channelId: { $exists: true }, archived: { $ne: true } })
+        .project({ taskId: 1, channelId: 1, boardId: 1, title: 1, assignedAgentId: 1 })
+        .toArray()
+
+      if (zombieCandidates.length === 0) return
+
+      // Check which of those channels are NOT actually running
+      const channelIds = zombieCandidates.map((t) => t.channelId)
+      const runningChannelIds = await this.db
+        .collection('channels')
+        .find({ channelId: { $in: channelIds }, running: true })
+        .project({ channelId: 1 })
+        .toArray()
+
+      const runningChannelSet = new Set(runningChannelIds.map((c) => c.channelId))
+
+      const zombies = zombieCandidates.filter((t) => !runningChannelSet.has(t.channelId))
+      if (zombies.length === 0) return
+
+      console.log(
+        `[AutoplayService] Cleaning up ${zombies.length} zombie task(s) with running=true but channel not running`,
+      )
+
+      const now = new Date().toISOString()
+      for (const zombie of zombies) {
+        await this.db.collection('tasks').updateOne(
+          { taskId: zombie.taskId },
+          {
+            $set: { running: false, updatedAt: now },
+            $push: {
+              activity: cappedPush({
+                eventType: 'status_changed',
+                actor: 'system:autoplay-cleanup',
+                timestamp: now,
+                details: { reason: 'zombie_task_cleanup', fromRunning: true, toRunning: false },
+              }, TASK_ACTIVITY_CAP) as any,
+            },
+          },
+        )
+        console.log(
+          `[AutoplayService] Reset zombie task ${zombie.taskId} ("${zombie.title}") — channel ${zombie.channelId} is not running`,
+        )
+      }
+    } catch (err) {
+      console.error('[AutoplayService] Zombie task cleanup error:', err)
     }
   }
 
@@ -658,14 +742,8 @@ export class AutoplayService {
   // ==========================================================================
 
   async ensureIndexes(): Promise<void> {
-    await this.db
-      .collection('agent_project_relationships')
-      .createIndex({ projectId: 1, agentId: 1 }, { unique: true })
-
-    await this.db
-      .collection('agent_project_relationships')
-      .createIndex({ projectId: 1, playEnabled: 1 })
-
-    console.log('[AutoplayService] Indexes created')
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureIndexesFor(this.db, [COLLECTIONS.agentProjectRelationships])
   }
 }

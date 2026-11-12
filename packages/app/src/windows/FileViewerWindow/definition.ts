@@ -6,39 +6,43 @@
  * or directly from the launcher.
  */
 
-import { FileCode } from '@tamagui/lucide-icons';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { FileViewerWindowContent } from './FileViewerWindowContent';
+import { FileCode } from "@tamagui/lucide-icons"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const FileViewerWindowContent = lazyWithRetry(() =>
+  import("./FileViewerWindowContent").then((m) => ({ default: m.FileViewerWindowContent })),
+)
 
 export interface FileViewerWindowProps {
   /** Absolute path inside the agent's volume (e.g. '/workspace/mockup.html') */
-  filePath: string;
+  filePath: string
   /** Channel ID — used to resolve the correct volume when opened from a chat context.
    *  At least one of channelId or workspaceId must be provided. */
-  channelId?: string;
+  channelId?: string
   /** Workspace ID — direct fast-path when the caller knows the workspace.
    *  Preferred over channelId (avoids channel→workspace DB lookup). */
-  workspaceId?: string;
+  workspaceId?: string
 }
 
 export const fileViewerWindowDefinition: WindowTypeDefinition<FileViewerWindowProps> = {
-  type: 'file-viewer',
-  displayName: 'File Viewer',
+  type: "file-viewer",
+  audience: "user",
+  displayName: "File Viewer",
   icon: FileCode,
-  color: '#10b981', // Emerald green
+  phIcon: "file-code",
+  color: "#10b981", // Emerald green
 
   component: FileViewerWindowContent,
 
   defaultSize: { width: 800, height: 600 },
   minSize: { width: 400, height: 300 },
 
-
   // Deduplicate by filePath so the same file only opens one viewer
   getKey: (props) => props.filePath,
 
   getTitle: (props) => {
-    const filename = props.filePath.split('/').pop() ?? props.filePath;
-    return filename;
+    const filename = props.filePath.split("/").pop() ?? props.filePath
+    return filename
   },
 
   getSubtitle: (props) => props.filePath,
@@ -54,4 +58,4 @@ export const fileViewerWindowDefinition: WindowTypeDefinition<FileViewerWindowPr
     channelId: data.channelId as string | undefined,
     workspaceId: data.workspaceId as string | undefined,
   }),
-};
+}

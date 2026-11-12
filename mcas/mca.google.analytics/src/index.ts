@@ -10,8 +10,13 @@
  */
 
 import { HealthCheckBuilder, McaServer } from '@teros/mca-sdk';
-import { google } from 'googleapis';
 import type { analyticsdata_v1beta } from 'googleapis';
+import {
+  createAnalyticsClients,
+  fetchAnalyticsSecrets,
+  initializeAnalyticsClients,
+  withAnalyticsAuthRetry,
+} from './lib/analytics-client';
 import {
   accountIdOf,
   buildReportRequest,
@@ -25,74 +30,6 @@ import {
   propertyIdOf,
   type RawReportArgs,
 } from './helpers';
-
-interface AnalyticsSecrets {
-  CLIENT_ID?: string;
-  CLIENT_SECRET?: string;
-  REDIRECT_URIS?: string;
-  ACCESS_TOKEN?: string;
-  REFRESH_TOKEN?: string;
-  EMAIL?: string;
-  EXPIRY_DATE?: string;
-}
-
-// =============================================================================
-// CLIENT FACTORY
-// =============================================================================
-
-async function createAnalyticsClients(secrets: AnalyticsSecrets) {
-  const clientId = secrets.CLIENT_ID;
-  const clientSecret = secrets.CLIENT_SECRET;
-  const redirectUrisRaw = secrets.REDIRECT_URIS;
-
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      '[SYSTEM_CONFIG_MISSING] Google OAuth credentials not configured. Missing CLIENT_ID or CLIENT_SECRET.',
-    );
-  }
-
-  let redirectUri = 'https://be.teros.ai/auth/callback';
-  if (redirectUrisRaw) {
-    try {
-      const uris = JSON.parse(redirectUrisRaw);
-      redirectUri = Array.isArray(uris) ? uris[0] : redirectUrisRaw;
-    } catch {
-      redirectUri = redirectUrisRaw;
-    }
-  }
-
-  const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-
-  const accessToken = secrets.ACCESS_TOKEN;
-  const refreshToken = secrets.REFRESH_TOKEN;
-  const expiryDate = secrets.EXPIRY_DATE ? Number.parseInt(secrets.EXPIRY_DATE, 10) : undefined;
-
-  if (!accessToken || !refreshToken) {
-    throw new Error('[AUTH_REQUIRED] Google account not connected. Please connect your Google account.');
-  }
-
-  oauth2Client.setCredentials({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-    expiry_date: expiryDate,
-  });
-
-  const needsRefresh = !accessToken || (expiryDate && expiryDate < Date.now() + 60_000);
-  if (needsRefresh && refreshToken) {
-    try {
-      const { credentials } = await oauth2Client.refreshAccessToken();
-      oauth2Client.setCredentials(credentials);
-    } catch (error: any) {
-      throw new Error(`[AUTH_EXPIRED] Failed to refresh token: ${error.message}`);
-    }
-  }
-
-  return {
-    data: google.analyticsdata({ version: 'v1beta', auth: oauth2Client }),
-    admin: google.analyticsadmin({ version: 'v1beta', auth: oauth2Client }),
-    email: secrets.EMAIL || 'unknown@gmail.com',
-  };
-}
 
 // =============================================================================
 // MCA SERVER
@@ -116,10 +53,7 @@ server.tool('-health-check', {
     const builder = new HealthCheckBuilder().setVersion('1.0.0').setUptime(Math.floor(process.uptime()));
 
     try {
-      const secrets = {
-        ...(await context.getSystemSecrets()),
-        ...(await context.getUserSecrets()),
-      } as AnalyticsSecrets;
+      const secrets = await fetchAnalyticsSecrets(context);
 
       if (!secrets.CLIENT_ID) {
         builder.addIssue('SYSTEM_CONFIG_MISSING', 'Google OAuth Client ID not configured', {
@@ -134,7 +68,7 @@ server.tool('-health-check', {
         });
       }
 
-      if (!secrets.ACCESS_TOKEN || !secrets.REFRESH_TOKEN) {
+      if (!secrets.ACCESS_TOKEN) {
         builder.addIssue('AUTH_REQUIRED', 'Google account not connected', {
           type: 'user_action',
           description: 'Connect your Google account to use Analytics',
@@ -184,17 +118,13 @@ server.tool('analytics-list-accounts', {
   },
   annotations: { readOnlyHint: true, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { admin, email } = await createAnalyticsClients(secrets);
+    const { admin, email } = await initializeAnalyticsClients(context);
 
     try {
-      const response = await admin.accounts.list({
+      const response = await withAnalyticsAuthRetry(context, () => admin.accounts.list({
         pageSize: (args.pageSize as number) || 50,
         pageToken: args.pageToken as string | undefined,
-      });
+      }), 'admin.accounts.list');
       const accounts = (response.data.accounts || []).map((a: any) => ({
         accountId: accountIdOf(a.name),
         name: a.name,
@@ -240,20 +170,16 @@ server.tool('analytics-list-properties', {
   },
   annotations: { readOnlyHint: true, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { admin, email } = await createAnalyticsClients(secrets);
+    const { admin, email } = await initializeAnalyticsClients(context);
 
     const account = parseAccountName(args.accountId as string);
     try {
-      const response = await admin.properties.list({
+      const response = await withAnalyticsAuthRetry(context, () => admin.properties.list({
         filter: `parent:${account}`,
         pageSize: (args.pageSize as number) || 50,
         pageToken: args.pageToken as string | undefined,
         showDeleted: (args.showDeleted as boolean) || false,
-      });
+      }), 'admin.properties.list');
       const properties = (response.data.properties || []).map((p: any) => ({
         propertyId: propertyIdOf(p.name),
         name: p.name,
@@ -299,15 +225,11 @@ server.tool('analytics-get-property', {
   },
   annotations: { readOnlyHint: true, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { admin, email } = await createAnalyticsClients(secrets);
+    const { admin, email } = await initializeAnalyticsClients(context);
 
     const name = parsePropertyName(args.propertyId as string);
     try {
-      const response = await admin.properties.get({ name });
+      const response = await withAnalyticsAuthRetry(context, () => admin.properties.get({ name }), 'admin.properties.get');
       const p = response.data;
       return {
         account: email,
@@ -354,19 +276,15 @@ server.tool('analytics-list-data-streams', {
   },
   annotations: { readOnlyHint: true, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { admin, email } = await createAnalyticsClients(secrets);
+    const { admin, email } = await initializeAnalyticsClients(context);
 
     const parent = parsePropertyName(args.propertyId as string);
     try {
-      const response = await admin.properties.dataStreams.list({
+      const response = await withAnalyticsAuthRetry(context, () => admin.properties.dataStreams.list({
         parent,
         pageSize: (args.pageSize as number) || 50,
         pageToken: args.pageToken as string | undefined,
-      });
+      }), 'admin.properties.dataStreams.list');
       const streams = (response.data.dataStreams || []).map((s: any) => ({
         streamId: s.name?.split('/').pop(),
         name: s.name,
@@ -416,17 +334,13 @@ server.tool('analytics-get-data-stream', {
   },
   annotations: { readOnlyHint: true, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { admin, email } = await createAnalyticsClients(secrets);
+    const { admin, email } = await initializeAnalyticsClients(context);
 
     const property = parsePropertyName(args.propertyId as string);
     const streamId = parseStreamId(args.streamId as string);
     const name = `${property}/dataStreams/${streamId}`;
     try {
-      const response = await admin.properties.dataStreams.get({ name });
+      const response = await withAnalyticsAuthRetry(context, () => admin.properties.dataStreams.get({ name }), 'admin.properties.dataStreams.get');
       const s = response.data;
       return {
         account: email,
@@ -519,11 +433,7 @@ server.tool('analytics-run-report', {
   },
   annotations: { readOnlyHint: true, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { data, email } = await createAnalyticsClients(secrets);
+    const { data, email } = await initializeAnalyticsClients(context);
 
     const property = parsePropertyName(args.propertyId as string);
     // Normalization (dims/metrics → [{name}], limit/offset → string, required
@@ -534,7 +444,7 @@ server.tool('analytics-run-report', {
     ) as analyticsdata_v1beta.Schema$RunReportRequest;
 
     try {
-      const response = await data.properties.runReport({ property, requestBody });
+      const response = await withAnalyticsAuthRetry(context, () => data.properties.runReport({ property, requestBody }), 'data.properties.runReport');
       return {
         account: email,
         propertyId: propertyIdOf(property),
@@ -570,11 +480,7 @@ server.tool('analytics-batch-run-reports', {
   },
   annotations: { readOnlyHint: true, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { data, email } = await createAnalyticsClients(secrets);
+    const { data, email } = await initializeAnalyticsClients(context);
 
     const property = parsePropertyName(args.propertyId as string);
     const requests = args.requests as Array<unknown>;
@@ -592,10 +498,10 @@ server.tool('analytics-batch-run-reports', {
     ) as analyticsdata_v1beta.Schema$RunReportRequest[];
 
     try {
-      const response = await data.properties.batchRunReports({
+      const response = await withAnalyticsAuthRetry(context, () => data.properties.batchRunReports({
         property,
         requestBody: { requests: normalizedRequests },
-      });
+      }), 'data.properties.batchRunReports');
       const reports = (response.data.reports || []).map(curateReport);
       return {
         account: email,
@@ -643,11 +549,7 @@ server.tool('analytics-run-realtime-report', {
   },
   annotations: { readOnlyHint: true, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { data, email } = await createAnalyticsClients(secrets);
+    const { data, email } = await initializeAnalyticsClients(context);
 
     const property = parsePropertyName(args.propertyId as string);
     // Same shared builder, realtime mode: no dateRanges/offset/currencyCode/
@@ -658,7 +560,7 @@ server.tool('analytics-run-realtime-report', {
     }) as analyticsdata_v1beta.Schema$RunRealtimeReportRequest;
 
     try {
-      const response = await data.properties.runRealtimeReport({ property, requestBody });
+      const response = await withAnalyticsAuthRetry(context, () => data.properties.runRealtimeReport({ property, requestBody }), 'data.properties.runRealtimeReport');
       return {
         account: email,
         propertyId: propertyIdOf(property),
@@ -689,15 +591,11 @@ server.tool('analytics-get-metadata', {
   },
   annotations: { readOnlyHint: true, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { data, email } = await createAnalyticsClients(secrets);
+    const { data, email } = await initializeAnalyticsClients(context);
 
     const property = parsePropertyName(args.propertyId as string);
     try {
-      const response = await data.properties.getMetadata({ name: `${property}/metadata` });
+      const response = await withAnalyticsAuthRetry(context, () => data.properties.getMetadata({ name: `${property}/metadata` }), 'data.properties.getMetadata');
       const dims = (response.data.dimensions || []).map((d: any) => ({
         apiName: d.apiName,
         uiName: d.uiName,
@@ -756,11 +654,7 @@ server.tool('analytics-create-property', {
   },
   annotations: { readOnlyHint: false, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { admin, email } = await createAnalyticsClients(secrets);
+    const { admin, email } = await initializeAnalyticsClients(context);
 
     const account = parseAccountName(args.accountId as string);
     const displayName = String(args.displayName || '').trim();
@@ -769,7 +663,7 @@ server.tool('analytics-create-property', {
     if (!timeZone) throw new Error('[INVALID_ARGUMENT] timeZone must be a non-empty IANA time zone');
 
     try {
-      const response = await admin.properties.create({
+      const response = await withAnalyticsAuthRetry(context, () => admin.properties.create({
         requestBody: {
           parent: account,
           displayName,
@@ -777,7 +671,7 @@ server.tool('analytics-create-property', {
           currencyCode: (args.currencyCode as string) || undefined,
           industryCategory: (args.industryCategory as string) || undefined,
         },
-      });
+      }), 'admin.properties.create');
       const p = response.data;
       return {
         account: email,
@@ -823,11 +717,7 @@ server.tool('analytics-update-property', {
   },
   annotations: { readOnlyHint: false, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { admin, email } = await createAnalyticsClients(secrets);
+    const { admin, email } = await initializeAnalyticsClients(context);
 
     const name = parsePropertyName(args.propertyId as string);
     const updates: Record<string, any> = {};
@@ -853,11 +743,11 @@ server.tool('analytics-update-property', {
     }
 
     try {
-      const response = await admin.properties.patch({
+      const response = await withAnalyticsAuthRetry(context, () => admin.properties.patch({
         name,
         updateMask: mask.join(','),
         requestBody: updates,
-      });
+      }), 'admin.properties.patch');
       const p = response.data;
       return {
         account: email,
@@ -898,15 +788,11 @@ server.tool('analytics-delete-property', {
   },
   annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { admin, email } = await createAnalyticsClients(secrets);
+    const { admin, email } = await initializeAnalyticsClients(context);
 
     const name = parsePropertyName(args.propertyId as string);
     try {
-      const response = await admin.properties.delete({ name });
+      const response = await withAnalyticsAuthRetry(context, () => admin.properties.delete({ name }), 'admin.properties.delete');
       const p = response.data;
       return {
         account: email,
@@ -966,11 +852,7 @@ server.tool('analytics-create-data-stream', {
   },
   annotations: { readOnlyHint: false, openWorldHint: true },
   handler: async (args, context) => {
-    const secrets = {
-      ...(await context.getSystemSecrets()),
-      ...(await context.getUserSecrets()),
-    } as AnalyticsSecrets;
-    const { admin, email } = await createAnalyticsClients(secrets);
+    const { admin, email } = await initializeAnalyticsClients(context);
 
     const parent = parsePropertyName(args.propertyId as string);
     const type = String(args.type || '').trim();
@@ -1016,7 +898,7 @@ server.tool('analytics-create-data-stream', {
     }
 
     try {
-      const response = await admin.properties.dataStreams.create({ parent, requestBody });
+      const response = await withAnalyticsAuthRetry(context, () => admin.properties.dataStreams.create({ parent, requestBody }), 'admin.properties.dataStreams.create');
       const s = response.data;
       return {
         account: email,

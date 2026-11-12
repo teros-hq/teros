@@ -99,6 +99,7 @@
       },
       "annotations": {
         "readOnlyHint": false,
+        "safeWriteHint": true,
         "version": "2.0.0",
         "stability": "stable"
       }
@@ -138,6 +139,7 @@
       },
       "annotations": {
         "readOnlyHint": false,
+        "safeWriteHint": true,
         "version": "2.0.0",
         "stability": "stable"
       }

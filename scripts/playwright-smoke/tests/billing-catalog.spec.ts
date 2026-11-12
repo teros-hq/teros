@@ -23,14 +23,19 @@ interface PlanView {
   contactSales: boolean
 }
 
-// The catalogue (teros.ai/en) — the 5 real tiers with their load-bearing numbers.
+// The catalogue (teros.ai/en) — the 6 public tiers since the 2026-10-09 pricing update
+// (41978ec18 + migration 20261009_001): plan_starter → plan_seed (Free 0€/2h), a new paid
+// Starter (€19/8h), Pro 179 → 159. plan_seed is served as "Free": the migration sets that
+// displayName (BILLING_PLANS_SEED still says "Seed", but the boot seed is insert-only and
+// the migration runs after it).
 const EXPECTED: Record<
   string,
   { displayName: string; price: number; hours: number; popular: boolean; contactSales: boolean }
 > = {
-  plan_starter: { displayName: "Starter", price: 0, hours: 10, popular: false, contactSales: false },
+  plan_seed: { displayName: "Free", price: 0, hours: 2, popular: false, contactSales: false },
+  plan_starter: { displayName: "Starter", price: 19, hours: 8, popular: false, contactSales: false },
   plan_growth: { displayName: "Growth", price: 89, hours: 40, popular: true, contactSales: false },
-  plan_pro: { displayName: "Pro", price: 179, hours: 80, popular: false, contactSales: false },
+  plan_pro: { displayName: "Pro", price: 159, hours: 80, popular: false, contactSales: false },
   plan_ultra: { displayName: "Ultra", price: 349, hours: 200, popular: false, contactSales: false },
   plan_enterprise: {
     displayName: "Enterprise",
@@ -46,11 +51,11 @@ test.afterAll(async () => {
 })
 
 test.describe("billing — catálogo de planes G0 @billing", () => {
-  test("list-plans expone los 5 tiers con precio/horas/badges exactos", async ({ terosPage }) => {
+  test("list-plans expone los 6 tiers con precio/horas/badges exactos", async ({ terosPage }) => {
     const { plans } = await wsRequest<{ plans: PlanView[] }>(terosPage, "billing.list-plans")
     const byId = new Map(plans.map((p) => [p.planId, p]))
 
-    // Exactamente los 5 planes del catálogo — ni retirados (basic/max/infinity) ni de más.
+    // Exactamente los 6 planes del catálogo — ni retirados (basic/max/infinity/unlimited) ni de más.
     expect([...byId.keys()].sort(), "set exacto de planIds").toEqual(Object.keys(EXPECTED).sort())
 
     for (const [planId, exp] of Object.entries(EXPECTED)) {

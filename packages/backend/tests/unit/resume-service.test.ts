@@ -1,13 +1,16 @@
 /**
- * ResumeService unit tests — covers post-crash recovery additions:
- * replayPendingQueuedMessages + clearRunningFlag + reconcileOrphansAcross.
+ * ResumeService unit tests — post-crash recovery is system_resume-only:
+ * sweepStaleQueueState + clearRunningFlag + reconcileOrphansAcross + the
+ * recoverable-channel dispatch path. Boot-time replay of queued user
+ * messages was removed (2026-08-14 incident: every restart re-drove the
+ * channel's stale backlog).
  *
- * Mongo is stubbed via a fake `Db.collection().updateOne()`; SessionStore
- * is mocked with the InMemorySessionStore-shaped methods the service touches.
+ * Mongo is stubbed via a fake per-collection `Db`; SessionStore is mocked
+ * with the InMemorySessionStore-shaped methods the service touches.
  */
 
 import { describe, expect, it, mock } from 'bun:test';
-import type { MessageWithParts, SessionStore } from '@teros/core';
+import type { SessionStore } from '@teros/core';
 import { ResumeService } from '../../src/services/resume-service';
 
 // ---------------------------------------------------------------------------
@@ -16,249 +19,147 @@ import { ResumeService } from '../../src/services/resume-service';
 
 const CHANNEL = 'ch_recover_1';
 
-function mkUserMsg(id: string, text: string, channelId = CHANNEL): MessageWithParts {
-  return {
-    info: {
-      id,
-      sessionID: channelId,
-      role: 'user',
-      time: { created: Date.now() },
-      meta: { queueState: 'pending' },
-    } as any,
-    parts: [
-      {
-        id: `part_${id}`,
-        sessionID: channelId,
-        messageID: id,
-        type: 'text',
-        text,
-      } as any,
-    ],
-  };
-}
-
-function mkFileOnlyMsg(
-  id: string,
-  channelId = CHANNEL,
-  opts: { filename?: string; mime?: string; url?: string } = {},
-): MessageWithParts {
-  return {
-    info: {
-      id,
-      sessionID: channelId,
-      role: 'user',
-      time: { created: Date.now() },
-      meta: { queueState: 'pending' },
-    } as any,
-    parts: [
-      {
-        id: `part_${id}`,
-        sessionID: channelId,
-        messageID: id,
-        type: 'file',
-        filename: opts.filename ?? 'attachment.png',
-        mime: opts.mime ?? 'image/png',
-        url: opts.url ?? 'data:image/png;base64,iVBOR',
-      } as any,
-    ],
-  };
-}
+type MockCollection = {
+  updateOne: ReturnType<typeof mock>;
+  updateMany: ReturnType<typeof mock>;
+  findOne: ReturnType<typeof mock>;
+  find: ReturnType<typeof mock>;
+};
 
 function makeMockDb() {
-  const updateOne = mock(async () => ({ matchedCount: 1, modifiedCount: 1 }));
-  const findOne = mock(async () => null);
-  const find = mock(() => ({ toArray: async () => [] as any[] }));
-  const db = {
-    collection: () => ({ updateOne, findOne, find }),
-  } as any;
-  return { db, updateOne, findOne };
-}
-
-function makeMockSessionStore(opts: {
-  pending?: MessageWithParts[];
-  reconcile?: (channelId: string) => Promise<{ orphanedToolCount: number; recovered: boolean }>;
-}) {
-  const updateUserMessageQueueState = mock(async (_id: string, _state: string) => {});
-  const listPendingQueueMessages = mock(async (_channels: string[]) => opts.pending ?? []);
-  const store = {
-    listPendingQueueMessages,
-    updateUserMessageQueueState,
-    // reconcileChannel reads getMessagesForLLM — we surface a no-orphan stub by default.
-    getMessagesForLLM: async (_id: string) => ({ messages: [] as any[] }),
-    writePart: async () => {},
-  } as unknown as SessionStore;
-  return { store, updateUserMessageQueueState, listPendingQueueMessages };
+  const collections = new Map<string, MockCollection>();
+  const col = (name: string): MockCollection => {
+    let c = collections.get(name);
+    if (!c) {
+      c = {
+        updateOne: mock(async () => ({ matchedCount: 1, modifiedCount: 1 })),
+        updateMany: mock(async () => ({ matchedCount: 0, modifiedCount: 0 })),
+        findOne: mock(async () => null),
+        find: mock(() => ({ toArray: async () => [] as any[] })),
+      };
+      collections.set(name, c);
+    }
+    return c;
+  };
+  const db = { collection: (name: string) => col(name) } as any;
+  return { db, col };
 }
 
 function makeService(
   db: any,
   sessionStore: SessionStore | null = null,
-): ResumeService {
-  const eventHandler = { handleScheduledEvent: mock(async () => ({ success: true })) } as any;
+): { svc: ResumeService; handleScheduledEvent: ReturnType<typeof mock> } {
+  const handleScheduledEvent = mock(async () => ({ success: true }));
+  const eventHandler = { handleScheduledEvent } as any;
   const channelManager = { setRunning: mock(async () => {}) } as any;
-  return new ResumeService(db, eventHandler, channelManager, null, sessionStore);
+  return {
+    svc: new ResumeService(db, eventHandler, channelManager, null, sessionStore),
+    handleScheduledEvent,
+  };
 }
 
 // ---------------------------------------------------------------------------
-// replayPendingQueuedMessages
+// sweepStaleQueueState
 // ---------------------------------------------------------------------------
 
-describe('ResumeService.replayPendingQueuedMessages', () => {
-  it('empty queue: no replay callback fired; clearRunningFlag is called per channel', async () => {
-    const { db, updateOne } = makeMockDb();
-    const { store, listPendingQueueMessages } = makeMockSessionStore({ pending: [] });
-    const replay = mock(async (_c: string, _m: string, _t: string, _p: any[]) => {});
-    const svc = makeService(db, store);
-    svc.setQueueReplayHook(replay);
+describe('ResumeService.sweepStaleQueueState', () => {
+  it('marks pre-boot pending/running user messages as done, time-guarded by bootTimeMs', async () => {
+    const { db, col } = makeMockDb();
+    const before = Date.now();
+    const { svc } = makeService(db, null);
+    const after = Date.now();
 
-    await (svc as any).replayPendingQueuedMessages([CHANNEL]);
+    await (svc as any).sweepStaleQueueState();
 
-    expect(listPendingQueueMessages).toHaveBeenCalledTimes(1);
-    expect(replay).toHaveBeenCalledTimes(0);
-    // No pending → clear flag so running=true doesn't stay stuck.
-    expect(updateOne).toHaveBeenCalledTimes(1);
+    const sessionMessages = col('session_messages');
+    expect(sessionMessages.updateMany).toHaveBeenCalledTimes(1);
+    const [filter, update] = sessionMessages.updateMany.mock.calls[0] as any[];
+    expect(filter['info.role']).toBe('user');
+    expect(filter['info.meta.queueState']).toEqual({ $in: ['pending', 'running'] });
+    // The time guard must be the construction instant — live messages that
+    // arrive after boot are excluded.
+    const cutoff = filter['info.time.created'].$lt;
+    expect(cutoff).toBeGreaterThanOrEqual(before);
+    expect(cutoff).toBeLessThanOrEqual(after);
+    expect(update).toEqual({ $set: { 'info.meta.queueState': 'done' } });
   });
 
-  it('N pending messages: replay callback called N times, FIFO order per channel', async () => {
-    const { db } = makeMockDb();
-    const pending = [
-      mkUserMsg('msg_a', 'first'),
-      mkUserMsg('msg_b', 'second'),
-      mkUserMsg('msg_c', 'third'),
-    ];
-    const { store } = makeMockSessionStore({ pending });
-    const order: string[] = [];
-    const replay = mock(async (_c: string, id: string, _t: string, _p: any[]) => {
-      order.push(id);
-    });
-    const svc = makeService(db, store);
-    svc.setQueueReplayHook(replay);
+  it('runs even when no channels are running (backlog hygiene on every boot)', async () => {
+    const { db, col } = makeMockDb();
+    const { svc } = makeService(db, null);
 
-    await (svc as any).replayPendingQueuedMessages([CHANNEL]);
+    await svc.checkAndResumeConversations();
 
-    expect(replay).toHaveBeenCalledTimes(3);
-    // All on the same channel → must remain FIFO inside the channel.
-    expect(order).toEqual(['msg_a', 'msg_b', 'msg_c']);
+    expect(col('session_messages').updateMany).toHaveBeenCalledTimes(1);
   });
+});
 
-  it('error in replay does not block subsequent messages; failed msg marked done', async () => {
-    const { db } = makeMockDb();
-    const pending = [
-      mkUserMsg('msg_a', 'good'),
-      mkUserMsg('msg_b', 'boom'),
-      mkUserMsg('msg_c', 'good_again'),
-    ];
-    const { store, updateUserMessageQueueState } = makeMockSessionStore({ pending });
-    const replay = mock(async (_c: string, id: string, _t: string, _p: any[]) => {
-      if (id === 'msg_b') throw new Error('downstream replay failed');
-    });
-    const svc = makeService(db, store);
-    svc.setQueueReplayHook(replay);
+// ---------------------------------------------------------------------------
+// checkAndResumeConversations — dispatch
+// ---------------------------------------------------------------------------
 
-    await (svc as any).replayPendingQueuedMessages([CHANNEL]);
+describe('ResumeService.checkAndResumeConversations', () => {
+  it('zombie channel (stale runningAt) is reset and never resumed', async () => {
+    const { db, col } = makeMockDb();
+    const channels = col('channels');
+    channels.find = mock(() => ({
+      toArray: async () => [
+        {
+          channelId: CHANNEL,
+          running: true,
+          runningAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+        },
+      ],
+    }));
+    const { svc, handleScheduledEvent } = makeService(db, null);
 
-    expect(replay).toHaveBeenCalledTimes(3);
-    // The failed one should have been marked 'done' to avoid re-trying forever.
-    const calls = updateUserMessageQueueState.mock.calls;
-    const doneCalls = calls.filter((c: any[]) => c[0] === 'msg_b' && c[1] === 'done');
-    expect(doneCalls.length).toBe(1);
-  });
+    await svc.checkAndResumeConversations();
 
-  it('message with only file parts is replayed (NOT auto-marked done) and parts are forwarded', async () => {
-    const { db } = makeMockDb();
-    const pending = [mkFileOnlyMsg('msg_file', CHANNEL, { filename: 'cat.png', mime: 'image/png' })];
-    const { store, updateUserMessageQueueState } = makeMockSessionStore({ pending });
-    const replay = mock(async (_c: string, _id: string, _t: string, _p: any[]) => {});
-    const svc = makeService(db, store);
-    svc.setQueueReplayHook(replay);
-
-    await (svc as any).replayPendingQueuedMessages([CHANNEL]);
-
-    // File-only message MUST hit the replay path (not be silently marked done).
-    expect(replay).toHaveBeenCalledTimes(1);
-    const [, msgId, text, parts] = replay.mock.calls[0] as any[];
-    expect(msgId).toBe('msg_file');
-    expect(text).toBe('');
-    expect(parts).toHaveLength(1);
-    expect(parts[0].type).toBe('file');
-    expect(parts[0].filename).toBe('cat.png');
-
-    // No premature `done` for the file-only message — only the post-replay
-    // state machine should advance it.
-    const prematureDone = updateUserMessageQueueState.mock.calls.find(
-      (c: any[]) => c[0] === 'msg_file' && c[1] === 'done',
+    expect(handleScheduledEvent).toHaveBeenCalledTimes(0);
+    const resetCall = channels.updateOne.mock.calls.find(
+      (c: any[]) => c[0].channelId === CHANNEL && c[1].$set?.running === false,
     );
-    expect(prematureDone).toBeUndefined();
+    expect(resetCall).toBeDefined();
   });
 
-  it('message with NO text and NO file parts (truly empty) IS auto-marked done', async () => {
-    const { db } = makeMockDb();
-    const emptyMsg: MessageWithParts = {
-      info: {
-        id: 'msg_empty',
-        sessionID: CHANNEL,
-        role: 'user',
-        time: { created: Date.now() },
-        meta: { queueState: 'pending' },
-      } as any,
-      parts: [], // no parts at all
-    };
-    const { store, updateUserMessageQueueState } = makeMockSessionStore({ pending: [emptyMsg] });
-    const replay = mock(async () => {});
-    const svc = makeService(db, store);
-    svc.setQueueReplayHook(replay);
+  it('recoverable normal channel gets exactly one system_resume — no message replay', async () => {
+    const { db, col } = makeMockDb();
+    const channels = col('channels');
+    channels.find = mock(() => ({
+      toArray: async () => [
+        { channelId: CHANNEL, running: true, runningAt: new Date().toISOString() },
+      ],
+    }));
+    // Revalidation inside triggerResumeEvent: still running.
+    channels.findOne = mock(async () => ({ running: true }));
+    // No linked board task → normal channel path.
+    col('tasks').findOne = mock(async () => null);
+    const { svc, handleScheduledEvent } = makeService(db, null);
 
-    await (svc as any).replayPendingQueuedMessages([CHANNEL]);
+    await svc.checkAndResumeConversations();
 
-    expect(replay).toHaveBeenCalledTimes(0);
-    const doneCall = updateUserMessageQueueState.mock.calls.find(
-      (c: any[]) => c[0] === 'msg_empty' && c[1] === 'done',
-    );
-    expect(doneCall).toBeDefined();
+    expect(handleScheduledEvent).toHaveBeenCalledTimes(1);
+    const [event] = handleScheduledEvent.mock.calls[0] as any[];
+    expect(event.channelId).toBe(CHANNEL);
+    expect(event.eventType).toBe('system_resume');
+    expect(event.wakeUpAgent).toBe(true);
   });
 
-  it('multi-channel pending: messages from different channels can replay in parallel; per-channel FIFO preserved', async () => {
-    const { db } = makeMockDb();
-    const CH_A = 'ch_a';
-    const CH_B = 'ch_b';
-    // Two channels each with their own ordered messages.
-    const pending = [
-      mkUserMsg('a_1', '1', CH_A),
-      mkUserMsg('b_1', '1', CH_B),
-      mkUserMsg('a_2', '2', CH_A),
-      mkUserMsg('b_2', '2', CH_B),
-    ];
-    const { store } = makeMockSessionStore({ pending });
-    const channelOrder = new Map<string, string[]>();
-    const replay = mock(async (cid: string, id: string) => {
-      const list = channelOrder.get(cid) ?? [];
-      list.push(id);
-      channelOrder.set(cid, list);
-    });
-    const svc = makeService(db, store);
-    svc.setQueueReplayHook(replay);
+  it('recoverable channel whose agent already finished (running=false on revalidate) is skipped', async () => {
+    const { db, col } = makeMockDb();
+    const channels = col('channels');
+    channels.find = mock(() => ({
+      toArray: async () => [
+        { channelId: CHANNEL, running: true, runningAt: new Date().toISOString() },
+      ],
+    }));
+    channels.findOne = mock(async () => ({ running: false }));
+    col('tasks').findOne = mock(async () => null);
+    const { svc, handleScheduledEvent } = makeService(db, null);
 
-    await (svc as any).replayPendingQueuedMessages([CH_A, CH_B]);
+    await svc.checkAndResumeConversations();
 
-    expect(replay).toHaveBeenCalledTimes(4);
-    // Per-channel FIFO must hold (a_1 before a_2, b_1 before b_2).
-    expect(channelOrder.get(CH_A)).toEqual(['a_1', 'a_2']);
-    expect(channelOrder.get(CH_B)).toEqual(['b_1', 'b_2']);
-  });
-
-  it('no replay hook + pending messages → marks all as done (manual replay path)', async () => {
-    const { db } = makeMockDb();
-    const pending = [mkUserMsg('msg_a', 'x'), mkUserMsg('msg_b', 'y')];
-    const { store, updateUserMessageQueueState } = makeMockSessionStore({ pending });
-    const svc = makeService(db, store);
-    // intentionally NOT calling setQueueReplayHook
-
-    await (svc as any).replayPendingQueuedMessages([CHANNEL]);
-
-    expect(updateUserMessageQueueState).toHaveBeenCalledTimes(2);
-    for (const call of updateUserMessageQueueState.mock.calls) {
-      expect(call[1]).toBe('done');
-    }
+    expect(handleScheduledEvent).toHaveBeenCalledTimes(0);
   });
 });
 
@@ -268,13 +169,14 @@ describe('ResumeService.replayPendingQueuedMessages', () => {
 
 describe('ResumeService.clearRunningFlag', () => {
   it('issues updateOne({running:false}, $unset runningAt) on channels collection', async () => {
-    const { db, updateOne } = makeMockDb();
-    const svc = makeService(db, null);
+    const { db, col } = makeMockDb();
+    const { svc } = makeService(db, null);
 
     await (svc as any).clearRunningFlag(CHANNEL);
 
-    expect(updateOne).toHaveBeenCalledTimes(1);
-    const [filter, update] = updateOne.mock.calls[0] as any[];
+    const channels = col('channels');
+    expect(channels.updateOne).toHaveBeenCalledTimes(1);
+    const [filter, update] = channels.updateOne.mock.calls[0] as any[];
     expect(filter).toEqual({ channelId: CHANNEL });
     expect(update.$set).toEqual({ running: false });
     expect(update.$unset).toEqual({ runningAt: '' });
@@ -288,7 +190,7 @@ describe('ResumeService.clearRunningFlag', () => {
 describe('ResumeService.reconcileOrphansAcross', () => {
   it('returns channelIds unchanged if SessionStore is null (skips reconcile)', async () => {
     const { db } = makeMockDb();
-    const svc = makeService(db, null);
+    const { svc } = makeService(db, null);
 
     const result = await (svc as any).reconcileOrphansAcross(['ch_1', 'ch_2']);
     expect(result).toEqual(['ch_1', 'ch_2']);
@@ -318,7 +220,7 @@ describe('ResumeService.reconcileOrphansAcross', () => {
         ],
       },
     ];
-    let currentMessages = JSON.parse(JSON.stringify(initialMessages));
+    const currentMessages = JSON.parse(JSON.stringify(initialMessages));
     const writePart = mock(async (part: any) => {
       // Replace orphan part with the synthesized error tool_result so the
       // re-verify pass in reconcileChannel sees INV-1 closed.
@@ -336,7 +238,7 @@ describe('ResumeService.reconcileOrphansAcross', () => {
       updateUserMessageQueueState: async () => {},
     } as unknown as SessionStore;
 
-    const svc = makeService(db, store);
+    const { svc } = makeService(db, store);
     try {
       const result = await (svc as any).reconcileOrphansAcross([CHANNEL]);
 
@@ -349,5 +251,147 @@ describe('ResumeService.reconcileOrphansAcross', () => {
     } finally {
       process.env.NODE_ENV = origEnv;
     }
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// resetTaskRunningForChannel — zombie task running flag cleanup
+// ---------------------------------------------------------------------------
+
+describe('ResumeService.resetTaskRunningForChannel', () => {
+  it('resets running=false on tasks linked to the channel that have running=true', async () => {
+    const { db, col } = makeMockDb();
+    const tasks = col('tasks');
+    tasks.updateMany = mock(async () => ({ matchedCount: 1, modifiedCount: 1 }));
+    const { svc } = makeService(db, null);
+
+    await (svc as any).resetTaskRunningForChannel(CHANNEL);
+
+    expect(tasks.updateMany).toHaveBeenCalledTimes(1);
+    const [filter, update] = tasks.updateMany.mock.calls[0] as any[];
+    expect(filter).toEqual({ channelId: CHANNEL, running: true });
+    expect(update.$set.running).toBe(false);
+    expect(update.$set.updatedAt).toBeDefined();
+    expect(update.$push.activity).toBeDefined();
+  });
+
+  it('does not throw when no tasks match (graceful no-op)', async () => {
+    const { db, col } = makeMockDb();
+    const tasks = col('tasks');
+    tasks.updateMany = mock(async () => ({ matchedCount: 0, modifiedCount: 0 }));
+    const { svc } = makeService(db, null);
+
+    // Should not throw
+    await expect((svc as any).resetTaskRunningForChannel(CHANNEL)).resolves.toBeUndefined();
+  });
+
+  it('logs modifiedCount when tasks are reset', async () => {
+    const { db, col } = makeMockDb();
+    const tasks = col('tasks');
+    tasks.updateMany = mock(async () => ({ matchedCount: 2, modifiedCount: 2 }));
+    const origLog = console.log;
+    let logged = false;
+    console.log = (...args: any[]) => { if (args[0]?.includes?.('Reset running=false')) logged = true; origLog(...args); };
+    const { svc } = makeService(db, null);
+
+    await (svc as any).resetTaskRunningForChannel(CHANNEL);
+
+    console.log = origLog;
+    // The updateMany was called (the log is best-effort, we just verify the call happened)
+    expect(tasks.updateMany).toHaveBeenCalledTimes(1);
+    expect(logged).toBe(true);
+  });
+});
+
+describe('ResumeService.checkAndResumeConversations — zombie task cleanup', () => {
+  it('resets task.running=false when resetting zombie channels', async () => {
+    const { db, col } = makeMockDb();
+    const channels = col('channels');
+    channels.find = mock(() => ({
+      toArray: async () => [
+        {
+          channelId: CHANNEL,
+          running: true,
+          runningAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(), // zombie (old)
+        },
+      ],
+    }));
+    const tasks = col('tasks');
+    tasks.updateMany = mock(async () => ({ matchedCount: 1, modifiedCount: 1 }));
+    const { svc } = makeService(db, null);
+
+    await svc.checkAndResumeConversations();
+
+    // Channel running flag reset
+    const channelReset = channels.updateOne.mock.calls.find(
+      (c: any[]) => c[0].channelId === CHANNEL && c[1].$set?.running === false,
+    );
+    expect(channelReset).toBeDefined();
+
+    // Task running flag also reset
+    const taskReset = tasks.updateMany.mock.calls.find(
+      (c: any[]) => c[0].channelId === CHANNEL && c[0].running === true && c[1].$set?.running === false,
+    );
+    expect(taskReset).toBeDefined();
+  });
+});
+
+describe('ResumeService.clearRunningFlag — task cleanup', () => {
+  it('also resets task.running=false when clearing channel running flag', async () => {
+    const { db, col } = makeMockDb();
+    const tasks = col('tasks');
+    tasks.updateMany = mock(async () => ({ matchedCount: 1, modifiedCount: 1 }));
+    const { svc } = makeService(db, null);
+
+    await (svc as any).clearRunningFlag(CHANNEL);
+
+    // Channel reset
+    const channels = col('channels');
+    expect(channels.updateOne).toHaveBeenCalledTimes(1);
+    const [chFilter, chUpdate] = channels.updateOne.mock.calls[0] as any[];
+    expect(chFilter).toEqual({ channelId: CHANNEL });
+    expect(chUpdate.$set).toEqual({ running: false });
+
+    // Task reset
+    expect(tasks.updateMany).toHaveBeenCalledTimes(1);
+    const [taskFilter, taskUpdate] = tasks.updateMany.mock.calls[0] as any[];
+    expect(taskFilter).toEqual({ channelId: CHANNEL, running: true });
+    expect(taskUpdate.$set.running).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DEP-REQ-6 — the boot sweep waits until this is the only live instance
+// ---------------------------------------------------------------------------
+describe('ResumeService.startWithDelay (blue/green handoff, DEP)', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 5));
+
+  it('[DEP-AC-8] does not scan channels until the instance registry says we are alone', async () => {
+    const { db, col } = makeMockDb();
+    const channels = col('channels');
+    let release!: () => void;
+    const alone = new Promise<boolean>((resolve) => { release = () => resolve(true); });
+    const registry = { waitUntilSoleInstance: mock(() => alone) } as any;
+    const eventHandler = { handleScheduledEvent: mock(async () => ({ success: true })) } as any;
+    const channelManager = { setRunning: mock(async () => {}) } as any;
+
+    await ResumeService.startWithDelay(db, eventHandler, channelManager, null, null, registry, 0);
+    await tick();
+    expect(registry.waitUntilSoleInstance).toHaveBeenCalledWith({ pollMs: 2000, timeoutMs: 10 * 60 * 1000 });
+    expect(channels.find).not.toHaveBeenCalled(); // still waiting: the other color is alive
+
+    release();
+    await tick();
+    expect(channels.find).toHaveBeenCalled(); // alone now → sweep
+  });
+
+  it('[DEP-AC-8] sweeps right away without a registry (single-instance boot)', async () => {
+    const { db, col } = makeMockDb();
+    const eventHandler = { handleScheduledEvent: mock(async () => ({ success: true })) } as any;
+    const channelManager = { setRunning: mock(async () => {}) } as any;
+    await ResumeService.startWithDelay(db, eventHandler, channelManager, null, null, null, 0);
+    await tick();
+    expect(col('channels').find).toHaveBeenCalled();
   });
 });

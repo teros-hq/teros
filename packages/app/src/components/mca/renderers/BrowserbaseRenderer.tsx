@@ -97,7 +97,7 @@ const TOOL_META: Record<string, ToolMeta> = {
   'press-key':       { Icon: Keyboard,    label: 'Press key' },
   'wait-for':        { Icon: Globe,       label: 'Wait' },
   'take-screenshot': { Icon: Camera,      label: 'Screenshot' },
-  'network':         { Icon: Wifi,        label: 'Network requests' },
+  'network-requests': { Icon: Wifi,       label: 'Network requests' },
 };
 
 function getToolMeta(toolName: string): ToolMeta {
@@ -153,7 +153,11 @@ function SessionCreateCard({
       const parsed = JSON.parse(output);
       sessionId  = parsed.sessionId  ?? null;
       liveViewUrl = parsed.liveViewUrl ?? null;
-    } catch {}
+    } catch (err) {
+      // Non-JSON tool output just disables the Live View button — log it so a
+      // renderer/output contract change is traceable.
+      console.debug('[BrowserbaseRenderer] tool output was not JSON:', err);
+    }
   }
 
   const shortId = sessionId ? sessionId.slice(0, 8) : null;

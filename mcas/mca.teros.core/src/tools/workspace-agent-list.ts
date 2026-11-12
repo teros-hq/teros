@@ -1,7 +1,9 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const workspaceAgentList: ToolConfig = {
-  annotations: { readOnlyHint: false },
+  // readOnlyHint fix (annotation bug, 2026-10-01): pure read — lists agents,
+  // mutates nothing. Was mis-marked as mutation, so it seeded 'ask' at install.
+  annotations: { readOnlyHint: true },
   description: 'List agents in a workspace.',
   parameters: {
     type: 'object',

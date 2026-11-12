@@ -28,12 +28,13 @@ import {
   useMcaTheme,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
+import { backendUrl } from '../../../../config/runtime';
 
 // ============================================================================
 // Constants — brand identity
 // ============================================================================
 
-export const CANVA_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/canva.png`;
+export const CANVA_ICON = `${backendUrl()}/static/mcas/mca.canva/icon.svg`;
 
 /**
  * Canva official brand palette. Validated against canva.com/brand and the
@@ -517,8 +518,7 @@ export function CanvaToolShell({
   return (
     <ToolCallCard
       status={toolStatusForPrimitive(status)}
-      description={description}
-      verb={getToolLabel(toolName)}
+      description={description ?? getToolLabel(toolName)}
       iconUri={CANVA_ICON}
       badge={badge ?? statusBadge(status)}
       defaultExpanded={defaultExpanded}

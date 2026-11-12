@@ -3,7 +3,7 @@
   "id": "mca.teros.board-manager",
   "name": "Board Manager",
   "version": "2.0.0",
-  "description": "Full board management capabilities for coordinator and supervisor agents. Provides complete control over projects, boards, and tasks \u2014 including creating, assigning, updating, moving, and deleting tasks. Designed for agents that orchestrate work across multiple workers, manage priorities, and oversee the full lifecycle of a project board.",
+  "description": "Full board management capabilities for coordinator and supervisor agents. Provides complete control over projects, boards, and tasks — including creating, assigning, updating, moving, and deleting tasks. Designed for agents that orchestrate work across multiple workers, manage priorities, and oversee the full lifecycle of a project board.",
   "type": "system",
   "icon": "icon.svg",
   "category": "productivity",
@@ -16,7 +16,7 @@
     "enabled": true,
     "multi": false,
     "system": true,
-    "hidden": false,
+    "hidden": true,
     "role": "user"
   },
   "systemSecrets": [],
@@ -35,7 +35,7 @@
   ],
   "layers": {
     "tools": true,
-    "events": false,
+    "events": true,
     "ui": false,
     "permissions": false,
     "auth": false,
@@ -46,6 +46,238 @@
       "version": "2.0.0",
       "date": "2026-03-01",
       "notes": "Create and organize projects and Kanban boards, manage tasks and dependencies, assign agents, and orchestrate autonomous work"
+    }
+  ],
+  "events": [
+    {
+      "topic": "board.task_created",
+      "description": "A task was created on a board.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string",
+        "channelId": "string"
+      }
+    },
+    {
+      "topic": "board.task_moved",
+      "description": "A task changed column.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "fromColumn": "string",
+        "toColumn": "string",
+        "fromColumnName": "string",
+        "toColumnName": "string",
+        "fromStatus": "string",
+        "toStatus": "string"
+      }
+    },
+    {
+      "topic": "board.task_assigned",
+      "description": "A task was assigned to an agent.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string"
+      }
+    },
+    {
+      "topic": "board.task_unassigned",
+      "description": "A task lost its assignee.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string"
+      }
+    },
+    {
+      "topic": "board.task_started",
+      "description": "An agent started working on a task.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string",
+        "channelId": "string"
+      }
+    },
+    {
+      "topic": "board.task_completed",
+      "description": "A task was completed.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string"
+      }
+    },
+    {
+      "topic": "board.task_blocked",
+      "description": "A task was marked as blocked.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string",
+        "note": "string"
+      }
+    },
+    {
+      "topic": "board.task_cancelled",
+      "description": "A task was cancelled.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string"
+      }
+    },
+    {
+      "topic": "board.task_updated",
+      "description": "A task field changed (title, description, instructions, tags, priority…).",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "field": "string"
+      }
+    },
+    {
+      "topic": "board.task_priority_changed",
+      "description": "A task priority changed.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "oldPriority": "string",
+        "newPriority": "string"
+      }
+    },
+    {
+      "topic": "board.task_progress_note",
+      "description": "A progress note was added to a task.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string",
+        "note": "string"
+      }
+    },
+    {
+      "topic": "board.task_archived",
+      "description": "A task was archived.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date"
+      }
+    },
+    {
+      "topic": "board.task_unarchived",
+      "description": "A task was restored from the archive.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date"
+      }
+    },
+    {
+      "topic": "board.task_dependency_added",
+      "description": "A dependency was added between two tasks.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date"
+      }
+    },
+    {
+      "topic": "board.task_dependency_removed",
+      "description": "A dependency was removed.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date"
+      }
+    },
+    {
+      "topic": "board.task_linked",
+      "description": "A conversation was linked to a task (its context now lives in that channel).",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "channelId": "string (the linked conversation)",
+        "occurredAt": "ISO date"
+      }
     }
   ]
 }

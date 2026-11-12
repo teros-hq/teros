@@ -44,7 +44,7 @@ export function DeployStatusRenderer({
     ) : null;
 
   return (
-    <ToolCallCard status={status} verb="Check deploy status" badge={badge} iconUri={appIcon}>
+    <ToolCallCard status={status} description="Check deploy status" badge={badge} iconUri={appIcon}>
       {displayError ? (
         <ErrorBlock error={displayError} />
       ) : (

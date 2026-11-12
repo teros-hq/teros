@@ -1,0 +1,12 @@
+{
+  "name": "mca-microsoft-word",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@teros/mca-sdk": "0.1.0",
+    "docx": "^9.7.1",
+    "jszip": "^3.10.1",
+    "mammoth": "^1.12.1",
+    "turndown": "^7.2.4"
+  }
+}

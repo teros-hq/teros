@@ -43,9 +43,11 @@ function makeCtx(overrides: Record<string, unknown> = {}): any {
   }
 }
 
+const AGENT_ID = 'agent_test_1'
+
 const PARAMS = { workspaceId: WS, name: 'My Project', description: 'desc' }
 const call = (ctx: any) =>
-  handleBoardReadAction(ctx, 'create_project', PARAMS, USER, undefined, {} as any)
+  handleBoardReadAction(ctx, 'create_project', PARAMS, USER, AGENT_ID, {} as any)
 
 describe('create_project · broadcast project.created (TER-611)', () => {
   it('broadcasts project.created to the workspace with the exact created payload', async () => {

@@ -16,12 +16,37 @@ import {
   worseLevel,
 } from "@teros/shared"
 import { levelColors } from "../../components/monitoring/colors"
+import type { SurfaceTokens, TintKey } from "../../components/mca/primitives/colors"
+import { useColors } from "../../components/mca/primitives/useColors"
 
 export type { HealthLevel }
 export { LEVEL_LABELS, worseLevel }
 
-/** ok/warn/critical palette — the ONE monitoring palette (green/amber/red). */
+/**
+ * ok/warn/critical palette — the ONE monitoring palette (green/amber/red).
+ * Static brand hexes, kept for callers that need a colour outside a render
+ * (and for the pure-function contract). Presentation should prefer the
+ * theme-aware `levelColorsFor(c)` / `useLevelColors()` so the text tints read
+ * on both the light and the dark sheet.
+ */
 export const LEVEL_COLORS = levelColors
+
+/** The status tint key of a level: ok → green, warn → amber, critical → red. */
+export const LEVEL_TINT: Record<HealthLevel, Extract<TintKey, "g" | "a" | "r">> = {
+  ok: "g",
+  warn: "a",
+  critical: "r",
+}
+
+/** Theme-aware level → text colour (`c.tint.{g,a,r}.tx`). */
+export function levelColorsFor(c: SurfaceTokens): Record<HealthLevel, string> {
+  return { ok: c.tint.g.tx, warn: c.tint.a.tx, critical: c.tint.r.tx }
+}
+
+/** Hook form of `levelColorsFor` for components. */
+export function useLevelColors(): Record<HealthLevel, string> {
+  return levelColorsFor(useColors())
+}
 
 /**
  * p95 latency/ttft level, scoped to the model's class so a reasoning model
@@ -44,11 +69,7 @@ export const toolErrorLevel = (r: number): HealthLevel => sharedRateLevel("toolE
 export const truncationLevel = (r: number): HealthLevel => sharedRateLevel("truncation", r)
 export const emptyLevel = (r: number): HealthLevel => sharedRateLevel("empty", r)
 
-export function percentileColor(
-  metric: "latency" | "ttft",
-  p95: number,
-  modelId?: string,
-): string {
+export function percentileColor(metric: "latency" | "ttft", p95: number, modelId?: string): string {
   return LEVEL_COLORS[latencyLevel(metric, p95, modelId)]
 }
 

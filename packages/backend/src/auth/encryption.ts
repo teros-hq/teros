@@ -13,58 +13,70 @@ const IV_LENGTH = 16; // 128 bits
 const TAG_LENGTH = 16; // 128 bits
 
 /**
- * Encrypt data with AES-256-GCM
+ * Encrypt data with AES-256-GCM.
+ * `aad` (additional authenticated data) binds the ciphertext to a context:
+ * decrypting with a different aad fails.
  */
-export function encrypt(data: any, key: Buffer): EncryptedData {
-  if (key.length !== KEY_LENGTH) {
-    throw new Error(`Encryption key must be ${KEY_LENGTH} bytes`);
+export function encrypt(data: any, key: Buffer, aad?: string): EncryptedData {
+  try {
+    if (key.length !== KEY_LENGTH) {
+      throw new Error('Invalid encryption key');
+    }
+
+    // Generate random IV
+    const iv = randomBytes(IV_LENGTH);
+
+    // Create cipher
+    const cipher = createCipheriv(ALGORITHM, key, iv);
+    if (aad !== undefined) cipher.setAAD(Buffer.from(aad, 'utf8'));
+
+    // Encrypt data
+    const dataString = JSON.stringify(data);
+    let encrypted = cipher.update(dataString, 'utf8');
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+
+    // Get authentication tag
+    const tag = cipher.getAuthTag();
+
+    return {
+      data: encrypted.toString('hex'),
+      iv: iv.toString('hex'),
+      tag: tag.toString('hex'),
+    };
+  } catch {
+    throw new Error('Encryption failed');
   }
-
-  // Generate random IV
-  const iv = randomBytes(IV_LENGTH);
-
-  // Create cipher
-  const cipher = createCipheriv(ALGORITHM, key, iv);
-
-  // Encrypt data
-  const dataString = JSON.stringify(data);
-  let encrypted = cipher.update(dataString, 'utf8');
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-
-  // Get authentication tag
-  const tag = cipher.getAuthTag();
-
-  return {
-    data: encrypted.toString('hex'),
-    iv: iv.toString('hex'),
-    tag: tag.toString('hex'),
-  };
 }
 
 /**
- * Decrypt data with AES-256-GCM
+ * Decrypt data with AES-256-GCM (with the same `aad` used to encrypt, if any)
  */
-export function decrypt(encrypted: EncryptedData, key: Buffer): any {
-  if (key.length !== KEY_LENGTH) {
-    throw new Error(`Decryption key must be ${KEY_LENGTH} bytes`);
+export function decrypt(encrypted: EncryptedData, key: Buffer, aad?: string): any {
+  try {
+    if (key.length !== KEY_LENGTH) {
+      throw new Error('Invalid decryption key');
+    }
+
+    // Convert hex strings to buffers
+    const encryptedBuffer = Buffer.from(encrypted.data, 'hex');
+    const iv = Buffer.from(encrypted.iv, 'hex');
+    const tag = Buffer.from(encrypted.tag, 'hex');
+
+    // Create decipher
+    const decipher = createDecipheriv(ALGORITHM, key, iv);
+    if (aad !== undefined) decipher.setAAD(Buffer.from(aad, 'utf8'));
+    decipher.setAuthTag(tag);
+
+    // Decrypt data
+    let decrypted = decipher.update(encryptedBuffer);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+
+    // Parse JSON
+    const dataString = decrypted.toString('utf8');
+    return JSON.parse(dataString);
+  } catch {
+    throw new Error('Decryption failed');
   }
-
-  // Convert hex strings to buffers
-  const encryptedBuffer = Buffer.from(encrypted.data, 'hex');
-  const iv = Buffer.from(encrypted.iv, 'hex');
-  const tag = Buffer.from(encrypted.tag, 'hex');
-
-  // Create decipher
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
-
-  // Decrypt data
-  let decrypted = decipher.update(encryptedBuffer);
-  decrypted = Buffer.concat([decrypted, decipher.final()]);
-
-  // Parse JSON
-  const dataString = decrypted.toString('utf8');
-  return JSON.parse(dataString);
 }
 
 /**

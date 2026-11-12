@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import {
   TOOL_PERMISSIONS,
@@ -28,7 +30,6 @@ describe('TOOL_PERMISSIONS mapping', () => {
       'get-file-content', 'create-or-update-file',
       'search-code',
       'get-installation-context', 'clone-repo',
-      'create-check-run', 'update-check-run',
       'get-rate-limit', 'dispatch-event',
     ];
     for (const tool of required) {
@@ -45,8 +46,6 @@ describe('TOOL_PERMISSIONS mapping', () => {
     expect(TOOL_PERMISSIONS['cancel-workflow-run']?.actions).toBe('write');
     expect(TOOL_PERMISSIONS['add-labels-to-issue']?.issues).toBe('write');
     expect(TOOL_PERMISSIONS['create-issue']?.issues).toBe('write');
-    expect(TOOL_PERMISSIONS['create-check-run']?.checks).toBe('write');
-    expect(TOOL_PERMISSIONS['update-check-run']?.checks).toBe('write');
     expect(TOOL_PERMISSIONS['dispatch-event']?.contents).toBe('write');
   });
 
@@ -79,5 +78,49 @@ describe('TOOL_PERMISSIONS mapping', () => {
 
   it('getRequiredPermissions returns null for unknown tool', () => {
     expect(getRequiredPermissions('not-a-tool')).toBeNull();
+  });
+
+  // Guard against the exact drift that broke create-repo in production
+  // (audit task_f3dade883853eb86, 2026-10-01): permissions-map demanded
+  // administration:write but manifest.json requested administration:read,
+  // so every create-repo call 403'd with "Resource not accessible by
+  // integration". aggregateRequiredPermissions() is documented as the
+  // source of truth for the manifest permissions block — this test makes
+  // that contract enforceable instead of aspirational.
+  it('manifest.json auth.permissions satisfies every tool requirement (write wins)', () => {
+    const manifestPath = join(import.meta.dir, '..', '..', 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    const manifestPermissions = manifest.layers.auth.permissions as Record<string, string>;
+    const required = aggregateRequiredPermissions();
+
+    const problems: string[] = [];
+    for (const [key, level] of Object.entries(required)) {
+      const manifestLevel = manifestPermissions[key];
+      if (manifestLevel === undefined) {
+        problems.push(`manifest.json is missing "${key}" (tools need ${key}:${level})`);
+      } else if (manifestLevel !== level) {
+        problems.push(
+          `"${key}": manifest.json says ${manifestLevel} but tools need ${level} — ` +
+            'GitHub will reject the affected tools with 403',
+        );
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  // Least-privilege guard (audit task_f3fade883853eb86 finding #3, fixed by
+  // task_29157b443b409fa5, 2026-10-01): the manifest used to carry `workflows`
+  // and `members` although aggregateRequiredPermissions() — the documented
+  // source of truth for the manifest permissions block — showed no tool needs
+  // them. Any permission key in the manifest that no tool requires is
+  // over-scope and must fail here; add the tool that needs it or drop the key.
+  it('manifest.json auth.permissions exactly matches the tools aggregate (no over-scope)', () => {
+    const manifestPath = join(import.meta.dir, '..', '..', 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    const manifestPermissions = manifest.layers.auth.permissions as Record<string, string>;
+    const required = aggregateRequiredPermissions();
+
+    const overScoped = Object.keys(manifestPermissions).filter((key) => !(key in required));
+    expect(overScoped).toEqual([]);
   });
 });

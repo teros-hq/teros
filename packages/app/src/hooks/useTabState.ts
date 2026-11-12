@@ -8,6 +8,7 @@
 import { useMemo } from 'react';
 import { windowRegistry } from '../services/windowRegistry';
 import { useChatStore } from '../store/chatStore';
+import { type WindowTabMeta, useWindowTabMetaStore } from '../store/windowTabMetaStore';
 
 export interface TabWindow {
   id: string;
@@ -31,10 +32,10 @@ export interface TabState {
   showRedDot: boolean;
   /** Whether to show blue dot (unread notification) */
   showBlueDot: boolean;
-  /** Whether to show lock icon (private chat) */
-  showLock: boolean;
   /** Whether to show the regular icon */
   showIcon: boolean;
+  /** Live tab meta published by the window (useWindowTabMeta), if any */
+  meta: WindowTabMeta | null;
   /** Channel data (for chats) */
   channel: ReturnType<typeof useChatStore.getState>['channels'][string] | null;
 }
@@ -47,27 +48,27 @@ export function useTabState(window: TabWindow, isActive: boolean): TabState {
   // For chat windows, reactively subscribe to chatStore
   const channelId = window.type === 'chat' ? window.props.channelId : null;
   const channel = useChatStore((state) => (channelId ? state.channels[channelId] : null));
+  const meta = useWindowTabMetaStore((state) => state.meta[window.id] ?? null);
 
   // Get title
   const title = useMemo(() => {
     if (window.type === 'chat' && channel?.title) {
       return channel.title;
     }
+    if (meta?.title) return meta.title;
     return definition?.getTitle(window.props) ?? 'Window';
-  }, [window.type, channel?.title, definition, window.props]);
+  }, [window.type, channel?.title, definition, window.props, meta?.title]);
 
   // Status indicators for chats
   const isTyping = channel?.isTyping ?? false;
   const externalActionRequested = channel?.externalActionRequested ?? false;
-  const isPrivate = (channel as any)?.isPrivate ?? false;
   const hasUnreadNotification = !isActive && (window.hasNotification ?? false);
 
-  // Determine what to show (priority: spinner > red > blue > lock > icon)
+  // Determine what to show (priority: spinner > red > blue > icon).
   const showSpinner = isTyping;
   const showRedDot = !showSpinner && externalActionRequested;
   const showBlueDot = !showSpinner && !showRedDot && hasUnreadNotification;
-  const showLock = !showSpinner && !showRedDot && !showBlueDot && isPrivate;
-  const showIcon = !showSpinner && !showRedDot && !showBlueDot && !showLock;
+  const showIcon = !showSpinner && !showRedDot && !showBlueDot;
 
   return {
     definition,
@@ -77,8 +78,8 @@ export function useTabState(window: TabWindow, isActive: boolean): TabState {
     showSpinner,
     showRedDot,
     showBlueDot,
-    showLock,
     showIcon,
+    meta,
     channel,
   };
 }

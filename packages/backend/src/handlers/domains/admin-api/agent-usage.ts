@@ -9,7 +9,7 @@
  *
  * Auth: requireSystemAdmin (users.role ∈ {'admin','super'}).
  *
- *
+ * Design doc: docs/usage-instrumentation.md §10
  */
 
 import type { WsHandlerContext } from "@teros/shared"

@@ -71,7 +71,9 @@
               "skills",
               "reminders",
               "profile",
-              "roles-and-troubleshooting"
+              "roles-and-troubleshooting",
+              "terminal-claude-code",
+              "github"
             ]
           }
         },

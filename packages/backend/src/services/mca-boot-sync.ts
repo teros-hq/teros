@@ -17,6 +17,7 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import type { Db } from 'mongodb';
 import { join } from 'path';
+import { McaToolAnnotationsSchema, type McaToolAnnotations } from '@teros/shared';
 import type { McpCatalogEntry } from '../types/database';
 import type { McaManager } from './mca-manager';
 import type { McaService } from './mca-service';
@@ -28,6 +29,7 @@ interface ToolsJson {
     name: string;
     description: string;
     inputSchema: any;
+    annotations?: unknown;
   }>;
 }
 
@@ -138,7 +140,22 @@ async function syncMcaTools(
 
   // Propagate tool changes to all installed apps of this MCA
   try {
-    const propagated = await mcaService.propagateToolsToApps(mcaId, newToolNames);
+    // Validated annotations by tool name — needed so newly added tools are
+    // seeded with the install-time criterion (read-only/safe-write → 'allow',
+    // decision 2026-10-30) instead of a blanket 'ask'.
+    const toolAnnotations = new Map<string, McaToolAnnotations>();
+    for (const t of toolsJson.tools) {
+      const parsed = t.annotations ? McaToolAnnotationsSchema.safeParse(t.annotations) : null;
+      if (t.annotations && !parsed?.success) {
+        console.warn(
+          `[McaBootSync] ${mcaId}: invalid annotations on tool '${t.name}' — seeded as mutation ('ask')`,
+        );
+      }
+      if (parsed?.success) {
+        toolAnnotations.set(t.name, parsed.data);
+      }
+    }
+    const propagated = await mcaService.propagateToolsToApps(mcaId, newToolNames, toolAnnotations);
     if (propagated > 0) {
       console.log(`[McaBootSync] ${mcaId}: propagated tool changes to ${propagated} app(s)`);
     }
@@ -151,6 +168,31 @@ async function syncMcaTools(
   if (mcaManager) {
     mcaManager.invalidateStaticToolsCache(mcaId);
     console.log(`[McaBootSync] ${mcaId}: invalidated McaManager cache`);
+
+    // Recycle the running containers of this MCA's apps. The proxy builds
+    // toolNameMapping from the container's listTools() handshake — a live
+    // container keeps serving the OLD tool set no matter what the catalog or
+    // the static cache say (kill() doesn't stop http containers; they survive
+    // even a backend restart). Dropping the container makes the next tool
+    // call re-spawn it from the repo's current source. Only http MCAs run in
+    // containers; stdio MCAs re-exec the entrypoint on every spawn already.
+    // Root fix for the 2026-10-31 open-runner-terminal incident (CCR-REQ-8).
+    if (existing.runtime?.transport === 'http') {
+      try {
+        const apps = await mcaService.listAppsByMca(mcaId);
+        const appIds = apps.map((a) => a.appId);
+        if (appIds.length > 0) {
+          const recycled = await mcaManager.recycleMcaContainers(appIds);
+          if (recycled.length > 0) {
+            console.log(`[McaBootSync] ${mcaId}: recycled ${recycled.length} container(s) — [${recycled.join(', ')}]`);
+          }
+        }
+      } catch (error) {
+        console.error(`[McaBootSync] ${mcaId}: failed to recycle containers:`, error);
+        // Non-fatal — the catalog is already updated; containers recycle on
+        // their next natural restart if this failed.
+      }
+    }
   }
 
   return true;

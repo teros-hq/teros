@@ -20,10 +20,24 @@ services:
       TEROS_DETERMINISTIC: "1"
       TEROS_TEST_SEED: teros-e2e
       TEROS_TEST_EPOCH_MS: "1700000000000"
+      # Origin del frontend e2e (no está en el default de config.ts) → sin esto el backend no
+      # refleja ACAO y el browser bloquea POST /auth/session → el login nunca sale de /login.
+      CORS_ALLOWED_ORIGINS: http://app.teros.test
+      # Precio de la hora de boost (config real, sin Stripe): alimenta el coste estimado de
+      # las solicitudes de horas en la cola de admin (list-access-requests). Comprar boosts
+      # además necesita Stripe → esos specs van con @stripe.
+      BILLING_BOOST_HOUR_PRICE: "3"
     volumes:
       # Key del provider (dummy en CI; el mock ignora el valor, pero el provider `teros` debe
       # resolverse para no dar "No AI provider"). La escribe el job E2E antes del `up`.
       - ./.secrets-ci/system/fireworks.json:/app/.secrets/system/fireworks.json:ro
+    # Same-site como en prod (os.teros.ai / be.teros.ai): la sesión web es una cookie
+    # httpOnly SameSite=Lax del backend, que Chrome NO guarda ni envía entre `frontend` y
+    # `backend` (sites distintos) → storageState sin cookie → cada test re-loguea y muere
+    # por timeout. Con app.teros.test / be.teros.test ambos son el site `teros.test`.
+    networks:
+      teros-test-network:
+        aliases: [be.teros.test]
 
   # ── Frontend: Expo web estático (nginx) — TARGET_URL de la suite Playwright ──────────────
   frontend:
@@ -32,15 +46,16 @@ services:
       context: .
       dockerfile: packages/app/Dockerfile.test
       args:
-        EXPO_PUBLIC_WS_URL: ws://backend:3099/ws
-        EXPO_PUBLIC_BACKEND_URL: http://backend:3099
+        EXPO_PUBLIC_WS_URL: ws://be.teros.test:3099/ws
+        EXPO_PUBLIC_BACKEND_URL: http://be.teros.test:3099
       secrets:
         - github_token
     depends_on:
       backend:
         condition: service_healthy
     networks:
-      - teros-test-network
+      teros-test-network:
+        aliases: [app.teros.test]
     healthcheck:
       # wget a 127.0.0.1 (IPv4): en Alpine `localhost` resuelve también a ::1 (IPv6) y nginx
       # solo escucha en 0.0.0.0:80 → wget prueba ::1 y da "connection refused". TER-553.
@@ -52,6 +67,10 @@ services:
 
   # El browser (definido en el base) espera además al frontend (su TARGET_URL).
   browser:
+    environment:
+      # Same-site (ver backend): el browser navega por los alias, no por los nombres de servicio.
+      TARGET_URL: http://app.teros.test
+      BACKEND_URL: http://be.teros.test:3099
     depends_on:
       frontend:
         condition: service_healthy

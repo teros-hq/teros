@@ -25,7 +25,7 @@ import type { McaToolExecutor } from "../../services/mca-tool-executor"
 import type { UsageService } from "../../services/usage-service"
 import type { UsageTrackingService } from "../../services/usage-tracking-service"
 import type { SessionTokenBreakdown } from "../../types/database"
-import type { StreamingHelpers, StreamingState } from "./streaming-state"
+import { isPermissionRequestedMarker, type StreamingHelpers, type StreamingState } from "./streaming-state"
 import type { TypingManager } from "./typing-manager"
 
 const log = createLogger("AgentLoop")
@@ -109,6 +109,14 @@ export interface AgentLoopContext {
     status: { title?: string; hasUnread?: boolean; externalActionRequested?: boolean },
   ) => void
   maybeAutonameChannel: (channelId: string) => Promise<void>
+  /**
+   * Fire-and-forget contextual prompt suggestions: regenerate the composer's
+   * suggested prompts after each completed agent response and broadcast them
+   * via channel_status. Failure inside is swallowed (never blocks the chat).
+   */
+  maybeGenerateSuggestedPrompts: (channelId: string) => Promise<void>
+  /** Optional PubSubService for broadcasting real-time events to user-scoped topics */
+  pubSubService?: { broadcastToTopic: (topic: string, event: Record<string, unknown>) => void } | null
 }
 
 // ---------------------------------------------------------------------------
@@ -150,9 +158,12 @@ export async function handleStreamEvent(
     // Tunnel proxied executions to the target tool's presentation: the message
     // is saved and broadcast with the TARGET tool name/mcaId/inner input, so
     // renderers, history and the permission modal are indistinguishable from a
-    // direct call. Unresolvable
+    // direct call (docs/specs/20260704_tool-execution-proxy.md). Unresolvable
     // execute-tool calls keep their own name and render as a default error block.
-    const tunneled = toolExecutor?.resolveProxyExecution(msg.toolName, msg.input) ?? null
+    // Flat virtual tools (tools.flat-toolcalls) tunnel through the same
+    // contract via resolveFlatToolExecution — same renderer, real mcaId.
+    const tunneled = toolExecutor?.resolveFlatToolExecution(msg.toolName, msg.input)
+      ?? toolExecutor?.resolveProxyExecution(msg.toolName, msg.input) ?? null
     const displayToolName = tunneled?.toolName ?? msg.toolName
     const displayInput = tunneled?.input ?? msg.input
     const mcaId = tunneled?.mcaId ?? toolExecutor?.getMcaIdForTool(msg.toolName)
@@ -182,7 +193,14 @@ export async function handleStreamEvent(
     const trackedTool = streamHelpers.getToolCall(msg.toolId)
     const messageId = trackedTool?.messageId
 
-    ctx.broadcastToChannel(channelId, {
+    // PERMB-REQ-2: the `permission_requested` marker is the LLM-side result of
+    // an ask, not a completion. Broadcasting it as tool_call_complete flipped
+    // the live card to completed with the marker JSON as its output (Pablo,
+    // 2026-10-28: "un bloque output con un montón de JSON"). The card stays
+    // pending_permission (completeToolMessage leaves the record alone); the
+    // grant/deny settles it later through its own chunks.
+    const awaitingPermission = isPermissionRequestedMarker(msg.output)
+    if (!awaitingPermission) ctx.broadcastToChannel(channelId, {
       type: "message_chunk",
       channelId,
       messageId,
@@ -195,6 +213,47 @@ export async function handleStreamEvent(
       ...(msg.attachments ? { attachments: msg.attachments } : {}),
       timestamp: Date.now(),
     })
+
+    // Broadcast todo_node_changed when an agent calls a todo-list tool via LLM,
+    // so the TodoWindow refreshes in real-time (mirrors the execute-tool.ts path).
+    // The payload includes action, nodeId, parentId, and node so the frontend can
+    // apply granular animations (insert/delete/update) without a full tree reload.
+    if (msg.status === "completed" && ctx.pubSubService) {
+      const toolName = trackedTool?.toolName ?? msg.toolName
+      if (toolName) {
+        const toolMcaId = toolExecutor?.getMcaIdForTool(toolName)
+        if (toolMcaId === "mca.teros.todo-list") {
+          try {
+            const channel = await ctx.channelManager.getChannel(channelId)
+            if (channel?.userId) {
+              // Parse the tool output to extract nodeId, parentId, and node data
+              let parsedOutput: any = undefined
+              try {
+                parsedOutput = typeof msg.output === 'string' ? JSON.parse(msg.output) : msg.output
+              } catch { /* non-JSON output — just broadcast without node data */ }
+
+              const node = parsedOutput?.node
+              const nodeId = node?.nodeId ?? parsedOutput?.nodeId
+              const parentId = node?.parentId
+              // Strip the tool MCA prefix to get the bare action (e.g. 'add-node')
+              const action = toolName.replace(/^.*?_/, '')
+
+              ctx.pubSubService.broadcastToTopic(`todo:${channel.userId}`, {
+                type: "todo_node_changed",
+                action,
+                toolName,
+                ...(nodeId ? { nodeId } : {}),
+                ...(parentId !== undefined ? { parentId } : {}),
+                ...(node ? { node } : {}),
+                timestamp: Date.now(),
+              })
+            }
+          } catch {
+            // Channel lookup failure is non-fatal — just skip the broadcast
+          }
+        }
+      }
+    }
 
     streamHelpers
       .completeToolMessage({
@@ -410,6 +469,7 @@ export async function handleMessageComplete(
             fallbackUsed: responseMetadata.fallbackUsed as boolean | undefined,
             primaryErrorClass: responseMetadata.primaryErrorClass as string | undefined,
             usagePartial: !usage.inputTokens && !usage.outputTokens ? true : undefined,
+            usageEstimated: usage.usageEstimated || undefined,
             tokenBreakdown: toSessionTokenBreakdown(data.breakdown),
           })
         } catch (err) {
@@ -417,22 +477,10 @@ export async function handleMessageComplete(
         }
       }
 
-      const budget = await ctx.usageService.calculateBudget(channelId)
-      if (budget) {
-        ctx.broadcastToChannel(channelId, {
-          type: "token_budget",
-          channelId,
-          budget,
-        })
-        log.debug(
-          {
-            totalUsed: budget.totalUsed,
-            modelLimit: budget.modelLimit,
-            percentUsed: budget.percentUsed,
-          },
-          "Token budget",
-        )
-      }
+      // Token usage is admin-only now (Pablo, 2026-10-30): the `token_budget`
+      // broadcast to all channel subscribers is removed. Admins fetch it on
+      // demand via admin-api.channel-token-budget (requireAdmin-guarded — see
+      // handlers/domains/admin-api/channel-usage.ts).
     } catch (err) {
       log.error({ err }, "Error updating usage")
     }
@@ -440,6 +488,12 @@ export async function handleMessageComplete(
 
   ctx.maybeAutonameChannel(channelId).catch((err) => {
     log.error({ err }, "Error auto-naming channel")
+  })
+
+  // Contextual composer suggestions — regenerated after every agent response.
+  // Fire-and-forget: a failure never blocks or pollutes the chat flow.
+  ctx.maybeGenerateSuggestedPrompts(channelId).catch((err) => {
+    log.error({ err }, "Error generating suggested prompts")
   })
 
   // Notify about new activity in this channel

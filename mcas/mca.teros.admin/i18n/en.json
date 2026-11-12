@@ -183,6 +183,10 @@
       "name": "admin-catalog-list",
       "description": "List all available MCAs in the catalog. Super admin only."
     },
+    "admin-active-sessions": {
+      "name": "admin-active-sessions",
+      "description": "List active WebSocket connections in real time: total connections, unique users, and per-session detail (userName, userEmail, connectedAt, lastActivityAt, idleSeconds, connectionDurationSeconds). Admin only."
+    },
     "admin-usage-summary": {
       "name": "admin-usage-summary",
       "description": "Get overall usage summary (messages, tokens, costs). Super admin only."
@@ -236,9 +240,86 @@
       "name": "admin-usage-timeline",
       "description": "Get usage timeline (daily/weekly aggregates). Super admin only.",
       "params": {
-        "granularity": "Time granularity",
-        "startDate": "Start date (ISO)",
-        "endDate": "End date (ISO)"
+        "granularity": "Time granularity for aggregation (default: day)",
+        "startDate": "Start date (ISO 8601). If omitted, returns all available data from the earliest rollup.",
+        "endDate": "End date (ISO 8601). If omitted, no upper bound."
+      }
+    },
+    "admin-usage-sessions": {
+      "name": "admin-usage-sessions",
+      "description": "List agent usage sessions (paginated, newest first). Each session represents one LLM turn. Accepts filters (userId, agentId, workspaceId, provider, triggerKind, statuses) and pagination (limit, skip). Use format=\"otel\" for OpenTelemetry-style output. Super admin only.",
+      "params": {
+        "from": "Start of the time window (ISO 8601 date). Required.",
+        "to": "End of the time window (ISO 8601 date). Required.",
+        "userId": "Filter by user ID (optional).",
+        "agentId": "Filter by agent ID (optional).",
+        "workspaceId": "Filter by workspace ID (optional).",
+        "provider": "Filter by logical provider name (optional).",
+        "triggerKind": "Filter by trigger kind (optional, e.g. \"user_message\", \"scheduled\").",
+        "statuses": "Filter by session status (optional, e.g. [\"completed\", \"errored\", \"running\"]).",
+        "format": "Output format (default \"native\").",
+        "limit": "Max results (default 50, max 500).",
+        "skip": "Number of results to skip for pagination (default 0)."
+      }
+    },
+    "admin-usage-session-detail": {
+      "name": "admin-usage-session-detail",
+      "description": "Get the full detail and chronological trace of a single agent usage session: the session record, its LLM calls, tool executions, message text, thumbs feedback, and direct sub-agents. Requires a sessionUsageId. Super admin only (conversation text is super-admin-only).",
+      "params": {
+        "sessionUsageId": "The session usage ID of the session to inspect. Required."
+      }
+    },
+    "admin-model-health": {
+      "name": "admin-model-health",
+      "description": "Get per-model LLM health metrics (p50/p95/p99 latency + TTFT, error rate by kind, success rate, throughput) grouped by actual upstream provider × model. Accepts optional filters (userId, agentId, workspaceId, provider) and a time range (from/to as ISO dates). Super admin only.",
+      "params": {
+        "from": "Start of the time window (ISO 8601 date, e.g. 2026-09-14T00:00:00Z). Required.",
+        "to": "End of the time window (ISO 8601 date, e.g. 2026-09-15T00:00:00Z). Required.",
+        "userId": "Filter by user ID (optional).",
+        "agentId": "Filter by agent ID (optional).",
+        "workspaceId": "Filter by workspace ID (optional).",
+        "provider": "Filter by logical provider name (optional, e.g. \"fireworks\", \"openai\").",
+        "timeZone": "Timezone label echoed in the response for client-side rendering (default \"UTC\")."
+      }
+    },
+    "admin-model-health-timeseries": {
+      "name": "admin-model-health-timeseries",
+      "description": "Get per-hour health snapshots (p50/p95/p99 latency + TTFT, error rate, success rate, throughput) grouped by actual upstream provider × model, as a time series. Same scope as admin-model-health but returns one entry per time bucket instead of a merged figure. Accepts optional filters and groupBy (hour/day/week). Super admin only.",
+      "params": {
+        "from": "Start of the time window (ISO 8601 date). Required.",
+        "to": "End of the time window (ISO 8601 date). Required.",
+        "userId": "Filter by user ID (optional).",
+        "agentId": "Filter by agent ID (optional).",
+        "workspaceId": "Filter by workspace ID (optional).",
+        "provider": "Filter by logical provider name (optional).",
+        "groupBy": "Bucket granularity (default \"hour\"). Use \"day\" for 7d/30d ranges.",
+        "timeZone": "Timezone label echoed in the response (default \"UTC\")."
+      }
+    },
+    "admin-upstream-errors": {
+      "name": "admin-upstream-errors",
+      "description": "Get the most recent upstream provider errors (rate_limited, overloaded, server_error, spend_gate, auth_error, model_unavailable). Returns the error kind, sub-reason, and PII-scrubbed upstream message per session. Accepts optional filters (userId, agentId, workspaceId, provider) and a time range (from/to). Super admin only.",
+      "params": {
+        "from": "Start of the time window (ISO 8601 date). Required.",
+        "to": "End of the time window (ISO 8601 date). Required.",
+        "userId": "Filter by user ID (optional).",
+        "agentId": "Filter by agent ID (optional).",
+        "workspaceId": "Filter by workspace ID (optional).",
+        "provider": "Filter by logical provider name (optional).",
+        "limit": "Max results (default 50, max 200)."
+      }
+    },
+    "admin-in-flight": {
+      "name": "admin-in-flight",
+      "description": "Get a live snapshot of LLM streams currently in flight, per real upstream provider. Reads from the in-memory process gauge (not the database), so it is a point-in-time reading of this backend instance. Returns per-upstream counts, total, and a capturedAt timestamp. Super admin only."
+    },
+    "admin-provider-status": {
+      "name": "admin-provider-status",
+      "description": "Get a complete LLM provider health overview in a single call. Composes three backend actions (model-health, upstream-errors, in-flight) and returns: per-provider×model health metrics with classified status (healthy/degraded/down), recent upstream errors, live in-flight stream counts, and an overall platform verdict (green/yellow/red) with context. Parameters: periodHours (default 24), optional provider/model filters. Degrades gracefully — if one backend action fails, returns the rest with partial: true. Super admin only.",
+      "params": {
+        "periodHours": "Time window in hours for health metrics and error retrieval (default 24).",
+        "provider": "Filter by logical provider name (optional, e.g. \"fireworks\", \"openai\").",
+        "model": "Filter by model ID (optional, applied client-side on results)."
       }
     },
     "admin-feature-flags-list": {

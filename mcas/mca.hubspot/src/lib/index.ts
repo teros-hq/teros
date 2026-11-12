@@ -18,3 +18,8 @@ export {
   type HubSpotSystemSecrets,
   validateCredentials,
 } from './hubspot-client';
+export {
+  ASSOCIATION_TYPE_IDS,
+  ASSOCIATION_FROM_TYPES,
+  resolveAssociationTypeId,
+} from './association-type-ids';

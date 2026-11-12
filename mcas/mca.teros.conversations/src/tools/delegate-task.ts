@@ -2,7 +2,10 @@ import type { HttpToolConfig as ToolConfig, ToolContext } from '@teros/mca-sdk';
 import { type CreateChannelResult, type SendMessageResult, getWsClient, isWsConnected } from '../lib';
 
 export const delegateTask: ToolConfig = {
-  annotations: { readOnlyHint: false },
+  // safeWriteHint: creates a sub-conversation owned by the caller — reversible
+  // and private. send-message is deliberately NOT safe-write (visible effect in
+  // another channel).
+  annotations: { readOnlyHint: false, safeWriteHint: true },
   description:
     'Delegate a task to a new sub-conversation with an agent (defaults to yourself). Creates the conversation, sends the task prompt, and returns immediately. The sub-agent works independently and each of its responses is automatically forwarded back to this conversation.',
   parameters: {

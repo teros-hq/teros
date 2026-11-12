@@ -33,6 +33,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies OAuth credentials and connectivity.',
   parameters: {
     type: 'object',
@@ -60,7 +61,7 @@ server.tool('-health-check', {
       }
 
       // Check user credentials
-      if (!userSecrets.ACCESS_TOKEN || !userSecrets.REFRESH_TOKEN) {
+      if (!userSecrets.ACCESS_TOKEN) {
         builder.addIssue('AUTH_REQUIRED', 'Google Forms account not connected', {
           type: 'user_action',
           description: 'Connect your Google account to use Google Forms',

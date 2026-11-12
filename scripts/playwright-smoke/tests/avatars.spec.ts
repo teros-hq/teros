@@ -16,6 +16,7 @@
  */
 import { Buffer } from "node:buffer"
 import { expect, test } from "../fixtures"
+import { CONFIG } from "../helpers/config"
 import { evalTeros, getPrimaryIds } from "../helpers/teros"
 
 const ABS_URL = /^https?:\/\//
@@ -92,8 +93,12 @@ test.describe("avatares @avatars @agents", () => {
         ).agent.agentId as string
 
         const { project } = await window.teros.board.createProject(wid, `Avatar ${Date.now()}`)
-        const task = (await window.teros.board.createTask(project.projectId, { title: "Avatar task" }))
-          .task
+        const task = (
+          await window.teros.board.createTask(project.projectId, {
+            title: "Avatar task",
+            instructions: "Placeholder task to show the agent avatar on the board.",
+          })
+        ).task
         await window.teros.board.assignTask(task.taskId, agentId)
 
         const board = await window.teros.board.getBoard(project.projectId)
@@ -166,7 +171,9 @@ test.describe("avatares @avatars @agents", () => {
         token: window.teros.getSessionToken?.() ?? null,
         base: window.teros.getBackendBaseUrl?.() ?? null,
       }))
-      expect(conn.token, "session token disponible").toBeTruthy()
+      // F2 (2026-11-03): the session token is no longer readable by JS — it lives in the
+      // httpOnly teros_session cookie, which page.request shares with the browser
+      // context. A Bearer header is sent only when a token is in memory.
       expect(conn.base, "backend base URL disponible").toBeTruthy()
 
       // GIF89a 1x1 válido (el contrato es aceptar image/gif y servirlo como tal sin
@@ -176,7 +183,12 @@ test.describe("avatares @avatars @agents", () => {
         "base64",
       )
       const up = await terosPage.request.post(`${conn.base}/api/upload/avatar/${agentId}`, {
-        headers: { Authorization: `Bearer ${conn.token}` },
+        // Origin: the app uploads from the browser, which always sends it; state-changing
+        // HTTP calls without Origin/Referer are rejected since da6826dbc (anti-CSRF).
+        headers: {
+          ...(conn.token ? { Authorization: `Bearer ${conn.token}` } : {}),
+          Origin: new URL(CONFIG.targetUrl).origin,
+        },
         multipart: {
           file: { name: "smoke-avatar.gif", mimeType: "image/gif", buffer: gif },
         },

@@ -8,6 +8,12 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
@@ -34,7 +40,10 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
@@ -63,7 +72,10 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
@@ -82,7 +94,10 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     }
   ]

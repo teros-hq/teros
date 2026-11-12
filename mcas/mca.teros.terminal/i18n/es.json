@@ -1,0 +1,135 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Comprobación interna de salud. Verifica la conexión WebSocket con la API de terminal del backend."
+    },
+    "terminal-create": {
+      "name": "terminal-create",
+      "description": "Abre una sesión de terminal en la máquina Linux del workspace (compartida con la app Bash: mismos archivos, home y herramientas). El usuario la ve y puede escribir en ella desde su ventana Terminal (show, por defecto true, la muestra allí). Con agent=\"claude\" (o \"codex\", \"opencode\") la sesión arranca ese agente de código con el inicio de sesión del propio usuario (lo instala en el primer uso) y espera a que esté listo para un prompt; después usa terminal-prompt. Sin agent obtienes un shell bash; usa terminal-run para comandos. Cada llamada abre una sesión NUEVA: mira antes terminal-list y reutiliza la tuya. Las sesiones se conservan hasta terminal-destroy: las inactivas duermen y se despiertan (mismo directorio, Claude Code en su conversación) la próxima vez que una tool las use.",
+      "params": {
+        "agent": "Arranca un agente de código en la sesión: \"claude\" (Claude Code), \"codex\" u \"opencode\". La llamada vuelve cuando está listo para un prompt (o dice a qué espera).",
+        "cwd": "Directorio de trabajo (por defecto /workspace). En un shell se verifica: cwdApplied dice si el cd funcionó y cwdError trae el error del shell.",
+        "title": "Etiqueta corta que el usuario ve en su lista de sesiones; pon siempre una (p. ej. \"logs del deploy\", \"arreglar el login\")",
+        "show": "Mostrar la sesión en la ventana Terminal del usuario para que pueda seguirla (por defecto: true)",
+        "cols": "Ancho de la terminal en columnas (por defecto: 120)",
+        "rows": "Alto de la terminal en filas (por defecto: 40)"
+      }
+    },
+    "terminal-prompt": {
+      "name": "terminal-prompt",
+      "description": "Envía un prompt al agente de código que corre en una sesión (Claude Code, Codex, opencode) y espera a que termine su turno: acabó (done), pregunta algo o pide un permiso (blocked), necesita iniciar sesión, o salió. Devuelve qué pasó y la pantalla con su respuesta. Los prompts de varias líneas se pegan como un solo mensaje. Si sigue trabajando cuando se agota la espera, llama a terminal-wait until=\"turn\"; nunca vuelvas a enviar el prompt. Sirve también para comandos de barra (\"/clear\", \"/exit\") y para responder una pregunta abierta.",
+      "params": {
+        "terminalId": "Sesión de terminal-create agent=…",
+        "text": "El prompt (cualquier longitud, admite saltos de línea)",
+        "timeoutMs": "Cuánto esperar a que acabe el turno (por defecto 90000, máximo 100000)"
+      }
+    },
+    "terminal-wait": {
+      "name": "terminal-wait",
+      "description": "Espera a que pase algo en una sesión en vez de dormir o sondear, y devuelve la pantalla. until: \"turn\" — el agente de código terminó su turno, pregunta algo, necesita iniciar sesión o salió (tras terminal-prompt / terminal-send-key); \"ready\" — un agente de código arrancó y espera un prompt; \"exit\" — terminó el comando del shell; \"quiet\" — sin salida durante quietMs (cualquier programa se estabilizó); \"text\" — la pantalla muestra `text` (sin distinguir mayúsculas) o encaja con la regex `pattern`. Solo cuenta lo que pase después de tu última escritura/prompt/tecla. Agotar el tiempo no es un error: dice qué está pasando y puedes volver a llamarla.",
+      "params": {
+        "terminalId": "Id de la sesión",
+        "until": "A qué esperar (ver la descripción de la tool)",
+        "text": "until=\"text\": texto que debe mostrar la pantalla",
+        "pattern": "until=\"text\": regex de JavaScript contra la pantalla entera",
+        "quietMs": "until=\"quiet\": cuánto tiempo sin salida cuenta como estable (por defecto 1500)",
+        "timeoutMs": "Rendirse tras estos ms (por defecto 30000, máximo 100000)"
+      }
+    },
+    "terminal-run": {
+      "name": "terminal-run",
+      "description": "Ejecuta una línea de comandos en una sesión de shell, espera a que termine (hasta timeoutMs) y devuelve su salida. El usuario lo ve ejecutarse en su ventana Terminal. Para programas largos o interactivos devuelve lo que llevan impreso y que siguen en marcha: entonces usa terminal-wait until=\"exit\", terminal-screen o terminal-send-key (ctrl-c para pararlo). Para un agente de código usa terminal-prompt.",
+      "params": {
+        "terminalId": "Sesión de shell de terminal-create",
+        "command": "La línea de comandos (con saltos de línea ejecuta varias)",
+        "timeoutMs": "Cuánto esperar a que termine (por defecto 30000, máximo 100000)"
+      }
+    },
+    "terminal-screen": {
+      "name": "terminal-screen",
+      "description": "La pantalla de una sesión como texto, tal como la ve una persona, más qué corre en ella y el estado del agente de código. Úsala para programas a pantalla completa (Claude Code, vim, htop, menús, instaladores). onlyChanges devuelve solo las filas que cambiaron desde tu último vistazo (filas numeradas desde 0).",
+      "params": {
+        "terminalId": "Id de la sesión",
+        "onlyChanges": "Solo las filas que cambiaron desde la última pantalla que recibiste (por defecto false)"
+      }
+    },
+    "terminal-read": {
+      "name": "terminal-read",
+      "description": "Lee el registro de salida de una sesión (sin códigos de escape): las últimas `lines` líneas (por defecto 200) o, con `since`, solo lo que vino después de ese cursor; cada respuesta termina con el cursor para la próxima vez. Va bien para logs y salida de comandos; para programas a pantalla completa (Claude Code, vim) usa terminal-screen, el registro de una TUI son fragmentos de redibujado.",
+      "params": {
+        "terminalId": "Id de la sesión",
+        "lines": "Devolver como máximo estas líneas finales (por defecto: 200)",
+        "since": "Cursor de un read/run/wait-for anterior: solo la salida posterior"
+      }
+    },
+    "terminal-write": {
+      "name": "terminal-write",
+      "description": "Escribe texto en una sesión y pulsa Enter (sendEnter, por defecto true). De bajo nivel: mejor terminal-run para comandos de shell y terminal-prompt para agentes de código, que además esperan el resultado. El texto de varias líneas entra como un solo pegado cuando el programa lo admite. Usa sendEnter false para rellenar una entrada sin enviarla.",
+      "params": {
+        "terminalId": "Id de la sesión",
+        "text": "Texto a escribir",
+        "sendEnter": "Pulsar Enter después del texto (por defecto: true)"
+      }
+    },
+    "terminal-send-key": {
+      "name": "terminal-send-key",
+      "description": "Pulsa una tecla o una secuencia de teclas en una sesión: elegir opciones de menú (keys [\"down\",\"enter\"]), responder a un permiso (\"1\", \"enter\"), interrumpir (ctrl-c), salir (ctrl-d), cancelar (escape), cambiar de modo (shift-tab). Teclas: enter, tab, shift-tab, escape, backspace, delete, space, up, down, left, right, home, end, pageup, pagedown, insert, f1–f12, ctrl-<letra> (ctrl-c, ctrl-d, ctrl-r…), alt-<tecla> (alt-b, alt-enter…) o un solo carácter. Después usa terminal-wait para ver el efecto.",
+      "params": {
+        "terminalId": "Id de la sesión",
+        "key": "Una tecla (ver la descripción)",
+        "keys": "Varias teclas pulsadas en orden, p. ej. [\"down\",\"down\",\"enter\"]"
+      }
+    },
+    "terminal-wait-for": {
+      "name": "terminal-wait-for",
+      "description": "Espera a que una línea del registro de salida de la sesión encaje con una regex de JavaScript (se comprueba lo ya almacenado y luego cada línea nueva). Por defecto solo cuenta la salida posterior a tu último terminal-write, así que el eco del propio comando nunca encaja. Para pantallas de programas a pantalla completa y agentes de código usa terminal-wait (until=\"text\" / \"turn\").",
+      "params": {
+        "terminalId": "Id de la sesión",
+        "pattern": "Regex de JavaScript contra las líneas de salida (p. ej. \"\\$ $\", \"password:\", \"done\")",
+        "timeoutMs": "Rendirse tras estos ms (por defecto: 10000, máximo: 100000)",
+        "since": "Considerar solo la salida desde este cursor (de read/run/wait-for)"
+      }
+    },
+    "terminal-list": {
+      "name": "terminal-list",
+      "description": "Lista las sesiones de terminal de este workspace (tuyas y del usuario): id, título, qué corre en cada una, el estado del agente de código (working / blocked = esperando a alguien / done), quién la está viendo y si está dormida (las sesiones inactivas se congelan y luego duermen; cualquier tool que use una la despierta). Reutiliza una sesión en vez de abrir otra."
+    },
+    "terminal-show": {
+      "name": "terminal-show",
+      "description": "Muestra una sesión en la ventana Terminal del usuario (la abre como pestaña o la enfoca) para que pueda seguir lo que pasa. terminal-create ya lo hace salvo que show=false.",
+      "params": {
+        "terminalId": "Id de la sesión"
+      }
+    },
+    "terminal-destroy": {
+      "name": "terminal-destroy",
+      "description": "Cierra una sesión y mata lo que corra en ella. Cierra solo sesiones que abriste tú o que el usuario te pidió cerrar.",
+      "params": {
+        "terminalId": "Id de la sesión"
+      }
+    }
+  },
+  "name": "Terminal",
+  "description": "Maneja terminales que el usuario ve: abre Claude Code (o Codex/opencode) y dale tareas, o ejecuta comandos de shell. terminal-create agent=\"claude\" arranca Claude Code con el inicio de sesión del propio usuario y vuelve cuando está listo; terminal-prompt envía una tarea y espera a que acabe su turno (terminado, una pregunta, un permiso); terminal-run ejecuta un comando y devuelve su salida; terminal-wait espera un estado en vez de dormir; terminal-screen muestra la pantalla tal como la ve el usuario. Las sesiones aparecen en la ventana Terminal del usuario, que puede tener abierta junto al chat. Requiere la app Bash (mca.teros.bash) en el workspace.",
+  "changelog": [
+    {
+      "notes": "Las sesiones ya no caducan y desaparece fijar: las sesiones inactivas duermen. Tras 15 min sin entrada, salida ni nadie mirando, la máquina de terminal del workspace se congela (sin CPU, sin perder nada); tras 2 h congelada se guarda cada sesión y la máquina se para. Toda tool que usa una sesión (terminal-prompt, -run, -write, -send-key, -screen, -read, -wait, -wait-for) la despierta antes y lo dice: una sesión dormida vuelve en el mismo directorio con su salida anterior atenuada, Claude Code retoma su conversación y lo que estuviera corriendo (p. ej. un servidor de desarrollo) se indica como no reiniciado. terminal-list muestra las sesiones congeladas y dormidas. terminal-create ya no tiene pinned (se acepta y se ignora)."
+    },
+    {
+      "notes": "Tools pensadas para el agente. Nuevas terminal-prompt (enviar una tarea a Claude Code/Codex/opencode y esperar a que acabe su turno), terminal-wait (esperar el turno de un agente de código, un agente listo, un comando terminado, salida en calma o un texto en pantalla, sin dormir ni sondear), terminal-run (ejecutar un comando de shell y obtener su salida) y terminal-show (mostrar una sesión en la ventana Terminal del usuario). terminal-create acepta agent=claude|codex|opencode y vuelve cuando el agente está listo, muestra la sesión en la ventana del usuario por defecto y da a cada sesión un título real. Las respuestas son texto para el modelo (qué pasó, la pantalla, el siguiente paso) con los mismos datos en structuredContent. terminal-send-key conoce shift-tab, backspace, delete, home/end, re/av pág, teclas F, ctrl-<letra>, alt-<tecla> y secuencias de teclas. El texto de varias líneas se pega como un bloque en los programas que lo admiten."
+    },
+    {
+      "notes": "Las sesiones viven en el host de terminal del workspace (tmux): sobreviven a reinicios del backend y el usuario ve y escribe en la misma sesión desde la ventana Terminal. Nueva tool terminal-screen (pantalla renderizada: filas, cursor, título, comando en primer plano). terminal-create acepta title y pinned; terminal-list informa de título, comando, estado del agente, fijada y quién la ve."
+    },
+    {
+      "notes": "El puente solo permite acciones terminal.* del backend (admin-api.* estaba declarado pero no se usaba). Los shells del host (mca.teros.admin.bash) ya no son accesibles desde el agente: las sesiones de terminal corren en el contenedor bash del workspace."
+    },
+    {
+      "notes": "terminal-wait-for ahora encaja con prompts interactivos que nunca terminan en salto de línea (\"›››\", \"$ \"): PtyManager evalúa la línea parcial pendiente como línea virtual del buffer."
+    },
+    {
+      "notes": "Versión inicial — crea, escribe, lee, espera patrones, lista y destruye sesiones PTY interactivas alojadas en el contenedor bash del workspace"
+    }
+  ]
+}

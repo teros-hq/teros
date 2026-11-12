@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
-import { marked } from 'marked';
+import { renderMarkdown } from '@teros/shared/markdown';
 import { join } from 'path';
+import { looksLikeHtml } from './signature.js';
 
 export function getDisplayName(email?: string): string | undefined {
   if (!email) return undefined;
@@ -32,12 +33,8 @@ export function containsMarkdown(text: string): boolean {
 }
 
 export async function markdownToHtmlEmail(markdown: string): Promise<string> {
-  marked.setOptions({
-    gfm: true,
-    breaks: true,
-  });
-
-  const htmlContent = await marked.parse(markdown);
+  // Platform markdown policy (@teros/shared/markdown): `~` literal (MD-STRIKE-1), raw HTML stripped.
+  const htmlContent = renderMarkdown(markdown);
 
   return `<!DOCTYPE html>
 <html>
@@ -94,6 +91,14 @@ export async function processEmailBody(
   explicitIsHtml?: boolean,
 ): Promise<{ body: string; isHtml: boolean }> {
   if (explicitIsHtml === true) {
+    return { body, isHtml: true };
+  }
+
+  // HTML sniffing: a body that looks like HTML markup (corporate signatures,
+  // logos, tables) must never be sent as text/plain — the recipient would see
+  // the raw tags. This also keeps it out of the Markdown converter, which
+  // would mangle tables and inline styles.
+  if (looksLikeHtml(body)) {
     return { body, isHtml: true };
   }
 
@@ -167,14 +172,17 @@ export function findTextPart(part: any): string {
   }
 
   if (part.parts) {
-    const plainPart = part.parts.find((p: any) => p.mimeType === 'text/plain');
-    if (plainPart?.body?.data) {
-      return Buffer.from(plainPart.body.data, 'base64').toString();
-    }
-
+    // Prefer text/html over text/plain: corporate signatures (logos, tables,
+    // inline styles) only survive in the HTML part. Returning the plain part
+    // made agents see (and re-insert) broken signatures.
     const htmlPart = part.parts.find((p: any) => p.mimeType === 'text/html');
     if (htmlPart?.body?.data) {
       return Buffer.from(htmlPart.body.data, 'base64').toString();
+    }
+
+    const plainPart = part.parts.find((p: any) => p.mimeType === 'text/plain');
+    if (plainPart?.body?.data) {
+      return Buffer.from(plainPart.body.data, 'base64').toString();
     }
 
     for (const subPart of part.parts) {
@@ -184,6 +192,34 @@ export function findTextPart(part: any): string {
   }
 
   return '';
+}
+
+/**
+ * Find the text/html part of a Gmail API payload (`format=full`).
+ * Returns the decoded HTML exactly as stored in the MIME part, or null when
+ * the message has no HTML part. Never synthesizes HTML from the plain-text
+ * body — callers must handle null (e.g. bodyHtml: null + hasHtmlPart: false).
+ */
+export function findHtmlPart(part: any): string | null {
+  if (!part) return null;
+
+  if (part.mimeType === 'text/html' && part.body?.data) {
+    return Buffer.from(part.body.data, 'base64').toString();
+  }
+
+  if (part.parts) {
+    const htmlPart = part.parts.find((p: any) => p.mimeType === 'text/html');
+    if (htmlPart?.body?.data) {
+      return Buffer.from(htmlPart.body.data, 'base64').toString();
+    }
+
+    for (const subPart of part.parts) {
+      const result = findHtmlPart(subPart);
+      if (result) return result;
+    }
+  }
+
+  return null;
 }
 
 export function findAttachments(part: any): any[] {

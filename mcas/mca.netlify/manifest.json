@@ -21,7 +21,8 @@
   },
   "runtime": {
     "transport": "http",
-    "containerMode": "per-app"
+    "containerMode": "per-app",
+    "workspaceMount": true
   },
   "keywords": ["netlify", "deploy", "static site", "hosting", "cdn", "web"],
   "layers": {

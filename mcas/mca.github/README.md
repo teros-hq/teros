@@ -154,6 +154,7 @@ github-search-code({
 - Use fine-grained permissions when possible
 - Regularly rotate your tokens
 - Revoke tokens that are no longer needed
+- **Path-segment validation (audit task_a8f981f535d6b3c3)**: every agent-supplied identifier interpolated into an API path (`owner`, `repo`, `org`, `workflow_id`, create-repo `name`) is validated at the handler boundary against `GITHUB_SEGMENT_RE` (`^[A-Za-z0-9][A-Za-z0-9._-]*$` — same charset as clone-repo), and `githubRequest` centrally rejects any request path containing `.`/`..` segments, `//`, `?`, `#`, whitespace, control characters or backslashes before resolving any token. Invalid input throws `GitHubInvalidInputError` (`[GITHUB_INVALID_INPUT]`, status 400) and never reaches the network. Query values belong in `options.params` — never in the path.
 
 ## Troubleshooting
 

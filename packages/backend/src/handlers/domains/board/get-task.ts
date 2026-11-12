@@ -5,6 +5,7 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
+import { TASK_LIST_PROJECTION } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
 import { enrichTaskWithColumn, enrichTasksWithColumns } from './_helpers'
 
@@ -43,8 +44,17 @@ export function createGetTaskHandler(
       throw new HandlerError('FORBIDDEN', 'No access')
     }
 
-    // Get sub-tasks
-    const allTasks = await boardService.listTasks(task.boardId, {})
+    // Get sub-tasks and the parent title.
+    // The MAIN task (from getTask above) is returned complete — instructions,
+    // progressNotes, activity, input/output all included; that is the detail
+    // view. But resolving sub-tasks/parent-title does NOT need every board
+    // task's heavy fields: TASK_LIST_PROJECTION keeps this handler fast on
+    // large boards (it previously shipped the entire board to find a handful
+    // of sub-tasks). Sub-tasks render as light rows in the UI; their full
+    // content is available by calling get-task on the sub-task itself.
+    const allTasks = await boardService.listTasks(task.boardId, {
+      projection: TASK_LIST_PROJECTION,
+    })
     const subTasks = allTasks.filter((t) => t.parentTaskId === taskId)
 
     // Resolve parent task title if this is a sub-task

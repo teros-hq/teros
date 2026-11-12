@@ -11,14 +11,9 @@
  * to support (BETA has no Stripe → no hosted URL).
  */
 
-import { useTranslation } from 'react-i18next'
-import { Platform, Linking } from 'react-native'
-import { Button, Text, XStack, YStack } from 'tamagui'
-import { AlertTriangle } from '@tamagui/lucide-icons'
-import { useColors } from '../mca/primitives/useColors'
-import { colors as semanticColors, indicators } from '../mca/primitives/colors'
-
-const ACCENT = '#06B6D4'
+import { useTranslation } from "react-i18next"
+import { Linking, Platform, View } from "react-native"
+import { Btn, Card, T, Tile } from "../ui/ds"
 
 export interface PaymentDueWidgetProps {
   amount?: number
@@ -28,65 +23,58 @@ export interface PaymentDueWidgetProps {
 
 export function PaymentDueWidget({ amount, currency, hostedInvoiceUrl }: PaymentDueWidgetProps) {
   const { t } = useTranslation()
-  const c = useColors()
 
   const openInvoice = () => {
     if (!hostedInvoiceUrl) return
-    if (Platform.OS === 'web') {
-      window.open(hostedInvoiceUrl, '_blank', 'noopener,noreferrer')
+    if (Platform.OS === "web") {
+      window.open(hostedInvoiceUrl, "_blank", "noopener,noreferrer")
     } else {
       Linking.openURL(hostedInvoiceUrl)
     }
   }
 
   return (
-    <YStack
+    <View
       testID="payment-due-widget"
-      backgroundColor={c.bgInner}
-      borderColor={indicators.irreversible.border}
-      borderWidth={1}
-      borderRadius="$3"
-      padding="$3"
-      marginVertical="$2"
-      marginHorizontal="$2"
-      maxWidth={380}
-      alignSelf="flex-start"
-      gap="$2"
+      style={{ marginVertical: 8, marginHorizontal: 8, maxWidth: 380, alignSelf: "flex-start" }}
     >
-      <XStack alignItems="center" gap="$2">
-        <AlertTriangle size={16} color={semanticColors.red} />
-        <Text color={c.text} fontWeight="600" fontSize="$3">
-          {t('billing.paymentDue.title')}
-        </Text>
-      </XStack>
+      <Card pad>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Tile tone="amber" size="sm" icon="credit-card" />
+          <T step="base" style={{ flex: 1 }}>
+            {t("billing.paymentDue.title")}
+          </T>
+        </View>
 
-      <Text color={c.text2} fontSize="$2" lineHeight="$4">
-        {t('billing.paymentDue.hint')}
-      </Text>
+        <T step="sm" tone="text2" style={{ marginTop: 10 }}>
+          {t("billing.paymentDue.hint")}
+        </T>
 
-      {typeof amount === 'number' && amount > 0 && (
-        <Text testID="payment-due-amount" color={c.text2} fontSize="$2">
-          {amount} {currency ?? 'EUR'}
-        </Text>
-      )}
+        {typeof amount === "number" && amount > 0 && (
+          <T testID="payment-due-amount" step="xl" style={{ marginTop: 12 }}>
+            {amount} {currency ?? "EUR"}
+          </T>
+        )}
 
-      {hostedInvoiceUrl ? (
-        <Button
-          testID="payment-due-cta"
-          size="$2"
-          backgroundColor={ACCENT}
-          color={c.bgPage}
-          fontWeight="600"
-          alignSelf="flex-start"
-          onPress={openInvoice}
-        >
-          {t('billing.paymentDue.regularize')}
-        </Button>
-      ) : (
-        <Text color={c.text3} fontSize="$1">
-          {t('billing.paymentDue.contact')}
-        </Text>
-      )}
-    </YStack>
+        <View style={{ marginTop: 14, alignItems: "flex-start" }}>
+          {/* THE CTA: regularize the overdue payment. */}
+          {hostedInvoiceUrl ? (
+            <Btn
+              testID="payment-due-cta"
+              variant="primary"
+              size="sm"
+              icon="arrow-square-out"
+              onPress={openInvoice}
+            >
+              {t("billing.paymentDue.regularize")}
+            </Btn>
+          ) : (
+            <T step="12" tone="text3">
+              {t("billing.paymentDue.contact")}
+            </T>
+          )}
+        </View>
+      </Card>
+    </View>
   )
 }

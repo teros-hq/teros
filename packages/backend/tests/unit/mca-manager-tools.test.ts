@@ -288,19 +288,27 @@ describe('executeTool (stdio)', () => {
     return { managed, callTool };
   }
 
-  it('tool desconocida sin appId → error not found', async () => {
+  it('sin appId → fail-closed error (cross-tenant security)', async () => {
     const result = await executeTool(makeCtx(), 'nope_tool', {});
     expect(result).toEqual({
-      output: `Error: Tool 'nope_tool' not found. The MCA may not be installed or configured.`,
+      output: `Error: Tool 'nope_tool' cannot be executed without an appId. This is a security requirement.`,
       isError: true,
       mcaId: 'unknown',
     });
   });
 
+  it('con appId pero app no registrada → registerApp; null → error not installed', async () => {
+    const registerApp = mock(async () => null);
+    const ctx = makeCtx({ registerApp });
+    const result = await executeTool(ctx, 'testapp_read-file', {}, { appId: 'app_x' });
+    expect(registerApp).toHaveBeenCalledWith('app_x');
+    expect(result.output).toContain(`The app 'testapp' is not installed`);
+  });
+
   it('disabled → error explícito con mcaId', async () => {
     const ctx = makeCtx();
     ctx.mcas.set('app_x', makeManaged({ status: 'disabled', toolNameMapping: new Map([['t_a', 'a']]) }));
-    const result = await executeTool(ctx, 't_a', {});
+    const result = await executeTool(ctx, 't_a', {}, { appId: 'app_x' });
     expect(result.isError).toBe(true);
     expect(result.output).toContain('disabled');
     expect(result.mcaId).toBe('mca.test');
@@ -313,7 +321,7 @@ describe('executeTool (stdio)', () => {
       health: { status: 'not_ready', message: 'OAuth caducado', issues: [{ code: 'AUTH_EXPIRED' }], checkedAt: new Date() },
       // biome-ignore lint/suspicious/noExplicitAny: fixture
     } as any));
-    const result = await executeTool(ctx, 't_a', {});
+    const result = await executeTool(ctx, 't_a', {}, { appId: 'app_x' });
     expect(result.isError).toBe(true);
     expect(JSON.parse(result.output)).toEqual({
       error: 'MCA_NOT_READY',
@@ -334,7 +342,7 @@ describe('executeTool (stdio)', () => {
     }));
     ctx.mcas.set('app_x', managed);
 
-    const result = await executeTool(ctx, 'testapp_read-file', { path: '/x' });
+    const result = await executeTool(ctx, 'testapp_read-file', { path: '/x' }, { appId: 'app_x' });
 
     expect(callTool).toHaveBeenCalledWith({ name: 'read_file', arguments: { path: '/x' } });
     expect(result).toEqual({ output: 'línea 1\nlínea 2', isError: false, mcaId: 'mca.test' });
@@ -353,7 +361,7 @@ describe('executeTool (stdio)', () => {
     }));
     ctx.mcas.set('app_x', managed);
 
-    const result = await executeTool(ctx, 'testapp_read-file', {});
+    const result = await executeTool(ctx, 'testapp_read-file', {}, { appId: 'app_x' });
     expect(result.attachments).toEqual([
       { url: 'data:image/png;base64,QkFTRTY0', mime: 'image/png' },
       { url: 'https://x/f.pdf', mime: 'application/pdf', filename: 'f.pdf' },
@@ -368,7 +376,7 @@ describe('executeTool (stdio)', () => {
     }));
     ctx.mcas.set('app_x', managed);
 
-    const result = await executeTool(ctx, 'testapp_read-file', {});
+    const result = await executeTool(ctx, 'testapp_read-file', {}, { appId: 'app_x' });
     expect(result.output).toContain('OUTPUT TRUNCATED BY SYSTEM');
     expect(result.output.startsWith('x'.repeat(100))).toBe(true);
   });
@@ -382,7 +390,7 @@ describe('executeTool (stdio)', () => {
     }));
     ctx.mcas.set('app_x', managed);
 
-    const result = await executeTool(ctx, 'testapp_read-file', {});
+    const result = await executeTool(ctx, 'testapp_read-file', {}, { appId: 'app_x' });
     expect(result.output).toBe(exact);
   });
 
@@ -401,20 +409,12 @@ describe('executeTool (stdio)', () => {
       throw new Error('socket hangup');
     });
     ctx2.mcas.set('app_x', managed);
-    const thrown = await executeTool(ctx2, 'testapp_read-file', {});
+    const thrown = await executeTool(ctx2, 'testapp_read-file', {}, { appId: 'app_x' });
     expect(thrown).toEqual({
       output: `Error executing tool 'testapp_read-file': socket hangup`,
       isError: true,
       mcaId: 'mca.test',
     });
-  });
-
-  it('appId no registrado → registerApp; si devuelve null → error not installed', async () => {
-    const registerApp = mock(async () => null);
-    const ctx = makeCtx({ registerApp });
-    const result = await executeTool(ctx, 'testapp_read-file', {}, { appId: 'app_x' });
-    expect(registerApp).toHaveBeenCalledWith('app_x');
-    expect(result.output).toContain(`The app 'testapp' is not installed`);
   });
 
   it('standby → getOrSpawn; si tras el spawn no queda ready → error con lastError', async () => {
@@ -430,7 +430,7 @@ describe('executeTool (stdio)', () => {
       toolNameMapping: new Map([['testapp_read-file', 'read_file']]),
     }));
 
-    const result = await executeTool(ctx, 'testapp_read-file', {});
+    const result = await executeTool(ctx, 'testapp_read-file', {}, { appId: 'app_x' });
     expect(result.isError).toBe(true);
     expect(result.output).toContain('Failed to start MCA');
     expect(result.output).toContain('no docker');
@@ -472,7 +472,7 @@ describe('executeToolViaHttp', () => {
       channelId: 'ch_1',
       appId: 'app_x',
       requestId: expect.stringMatching(/^req-\d+$/),
-      callbackUrl: 'http://host.docker.internal:10001/mca/callback/app_x',
+      callbackUrl: expect.stringMatching(/^http:\/\/host\.docker\.internal:10001\/mca\/callback\/call_[A-Za-z0-9_-]+$/),
     });
     expect(ctx.containerManager.touch).toHaveBeenCalledWith('mca.test');
   });

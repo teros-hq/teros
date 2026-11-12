@@ -19,12 +19,13 @@ import type React from "react"
 import { Text, XStack } from "tamagui"
 import { Badge, type KeyValueRow, ToolCallCard, useColors, useMcaTheme } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
+import { backendUrl } from "../../../../config/runtime"
 
 // ============================================================================
 // Constants — official Runn brand
 // ============================================================================
 
-export const RUNN_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/runn-icon.png`
+export const RUNN_ICON = `${backendUrl()}/static/mcas/mca.runn/icon.svg`
 
 /**
  * Runn's official brand palette, taken from the colour logo SVG
@@ -198,11 +199,7 @@ export interface RunnProjectTotals {
 // ============================================================================
 
 /**
- * Imperative verb phrases — `ToolCallCard` composes the tense automatically
- * (`Will list… / Listing… / Listed / Failed to list / Wants to list`) via
- * `inferTenseForms`. MUST be verb-first (NOT nouns like "Projects", which would
- * conjugate to "Projectsed"). The verb is matched against the irregular/doubling
- * sets in `primitives/tense.ts`.
+ * Static tool labels shown in the ToolCallCard header.
  */
 export const TOOL_LABELS: Record<string, string> = {
   "runn-list-projects": "List projects",
@@ -430,8 +427,7 @@ export function RunnToolShell({
   return (
     <ToolCallCard
       status={toolStatusForPrimitive(status)}
-      description={description}
-      verb={getToolLabel(toolName)}
+      description={description ?? getToolLabel(toolName)}
       iconUri={RUNN_ICON}
       badge={badge ?? statusBadge(status)}
       defaultExpanded={defaultExpanded}

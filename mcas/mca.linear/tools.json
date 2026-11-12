@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -68,26 +71,20 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
       "name": "linear-get-issue",
-      "description": "Retrieve a Linear issue by UUID or identifier (e.g. \"TER-123\"). Returns curated { id, identifier, title, url, status, priority, assignee, team, project, cycle, labels, description, createdAt, updatedAt }. Params: issueId, descriptionFormat ('full' | 'summary', default 'full'), fields?, includeRaw.",
+      "description": "Retrieve a Linear issue by UUID or identifier (e.g. \"TER-123\"). Returns curated { id, identifier, title, url, status, priority, assignee, team, project, cycle, labels, description, createdAt, updatedAt }. Params: issueId, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "issueId": {
             "type": "string",
             "description": "Issue UUID or human identifier (e.g. \"TER-123\")."
-          },
-          "descriptionFormat": {
-            "type": "string",
-            "enum": [
-              "full",
-              "summary"
-            ],
-            "description": "Control description size. 'full' (default) returns the complete markdown; 'summary' truncates to 500 chars and adds descriptionTruncated=true. Useful when scanning issues for context size."
           },
           "fields": {
             "type": "array",
@@ -106,7 +103,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -179,7 +178,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -255,7 +256,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -275,7 +278,9 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "irreversible": true
+        "irreversible": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -294,7 +299,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -309,8 +316,7 @@
           },
           "body": {
             "type": "string",
-            "minLength": 1,
-            "description": "Markdown comment body. Must not be empty."
+            "description": "Markdown comment body."
           },
           "fields": {
             "type": "array",
@@ -330,7 +336,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -365,7 +373,9 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -419,7 +429,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -439,7 +451,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "irreversible": true
+        "version": "1.1.0",
+        "stability": "experimental"
       }
     },
     {
@@ -466,7 +479,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "experimental"
       }
     },
     {
@@ -488,7 +503,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "experimental"
       }
     },
     {
@@ -523,7 +540,9 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -566,7 +585,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -608,7 +629,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -628,7 +651,9 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "irreversible": true
+        "irreversible": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -655,7 +680,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "experimental"
       }
     },
     {
@@ -682,7 +709,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "experimental"
       }
     },
     {
@@ -713,7 +742,9 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -748,7 +779,9 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -786,7 +819,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     }
   ]

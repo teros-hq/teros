@@ -330,19 +330,19 @@ describe('estimateCostBreakdownUsd', () => {
 });
 
 describe('estimateCostUsd — Teros-owned hosted pricing (primary source)', () => {
-  it('prices the teros managed default (glm-5p2-fast) at the verified GLM 5.2 rate', () => {
-    // 1M input + 1M output → $1.40 + $4.40 = $5.80 (era null antes de la tabla owned).
+  it('prices the teros managed default (glm-5p2-fast) at the corrected GLM 5.2 Fast rate', () => {
+    // 1M input + 1M output → $2.10 + $6.60 = $8.70 (was $5.80 with the wrong base rate).
     const cost = estimateCostUsd({
       provider: 'teros',
       modelId: 'teros-glm-5p2-fast',
       inputTokens: 1_000_000,
       outputTokens: 1_000_000,
     });
-    expect(cost).toBeCloseTo(5.8, 6);
+    expect(cost).toBeCloseTo(8.7, 6);
   });
 
-  it('prices teros/fireworks Kimi with the Fireworks cache-read rate', () => {
-    // 1M input + 1M cache-read → $0.95 + $0.19 = $1.14.
+  it('prices teros/fireworks Kimi with the corrected Fireworks cache-read rate', () => {
+    // 1M input + 1M cache-read → $0.95 + $0.16 = $1.11 (was $1.14 with the old $0.19 rate).
     const cost = estimateCostUsd({
       provider: 'teros',
       modelId: 'teros-kimi-k2.6',
@@ -350,7 +350,7 @@ describe('estimateCostUsd — Teros-owned hosted pricing (primary source)', () =
       outputTokens: 0,
       cachedReadTokens: 1_000_000,
     });
-    expect(cost).toBeCloseTo(1.14, 6);
+    expect(cost).toBeCloseTo(1.11, 6);
   });
 
   it('owned pricing does NOT shadow the ai-tokenizer fallback for anthropic', () => {

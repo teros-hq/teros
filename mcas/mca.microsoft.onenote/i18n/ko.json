@@ -1,0 +1,75 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 확인 도구. OAuth 자격 증명 및 연결을 확인합니다."
+    },
+    "list-notebooks": {
+      "name": "list-notebooks",
+      "description": "계정이 열 수 있는 모든 OneNote 전자기록장을 나열합니다. 공유된 전자기록장 포함."
+    },
+    "get-notebook": {
+      "name": "get-notebook",
+      "description": "ID로 OneNote 전자기록장 하나를 가져옵니다. 이름, 공유 상태, 웹 URL 포함."
+    },
+    "create-notebook": {
+      "name": "create-notebook",
+      "description": "새 OneNote 전자기록장을 만듭니다."
+    },
+    "list-sections": {
+      "name": "list-sections",
+      "description": "OneNote 섹션을 나열합니다. 전자기록장으로 제한 가능."
+    },
+    "create-section": {
+      "name": "create-section",
+      "description": "OneNote 전자기록장 내에 섹션을 만듭니다."
+    },
+    "list-section-groups": {
+      "name": "list-section-groups",
+      "description": "OneNote 섹션 그룹을 나열합니다 — 전자기록장 내 섹션을 담는 폴더."
+    },
+    "list-pages": {
+      "name": "list-pages",
+      "description": "OneNote 페이지를 최신순으로 나열합니다. 메타데이터만 반환 — 페이지 내용은 get-page-content 사용."
+    },
+    "get-page": {
+      "name": "get-page",
+      "description": "ID로 OneNote 페이지 하나를 가져옵니다: 제목, 타임스탬프, 위치, 상위 섹션."
+    },
+    "get-page-content": {
+      "name": "get-page-content",
+      "description": "OneNote 페이지 본문을 읽습니다. 기본적으로 markdown을 반환합니다."
+    },
+    "create-page": {
+      "name": "create-page",
+      "description": "섹션에 markdown 또는 HTML 내용으로 OneNote 페이지를 만듭니다."
+    },
+    "delete-page": {
+      "name": "delete-page",
+      "description": "OneNote 페이지를 삭제합니다."
+    },
+    "copy-page-to-section": {
+      "name": "copy-page-to-section",
+      "description": "OneNote 페이지를 다른 섹션으로 복사합니다. 전자기록장 간 복사 가능."
+    },
+    "append-to-page": {
+      "name": "append-to-page",
+      "description": "기존 OneNote 페이지에 내용을 추가합니다. 기존 내용은 유지됩니다."
+    },
+    "replace-page-content": {
+      "name": "replace-page-content",
+      "description": "OneNote 페이지 내용을 교체합니다. 제목만 교체할 수도 있습니다."
+    },
+    "search-pages": {
+      "name": "search-pages",
+      "description": "모든 전자기록장에서 텍스트로 OneNote 페이지를 검색합니다."
+    }
+  },
+  "name": "OneNote",
+  "description": "Microsoft OneNote 통합 — 전자기록장과 섹션 탐색, markdown으로 페이지 읽기/쓰기, 노트 검색",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — OneNote 전자기록장, 섹션, 페이지 읽기/쓰기/검색"
+    }
+  ]
+}

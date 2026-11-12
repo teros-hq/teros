@@ -28,9 +28,11 @@ import type { SecretsManager } from '../secrets/secrets-manager';
 import type { SessionManager } from '../services/session-manager';
 import type { PubSubService } from '../services/pubsub-service';
 import type { WorkspaceService } from '../services/workspace-service';
+import type { FeatureFlagService } from '../services/feature-flag-service';
 import type { MCAEventSubscriptionService } from '../services/mca-event-subscription-service';
 import type { MessageHandler } from './message-handler';
 import type { SessionStore } from '@teros/core';
+import { resolveApiToken } from '../auth/api-tokens';
 
 // =============================================================================
 // TYPES
@@ -41,26 +43,24 @@ interface VoiceConnection {
   elevenLabsWs: WebSocket | null;
   userId: string;
   workspaceId: string; // workspace context for this voice session — used to scope worker channels
-  voiceChannelId: string; // internal channel for voice session (transcript storage fallback)
-  chatChannelId: string | null; // chat channel where transcripts are written inline (if provided)
+  // Voice Mode v2 F0 (REQ-2): the voice session lives in the conversation
+  // channel — the same channel the text chat uses. voiceChannelId is kept as
+  // an alias of the conversation channel so internal call sites read one
+  // canonical id; there is no separate voice channel anymore.
+  voiceChannelId: string; // = conversation channel id (alias, single channel)
+  chatChannelId: string | null; // = conversation channel id (alias, kept for compat)
   agentId: string;
   conversationId?: string;
   sessionId: string;
   // Active worker channels delegated via send-message / execute-tool:
   // workerChannelId → subscriptions_channel ids created for it (turn_start + turn_end).
-  // The subscriptions route the worker's turn events to the voice channel; they are
+  // The subscriptions route the worker's turn events to the voice session; they are
   // deleted when the worker finishes or the voice session closes.
   activeWorkerChannels: Map<string, string[]>;
   // Active worker channels already read via get-channel-messages since the last
   // user turn. Allows ONE progress read per user turn ("how's it going?") while
   // blocking tight polling loops. Cleared on every user_transcript.
   channelReadsThisTurn: Set<string>;
-  // AF-2: When the worker runs inside the conversation channel (chatChannelId),
-  // we temporarily set originChannelId on it to route turn events to the voice
-  // channel. This stores the PREVIOUS originChannelId (if any) so cleanup can
-  // restore it when the voice session ends — prevents stale voice-channel
-  // references from persisting on the conversation channel document.
-  savedOriginChannelId?: string | null;
   // AF-4: Silent mode — 'active' (default, agent responds to every turn) or
   // 'silent' (agent transcribes but suppresses spoken responses). Toggled by
   // voice commands "Alice off" / "Alice on" and variants.
@@ -105,6 +105,7 @@ export class VoiceHandler {
     private mcaEventSubscriptionService: MCAEventSubscriptionService,
     authService?: AuthService,
     private workspaceService: WorkspaceService | null = null,
+    private featureFlagService: FeatureFlagService | null = null,
   ) {
     this.authService = authService ?? new AuthService(db);
   }
@@ -208,37 +209,51 @@ export class VoiceHandler {
       // below turns a denial into an error frame + close.
       await assertCanCreateChannel(this.db, this.workspaceService, userId, workspaceId, agentId);
 
-      // 3. Create or resume voice channel (for transcript storage)
-      let voiceChannelId: string;
+      // 3. Resolve the single conversation channel (Voice Mode v2 F0, REQ-2).
+      //
+      // The voice session lives IN the conversation channel — the same channel
+      // the text chat uses. The system no longer creates separate voice
+      // channels ("Voice Conversation"), and the dual-write that kept two
+      // copies of every transcript is gone: everything persists once, with
+      // source:'voice', in this one channel.
+      //
+      // Resolution order:
+      //   1. chatChannelId (the conversation the client is on) — verified
+      //      to exist and belong to the user.
+      //   2. existingChannelId (resume) — the same conversation channel from
+      //      a previous voice session.
+      //   3. If neither is provided or valid, we cannot attach the session to
+      //      a conversation — reject with a typed error instead of silently
+      //      creating an orphan voice channel (old behavior, removed).
+      let conversationChannelId: string;
       let isResuming = false;
 
-      if (existingChannelId) {
-        // Try to reuse existing channel
-        const existing = await this.channelManager.getChannel(existingChannelId);
-        if (existing && (existing as any).userId === userId) {
-          voiceChannelId = existingChannelId;
+      const candidateId = chatChannelId || existingChannelId;
+      if (candidateId) {
+        const candidate = await this.channelManager.getChannel(candidateId);
+        if (candidate && (candidate as any).userId === userId) {
+          conversationChannelId = candidateId;
           isResuming = true;
-          console.log(`[VoiceHandler] Resuming voice channel: ${voiceChannelId}`);
+          console.log(`[VoiceHandler] Voice session attached to conversation channel: ${conversationChannelId}`);
         } else {
-          console.warn(`[VoiceHandler] Channel ${existingChannelId} not found or unauthorized, creating new`);
-          const voiceChannel = await this.channelManager.createChannel(
-            userId,
-            agentId,
-            { transport: 'voice', name: 'Voice Conversation' },
-            { workspaceId },
-          );
-          voiceChannelId = voiceChannel.channelId;
+          console.warn(`[VoiceHandler] Channel ${candidateId} not found or unauthorized — rejecting voice session (no orphan voice channels)`);
+          this.sendToClient(clientWs, {
+            type: 'error',
+            code: 'channel_unavailable',
+            message: 'The conversation channel for this voice session was not found or is not yours. Reopen the chat and try again.',
+          });
+          clientWs.close();
+          return;
         }
       } else {
-        const voiceChannel = await this.channelManager.createChannel(
-          userId,
-          agentId,
-          { transport: 'voice', name: 'Voice Conversation' },
-          { workspaceId },
-        );
-        voiceChannelId = voiceChannel.channelId;
+        this.sendToClient(clientWs, {
+          type: 'error',
+          code: 'channel_required',
+          message: 'A chatChannelId is required for voice sessions (voice lives in the conversation channel).',
+        });
+        clientWs.close();
+        return;
       }
-      console.log(`[VoiceHandler] Voice channel: ${voiceChannelId}`);
 
       // 3. Get ElevenLabs signed URL
       const signedUrl = await this.getElevenLabsSignedUrl();
@@ -252,46 +267,52 @@ export class VoiceHandler {
       const userEmail = user?.profile?.email || '';
 
       // 4b. Load prior context for ElevenLabs prompt injection.
-      //   - If resuming a voice channel, load voice transcript history.
-      //   - If a chatChannelId is provided (AF-1), load the text conversation context
-      //     so ElevenLabs knows what was discussed and which files were read.
+      //   Voice Mode v2 F0: the session lives in the conversation channel, so
+      //   the conversation's own history IS the prior context — files read,
+      //   messages, and any previous voice transcripts (source:'voice') all
+      //   live in the same channel now. One load, no merging of two sources.
       let priorContext = '';
       let historicTranscripts: Array<{ id: string; text: string; isUser: boolean; timestamp: number; type?: string }> = [];
       if (isResuming) {
-        priorContext = await this.loadPriorContext(voiceChannelId);
-        historicTranscripts = await this.loadHistoricTranscripts(voiceChannelId);
-      }
-      // AF-1: inject text-conversation context (files, recent messages) into the
-      // voice session prompt. This is the core fix for the 3-files test — without
-      // it, ElevenLabs has zero knowledge of anything said or read in text mode.
-      if (chatChannelId) {
-        const chatContext = await this.loadChatContext(chatChannelId);
-        if (chatContext) {
-          priorContext = priorContext
-            ? `${priorContext}\n\n--- Text conversation context ---\n${chatContext}`
-            : chatContext;
-        }
+        priorContext = await this.loadPriorContext(conversationChannelId);
+        historicTranscripts = await this.loadHistoricTranscripts(conversationChannelId);
       }
 
-      // 7. Init connection
+      // 4c. Restore the persisted voice mode for this channel+agent (REQ-6:
+      // mode survives reconnections). The record stores canonical values
+      // ('conversation' | 'passive'); the legacy engine uses 'active' | 'silent'.
+      const persistedMode = await this.loadPersistedVoiceMode(conversationChannelId, agentId);
+      const initialMode: 'active' | 'silent' = persistedMode === 'passive' ? 'silent' : 'active';
+      if (persistedMode) {
+        console.log(`[VoiceHandler] Restored persisted voice mode '${persistedMode}' for channel ${conversationChannelId}`);
+      }
+
+      // 7. Init connection — Voice Mode v2 F0: voiceChannelId and chatChannelId
+      // are the same conversation channel (single channel, REQ-2). Both fields
+      // are kept as aliases so call sites read one canonical id.
       const connection: VoiceConnection = {
         clientWs,
         elevenLabsWs: null,
         userId,
         workspaceId,
-        voiceChannelId,
-        chatChannelId: chatChannelId || null,
+        voiceChannelId: conversationChannelId,
+        chatChannelId: conversationChannelId,
         agentId,
         sessionId,
         activeWorkerChannels: new Map(),
         channelReadsThisTurn: new Set(),
-        // AF-4: Silent mode — starts in 'active' (normal responding).
-        mode: 'active',
+        // AF-4 silent mode + Voice Mode v2 F0: initial mode restored from the
+        // persisted voice_sessions record (defaults to 'active' = conversation).
+        mode: initialMode,
         agentName,
         responsePassThrough: false,
         ackPassThrough: false,
       };
       this.connections.set(connectionId, connection);
+
+      // 5b. Create/resume the persistent voice_sessions record (REQ-6): one
+      // record per (channelId, agentId), presence 'on', mode persisted.
+      await this.upsertVoiceSession(connection);
 
       // 6. Connect to ElevenLabs (with prior context if resuming)
       await this.connectToElevenLabs(connectionId, signedUrl, agentName, agentRole, userName, userEmail, priorContext);
@@ -299,15 +320,19 @@ export class VoiceHandler {
       // 7. Setup client message proxy
       this.setupClientHandlers(connectionId);
 
-      // 8. Subscribe to the voice channel for task_update events from worker channels.
-      //    This is the persistent listener that replaces the one-shot mechanism in runAgentAndNotify.
+      // 8. Subscribe to the conversation channel for turn events from worker
+      //    delegations. This is the persistent listener that replaces the
+      //    one-shot mechanism in runAgentAndNotify. Voice Mode v2 F0: the
+      //    listener now lives on the conversation channel itself (single
+      //    channel) — worker turn events are routed here via subscriptions.
       this.setupVoiceChannelListener(connectionId);
 
-      // 9. Notify client of the voice channel ID so it can link to the conversation
-      //    Also send historic transcripts so the frontend can hydrate the UI
+      // 9. Notify client of the conversation channel ID (the voice session's
+      //    channel — same as the chat). Also send historic transcripts so the
+      //    frontend can hydrate the UI.
       this.sendToClient(clientWs, {
         type: 'voice_channel',
-        channelId: voiceChannelId,
+        channelId: conversationChannelId,
         isResuming,
         historicTranscripts: historicTranscripts.length > 0 ? historicTranscripts : undefined,
       });
@@ -336,6 +361,18 @@ export class VoiceHandler {
 
   private async authenticateUser(sessionId: string): Promise<string | null> {
     try {
+      // API token auth: sessionId starts with "tak:" — look up in api_tokens collection
+      if (sessionId.startsWith('tak:')) {
+        const apiToken = sessionId.slice(4);
+        const tokenDoc = await resolveApiToken(this.db, apiToken);
+        if (!tokenDoc) {
+          console.warn('[VoiceHandler] Invalid apiToken');
+          return null;
+        }
+        return tokenDoc.userId;
+      }
+
+      // Standard session auth
       const result = await this.authService.validateSession(sessionId);
       return result.success ? result.user!.userId : null;
     } catch (error) {
@@ -350,11 +387,11 @@ export class VoiceHandler {
 
   private async getElevenLabsSignedUrl(): Promise<string> {
     const secrets = this.secretsManager.mca('mca.elevenlabs');
-    const apiKey = secrets?.API_KEY;
-    const elevenLabsAgentId = secrets?.AGENT_ID;
+    const apiKey = secrets?.apiKey || secrets?.API_KEY;
+    const elevenLabsAgentId = secrets?.agentId || secrets?.AGENT_ID;
 
     if (!apiKey) throw new Error('ElevenLabs API key not configured');
-    if (!elevenLabsAgentId) throw new Error('ElevenLabs AGENT_ID not configured');
+    if (!elevenLabsAgentId) throw new Error('ElevenLabs agentId not configured');
 
     const res = await fetch(
       `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${elevenLabsAgentId}`,
@@ -1125,26 +1162,23 @@ IMPORTANT: Silent mode enforcement is SERVER-SIDE. You do not control it. If the
     const { message: userMessage, channel_id: existingChannelId } = parameters;
 
     try {
-      // AF-2: When a chatChannelId is linked, run the worker IN the conversation channel
-      // so it inherits the full conversation history (files read, prior messages, tool results)
-      // naturally via the session store. This is the spec's preferred option (§2.3.2):
-      // "ejecutar el worker DENTRO del canal de conversación (turno headless)".
-      //
-      // If no chatChannelId, fall back to the original behavior: create a headless worker channel.
+      // Voice Mode v2 F0 (REQ-2): the worker ALWAYS runs in the conversation
+      // channel — the same channel the voice session lives in. The worker
+      // inherits the full conversation history (files read, prior messages,
+      // tool results, voice transcripts) naturally via the session store.
+      // The old AF-2 originChannelId juggling (pointing the conversation
+      // channel at a separate voice channel for event routing) is gone: with
+      // a single channel there is no second channel to route to.
       let workerChannelId: string;
       const existing = existingChannelId ? await this.channelManager.getChannel(existingChannelId) : null;
-      if (existing) {
+      if (existing && (existing as any).userId === connection.userId) {
+        // Continue a previous delegation channel (task channel) — it may be a
+        // headless worker channel created earlier by this voice session.
         workerChannelId = existingChannelId;
-        await this.linkWorkerOriginToVoice(connection, workerChannelId);
-      } else if (connection.chatChannelId) {
-        // Run the worker in the conversation channel — it has the full history.
-        workerChannelId = connection.chatChannelId;
-        // Point originChannelId at the voice channel so turn events route correctly,
-        // and stamp conversationChannelId for traceability (AF-2).
-        await this.linkWorkerOriginToVoice(connection, workerChannelId);
-        console.log(`[VoiceHandler] send-message → running worker in conversation channel ${workerChannelId} (AF-2 fix)`);
       } else {
-        workerChannelId = await this.createAgentChannel(connection.userId, connection.agentId, connection.voiceChannelId, connection.workspaceId);
+        // Run the worker in the conversation channel — it has the full history.
+        workerChannelId = connection.chatChannelId!;
+        console.log(`[VoiceHandler] send-message → running worker in conversation channel ${workerChannelId} (single channel)`);
       }
 
       console.log(`[VoiceHandler] send-message → worker ${workerChannelId}: "${userMessage.substring(0, 80)}..."`);
@@ -1408,11 +1442,11 @@ IMPORTANT: Silent mode enforcement is SERVER-SIDE. You do not control it. If the
       };
       if (status) filter.status = status;
 
-      // Fetch channels sorted by most recently updated
+      // Fetch channels sorted by most recent message
       const channels = await this.db
         .collection('channels')
         .find(filter)
-        .sort({ updatedAt: -1 })
+        .sort({ lastMessageAt: -1 })
         .limit(Math.min(limit, 50))
         .toArray() as any[];
 
@@ -1658,23 +1692,12 @@ IMPORTANT: Silent mode enforcement is SERVER-SIDE. You do not control it. If the
     }
 
     try {
-      // AF-2: When a chatChannelId is linked, run the tool execution worker IN the
-      // conversation channel so it has access to the full conversation history.
-      // Falls back to creating a headless worker channel when no chatChannelId.
-      let workerChannelId: string;
-      if (connection.chatChannelId) {
-        workerChannelId = connection.chatChannelId;
-        // Point originChannelId at the voice channel for turn event routing,
-        // and stamp conversationChannelId for traceability (AF-2).
-        await this.linkWorkerOriginToVoice(connection, workerChannelId);
-      } else {
-        workerChannelId = await this.createAgentChannel(
-          connection.userId,
-          connection.agentId,
-          connection.voiceChannelId,
-          connection.workspaceId,
-        );
-      }
+      // Voice Mode v2 F0 (REQ-2): the tool-execution worker ALWAYS runs in the
+      // conversation channel — same channel as the voice session. Full history
+      // access, no originChannelId routing (single channel), no headless
+      // fallback (the conversation channel always exists by construction —
+      // handleConnection rejects sessions without one).
+      const workerChannelId = connection.chatChannelId!;
 
       // Route the worker's turn events to this voice channel
       await this.registerWorkerChannel(connection, workerChannelId);
@@ -1741,64 +1764,16 @@ IMPORTANT: Silent mode enforcement is SERVER-SIDE. You do not control it. If the
   // ---------------------------------------------------------------------------
 
   /**
-   * AF-2: Point a worker channel's originChannelId at the current voice channel
-   * so turn events (turn_start/turn_end, permission notifications) route back to
-   * the voice session. Used when the worker runs inside the conversation channel.
-   *
-   * On the FIRST call for a session, saves the channel's previous originChannelId
-   * (if any) into connection.savedOriginChannelId so cleanup() can restore it.
-   * Also stamps conversationChannelId on the channel document for traceability.
-   */
-  private async linkWorkerOriginToVoice(
-    connection: VoiceConnection,
-    workerChannelId: string,
-  ): Promise<void> {
-    const chatCh = await this.channelManager.getChannel(workerChannelId);
-    if (!chatCh) return;
-
-    const currentOrigin = (chatCh as any).originChannelId ?? null;
-
-    // Save the previous originChannelId once per session so cleanup can restore it.
-    // Only save on the first call — subsequent delegations in the same session
-    // already have the voice channel as origin, so there's nothing new to preserve.
-    if (connection.savedOriginChannelId === undefined) {
-      connection.savedOriginChannelId = currentOrigin;
-    }
-
-    if (currentOrigin !== connection.voiceChannelId) {
-      await this.db.collection('channels').updateOne(
-        { channelId: workerChannelId },
-        {
-          $set: {
-            originChannelId: connection.voiceChannelId,
-            // Traceability: record which conversation channel the worker ran in (spec §2.3.2).
-            conversationChannelId: workerChannelId,
-          },
-        },
-      );
-    }
-  }
-
-  /**
-   * Create a headless worker channel that reports turn events back to the voice channel.
-   * originChannelId wires it into the task_update event system automatically.
-   * workspaceId must be passed explicitly because the voice agent is a superagent (workspaceId=null).
-   */
-  private async createAgentChannel(userId: string, agentId: string, voiceChannelId: string, workspaceId: string): Promise<string> {
-    const channel = await this.channelManager.createChannel(
-      userId,
-      agentId,
-      { transport: 'voice', name: 'Voice Task' },
-      { headless: true, originChannelId: voiceChannelId, workspaceId },
-    );
-    return channel.channelId;
-  }
-
-  /**
-   * Subscribe the voice channel to the worker's turn events (channel:turn_start /
-   * channel:turn_end) via MCAEventSubscriptionService — the single delivery path
-   * for turn events. mode=notify: the voice channel has no LLM agent to wake; the
-   * virtual pubsub listener picks up the injected event instead.
+   * Subscribe the conversation channel (where the voice session lives) to the
+   * worker's turn events (channel:turn_start / channel:turn_end) via
+   * MCAEventSubscriptionService — the single delivery path for turn events.
+   * mode=notify: the conversation channel's virtual pubsub listener (the voice
+   * session's listener, registered in setupVoiceChannelListener) picks up the
+   * injected event.
+   * Voice Mode v2 F0: the subscription target is the conversation channel
+   * itself (single channel) — the worker runs in the same channel, so turn
+   * events about it are routed back to the channel where the voice listener
+   * and the chat UI both live.
    * Idempotent per worker: repeated calls for a tracked worker are no-ops.
    */
   private async registerWorkerChannel(connection: VoiceConnection, workerChannelId: string): Promise<void> {
@@ -1894,6 +1869,44 @@ IMPORTANT: Silent mode enforcement is SERVER-SIDE. You do not control it. If the
     const listener = async (raw: string) => {
       try {
         const msg = JSON.parse(raw);
+
+        // Voice Mode v2 F0: permission requests arrive as `tool_permission_request`
+        // broadcasts on the conversation channel itself — the worker runs here
+        // (single channel), so there is no originChannelId observer chain routing
+        // them to a separate voice channel anymore. Catch them here so the user
+        // still gets the verbal "permission required" notification in the voice
+        // session, exactly like the old channel_permission observer events did.
+        if (msg.type === 'tool_permission_request') {
+          const executorChannelId: string = msg.channelId;
+          const toolName: string | undefined = msg.toolName;
+          console.log(`[VoiceHandler] Permission request for ${toolName} in conversation channel ${executorChannelId}`);
+          const conn = this.connections.get(connectionId);
+          if (!conn) return;
+
+          // Resolve the channel name for the frontend notification (fallback: id)
+          let observedChannelName = executorChannelId;
+          try {
+            const ch = await this.channelManager.getChannel(executorChannelId);
+            observedChannelName = (ch as any)?.metadata?.name || executorChannelId;
+          } catch { /* keep fallback */ }
+
+          // Notify the voice frontend (VoiceWindow permission card)
+          this.sendToClient(conn.clientWs, {
+            type: 'channel_event',
+            eventType: 'channel_permission',
+            observedChannelId: executorChannelId,
+            observedChannelName,
+            toolName,
+          });
+          // Tell ElevenLabs to inform the user verbally
+          const shortTool = toolName ? String(toolName) : 'a tool';
+          conn.elevenLabsWs?.send(JSON.stringify({
+            type: 'user_message',
+            text: `[event] permission_required channel_id=${executorChannelId} tool=${shortTool} channel_name=${observedChannelName}`,
+          }));
+          return;
+        }
+
         if (msg.type !== 'event') return;
 
         const eventType: string = msg.event?.eventType;
@@ -2075,46 +2088,155 @@ IMPORTANT: Silent mode enforcement is SERVER-SIDE. You do not control it. If the
   }
 
   // ---------------------------------------------------------------------------
+  // VOICE SESSIONS — persistent session state (Voice Mode v2 F0)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Map the legacy in-memory mode ('active' | 'silent', AF-4) to the canonical
+   * Voice Mode v2 mode axis ('conversation' | 'passive', spec REQ-6 naming).
+   * The legacy engine still uses active/silent internally; the persisted
+   * session record stores the canonical values so F2 (mode axis) builds on
+   * them without a migration. ('attention' existed briefly in v2 and was
+   * removed — two modes only, Pablo 2026-10-05.)
+   */
+  private toCanonicalMode(mode: 'active' | 'silent'): 'conversation' | 'passive' {
+    return mode === 'silent' ? 'passive' : 'conversation';
+  }
+
+  /**
+   * Create or resume the persistent voice session record for this connection.
+   *
+   * One record per (channelId, agentId) — the conversation channel IS the
+   * session's home (REQ-2). On reconnect the record is reused: `mode` is
+   * restored from it (mode survives reconnections, spec REQ-6), presence flips
+   * back to 'on', and lastActivityAt is touched. startedAt is only set on
+   * first creation so it reflects the session's true origin.
+   *
+   * Fire-and-forget safe: failures are logged, never thrown — the voice
+   * session works without the record (it is state for F2, not a dependency
+   * of the legacy engine).
+   */
+  private async upsertVoiceSession(connection: VoiceConnection): Promise<void> {
+    try {
+      const now = new Date();
+      await this.db.collection('voice_sessions').updateOne(
+        { channelId: connection.voiceChannelId, agentId: connection.agentId },
+        {
+          $set: {
+            userId: connection.userId,
+            mode: this.toCanonicalMode(connection.mode),
+            presence: 'on',
+            lastActivityAt: now,
+            updatedAt: now,
+          },
+          $setOnInsert: {
+            sessionId: `vs_${now.getTime()}_${Math.random().toString(36).substring(2, 9)}`,
+            channelId: connection.voiceChannelId,
+            agentId: connection.agentId,
+            ...(connection.workspaceId ? { workspaceId: connection.workspaceId } : {}),
+            startedAt: now,
+            createdAt: now,
+          },
+        },
+        { upsert: true },
+      );
+      console.log(`[VoiceHandler] voice_sessions upserted for channel ${connection.voiceChannelId}`);
+    } catch (err) {
+      console.error('[VoiceHandler] Failed to upsert voice session:', err);
+    }
+  }
+
+  /**
+   * Touch the session record's activity timestamp + current mode.
+   * Called on every user transcript so lastActivityAt tracks real usage.
+   */
+  private async touchVoiceSession(connection: VoiceConnection): Promise<void> {
+    try {
+      await this.db.collection('voice_sessions').updateOne(
+        { channelId: connection.voiceChannelId, agentId: connection.agentId },
+        {
+          $set: {
+            mode: this.toCanonicalMode(connection.mode),
+            lastActivityAt: new Date(),
+          },
+        },
+      );
+    } catch (err) {
+      console.error('[VoiceHandler] Failed to touch voice session:', err);
+    }
+  }
+
+  /**
+   * Mark the session record as ended (presence 'off') on cleanup/disconnect.
+   * The record is kept — mode and history persist for the next reconnection.
+   */
+  private async closeVoiceSession(connection: VoiceConnection): Promise<void> {
+    try {
+      await this.db.collection('voice_sessions').updateOne(
+        { channelId: connection.voiceChannelId, agentId: connection.agentId },
+        {
+          $set: {
+            presence: 'off',
+            mode: this.toCanonicalMode(connection.mode),
+            endedAt: new Date(),
+          },
+        },
+      );
+    } catch (err) {
+      console.error('[VoiceHandler] Failed to close voice session:', err);
+    }
+  }
+
+  /**
+   * Load the persisted mode for a conversation channel + agent, if a previous
+   * voice session exists. Returns the canonical mode or null when no record.
+   * Used on reconnect so the mode survives restarts (spec REQ-6).
+   */
+  private async loadPersistedVoiceMode(channelId: string, agentId: string): Promise<'conversation' | 'passive' | null> {
+    try {
+      const record = await this.db.collection('voice_sessions').findOne(
+        { channelId, agentId },
+      );
+      const mode = (record as any)?.mode;
+      return mode === 'conversation' || mode === 'passive' ? mode : null;
+    } catch (err) {
+      console.error('[VoiceHandler] Failed to load persisted voice mode:', err);
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // TRANSCRIPT STORAGE
   // ---------------------------------------------------------------------------
 
   private async saveTranscript(channelId: string, text: string, isUser: boolean, connection?: VoiceConnection): Promise<void> {
     if (!text) return;
     try {
-      // AF-5: System lines (tool calls, worker results, errors) are now persisted
-      // to BOTH the voice channel AND the linked chat channel. Previously they
-      // were filtered out by isSystemLine and written only to the voice channel,
-      // making voice-initiated actions invisible when the user returned to text.
+      // Voice Mode v2 F0 (REQ-2): single-channel persistence — the dual-write
+      // is gone. Every transcript line (speech AND system lines: tool calls,
+      // worker results, errors) persists EXACTLY ONCE, to the conversation
+      // channel, tagged source:'voice'. The old AF-5 dual-write (voice channel
+      // + chat channel copies) existed only because the session lived in a
+      // separate voice channel; with the single channel there is nothing to
+      // duplicate.
       //
-      // Speech lines (user/assistant transcripts) continue to route to the chat
-      // channel when linked, falling back to the voice channel.
-      const isSystemLine = (
-        text.startsWith('🛠️ send-message →') ||
-        text.startsWith('🛠️ execute-tool →') ||
-        text.startsWith('✅ Respuesta de agente') ||
-        text.startsWith('❌ Error en')
-      );
+      // channelId (from connection.voiceChannelId) IS the conversation
+      // channel now, so the primary target is always the conversation.
+      const targetChannelId = connection?.voiceChannelId ?? channelId;
 
-      const chatChannelId = connection?.chatChannelId;
-
-      // Primary target: speech lines → chat channel if linked; system lines → voice channel
-      const primaryTargetId = (!isSystemLine && chatChannelId)
-        ? chatChannelId
-        : channelId;
-
-      // Write to primary target (broadcast only when writing to the chat channel,
-      // not for voice-only internal messages)
       await this.persistTranscriptLine(
-        primaryTargetId, text, isUser, primaryTargetId !== channelId,
+        targetChannelId, text, isUser,
+        // Broadcast: the conversation channel has UI subscribers — always
+        // broadcast so the chat and the voice window both see the line.
+        true,
       );
 
-      // AF-5: For system lines with a linked chat channel, also persist a copy
-      // to the chat channel so the text agent can reason about voice actions.
-      // System lines are stored as assistant role since they represent agent actions.
-      if (isSystemLine && chatChannelId && chatChannelId !== channelId) {
-        await this.persistTranscriptLine(
-          chatChannelId, text, false, true,
-        );
+      // Voice Mode v2 F0: touch the persistent voice_sessions record on real
+      // session activity (lastActivityAt + current mode).
+      if (connection) {
+        this.touchVoiceSession(connection).catch((err) => {
+          console.error('[VoiceHandler] Error touching voice session:', err);
+        });
       }
     } catch (err) {
       console.error('[VoiceHandler] Error saving transcript:', err);
@@ -2440,11 +2562,12 @@ IMPORTANT: Silent mode enforcement is SERVER-SIDE. You do not control it. If the
 
     console.log(`[VoiceHandler] Cleanup: ${connectionId}`);
 
-    // Remove the persistent voice channel listener
+    // Remove the persistent conversation-channel listener
+    // (Voice Mode v2 F0: the listener lives on the conversation channel itself)
     const listener = (connection as any)._voiceChannelListener;
     if (listener) {
       this.pubSubService?.removeListener(connection.voiceChannelId, listener);
-      console.log(`[VoiceHandler] Voice channel listener removed for ${connection.voiceChannelId}`);
+      console.log(`[VoiceHandler] Conversation channel listener removed for ${connection.voiceChannelId}`);
     }
 
     // Drop turn-event subscriptions of workers still in flight — the session is
@@ -2455,22 +2578,15 @@ IMPORTANT: Silent mode enforcement is SERVER-SIDE. You do not control it. If the
       });
     }
 
-    // AF-2: Restore the conversation channel's originChannelId to its pre-voice
-    // value. While the voice session was active we pointed it at the voice channel
-    // to route turn events; now that the session is over, leaving it pointing at
-    // a dead voice channel would cause stale event routing for future text turns.
-    if (connection.chatChannelId && connection.savedOriginChannelId !== undefined) {
-      const restoreValue = connection.savedOriginChannelId;
-      this.db.collection('channels').updateOne(
-        { channelId: connection.chatChannelId },
-        // If the original was null/undefined, unset it; otherwise restore it.
-        restoreValue
-          ? { $set: { originChannelId: restoreValue } }
-          : { $unset: { originChannelId: '' } },
-      ).catch((err) => {
-        console.error(`[VoiceHandler] Failed to restore originChannelId on ${connection.chatChannelId}:`, err);
-      });
-    }
+    // Voice Mode v2 F0: no originChannelId restore — the old AF-2 juggling
+    // (temporarily pointing the conversation channel's originChannelId at a
+    // separate voice channel) is gone with the single-channel model.
+
+    // Mark the voice session ended in the voice_sessions collection
+    // (persistent session state — mode survives reconnections, F2 builds on it)
+    this.closeVoiceSession(connection).catch((err) => {
+      console.error('[VoiceHandler] Failed to close voice session record:', err);
+    });
 
     connection.elevenLabsWs?.close();
     connection.clientWs?.close();

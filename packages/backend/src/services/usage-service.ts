@@ -11,6 +11,7 @@
  */
 
 import { estimateTokens } from '@teros/shared';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import type { Collection, Db } from 'mongodb';
 import type {
   ConversationUsage,
@@ -71,19 +72,11 @@ export class UsageService {
    * Initialize indexes for the usage collections
    */
   async initializeIndexes(): Promise<void> {
-    // Conversation usage indexes
-    await this.usageCollection.createIndex({ channelId: 1 }, { unique: true });
-    await this.usageCollection.createIndex({ lastUpdated: -1 });
-    // New indexes for aggregation queries
-    await this.usageCollection.createIndex({ userId: 1, lastUpdated: -1 });
-    await this.usageCollection.createIndex({ agentId: 1, lastUpdated: -1 });
-    await this.usageCollection.createIndex({ workspaceId: 1, lastUpdated: -1 });
-    await this.usageCollection.createIndex({ provider: 1, lastUpdated: -1 });
-
-    // Usage windows indexes (for subscription tracking)
-    await this.windowsCollection.createIndex({ windowId: 1 }, { unique: true });
-    await this.windowsCollection.createIndex({ accountId: 1, windowStart: -1 });
-    await this.windowsCollection.createIndex({ windowEnd: 1 }); // For cleanup of old windows
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    // (This method never ran at boot; migration 20260923_002 created these.)
+    await ensureCollectionIndexes(this.usageCollection, COLLECTIONS.conversationUsage);
+    await ensureCollectionIndexes(this.windowsCollection, COLLECTIONS.usageWindows);
   }
 
   /**

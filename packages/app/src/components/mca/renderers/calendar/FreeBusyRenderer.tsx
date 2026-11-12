@@ -15,12 +15,12 @@ import { Text, XStack, YStack } from "tamagui"
 import {
   Empty,
   ErrorBlock,
-  colors as globalColors,
   IconChip,
   KeyValueGrid,
   type KeyValueRow,
   parseOutput,
   ResourceCard,
+  useColors,
 } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
 import { CalendarToolShell, type FreeBusyRow, formatTimestampWithZone } from "./shared"
@@ -67,6 +67,7 @@ export function GetFreeBusyRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const raw = output ? parseOutput<FreeBusyOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
   const calendars = parsed?.calendars ?? []
@@ -105,7 +106,7 @@ export function GetFreeBusyRenderer({
                   <YStack key={row.calendarId} gap={3}>
                     <Text
                       textTransform="uppercase"
-                      color={globalColors.muted}
+                      color={c.text3}
                       fontSize={9}
                       fontFamily="$mono"
                     >

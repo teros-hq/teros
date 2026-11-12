@@ -11,9 +11,8 @@
  *   agent.create-core         → Create a new agent core (engine)
  *   agent.update-core         → Update an agent core configuration
  *   agent.get-apps            → Get apps an agent has access to
- *   agent.list-providers      → List providers available for an agent
- *   agent.set-providers       → Set availableProviders for an agent
- *   agent.set-preferred-provider → Set preferredProviderId for an agent
+ *   agent.list-providers      → List the agent's provider/model config + resolved pair
+ *   agent.set-model           → Set/clear the agent's model pin (provider + model)
  */
 
 import type { Db } from 'mongodb'
@@ -35,8 +34,7 @@ import { createCreateCoreHandler } from './create-core'
 import { createUpdateCoreHandler } from './update-core'
 import { createGetAppsHandler } from './get-apps'
 import { createListProvidersHandler } from './list-providers'
-import { createSetProvidersHandler } from './set-providers'
-import { createSetPreferredProviderHandler } from './set-preferred-provider'
+import { createSetModelHandler } from './set-model'
 
 export interface AgentDomainDeps {
   db: Db
@@ -67,6 +65,5 @@ export function register(router: WsRouter, deps: AgentDomainDeps): void {
   router.register('agent.update-core', createUpdateCoreHandler(db, modelService))
   router.register('agent.get-apps', createGetAppsHandler(mcaService, db))
   router.register('agent.list-providers', createListProvidersHandler(db))
-  router.register('agent.set-providers', createSetProvidersHandler(db))
-  router.register('agent.set-preferred-provider', createSetPreferredProviderHandler(db))
+  router.register('agent.set-model', createSetModelHandler(db))
 }

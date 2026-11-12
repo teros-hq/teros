@@ -100,13 +100,13 @@ export function createInstallAppHandler(
       if (!validation.valid) {
         throw new HandlerError('INVALID_APP_NAME', validation.error || 'Invalid app name')
       }
-      const isAvailable = await mcaService.isAppNameAvailable(ownerId, name)
+      const isAvailable = await mcaService.isAppNameAvailable(ownerId, name, { scope: 'personal', installedBy: ctx.userId })
       if (!isAvailable) {
         throw new HandlerError('APP_NAME_TAKEN', `App name "${name}" is already in use`)
       }
       appName = name
     } else {
-      appName = await mcaService.generateDefaultAppName(mcaId, ownerId)
+      appName = await mcaService.generateDefaultAppName(mcaId, ownerId, { scope: 'personal', installedBy: ctx.userId })
     }
 
     // Create the app using ownerId (privateWorkspaceId) and ownerType: 'workspace'
@@ -115,6 +115,9 @@ export function createInstallAppHandler(
       mcaId,
       ownerId,
       ownerType: 'workspace',
+      // MUW-REQ-10/11: the installer owns it; member-installed apps are personal.
+      installedBy: ctx.userId,
+      scope: 'personal',
       name: appName,
       status: 'active',
     })

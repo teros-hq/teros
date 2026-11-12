@@ -38,12 +38,20 @@ import {
   adminAppsDelete,
   adminAppsGetAccess,
   adminAppsSetPermissions,
+  adminAppsCopyAuth,
   // Access
   adminAccessList,
   adminAccessGrant,
   adminAccessRevoke,
+  // Users (waitlist access + roles)
+  adminUsersGrantAccess,
+  adminUsersUpdateRole,
   // Catalog
+  adminCatalogGet,
   adminCatalogList,
+  // System
+  adminActiveSessions,
+  adminRefreshClients,
   // Usage
   adminUsageSummary,
   adminUsageByUser,
@@ -52,6 +60,14 @@ import {
   adminUsageByModel,
   adminUsageExpensiveConversations,
   adminUsageTimeline,
+  adminUsageSessions,
+  adminUsageSessionDetail,
+  // LLM Health & Observability
+  adminModelHealth,
+  adminModelHealthTimeseries,
+  adminUpstreamErrors,
+  adminInFlight,
+  adminProviderStatus,
   // Feature Flags
   adminFeatureFlagsList,
   adminFeatureFlagsGet,
@@ -73,6 +89,7 @@ const server = new McaServer({
 
 // Health check
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies WebSocket connectivity to backend.',
   parameters: { type: 'object', properties: {} },
   handler: async () => {
@@ -114,14 +131,27 @@ server.tool('admin-apps-update', adminAppsUpdate);
 server.tool('admin-apps-delete', adminAppsDelete);
 server.tool('admin-apps-get-access', adminAppsGetAccess);
 server.tool('admin-apps-set-permissions', adminAppsSetPermissions);
+// admin replica of copy-app-auth (tn_aGVdSrVwIJi9mfvc) — alwaysAsk, masked summary only.
+server.tool('admin-apps-copy-auth', adminAppsCopyAuth);
 
 // ── Access ──
 server.tool('admin-access-list', adminAccessList);
 server.tool('admin-access-grant', adminAccessGrant);
 server.tool('admin-access-revoke', adminAccessRevoke);
 
+// ── Users (waitlist access + roles) — tn_h3KIMygPUs0nvl5F, Pablo 2-nov ──
+// Actions on people: alwaysAsk (confirmation on every call), same policy as
+// admin-apps-set-permissions.
+server.tool('admin-users-grant-access', adminUsersGrantAccess);
+server.tool('admin-users-update-role', adminUsersUpdateRole);
+
 // ── Catalog ──
 server.tool('admin-catalog-list', adminCatalogList);
+server.tool('admin-catalog-get', adminCatalogGet);
+
+// ── System ──
+server.tool('admin-active-sessions', adminActiveSessions);
+server.tool('admin-refresh-clients', adminRefreshClients);
 
 // ── Usage ──
 server.tool('admin-usage-summary', adminUsageSummary);
@@ -131,6 +161,15 @@ server.tool('admin-usage-by-agent', adminUsageByAgent);
 server.tool('admin-usage-by-model', adminUsageByModel);
 server.tool('admin-usage-expensive-conversations', adminUsageExpensiveConversations);
 server.tool('admin-usage-timeline', adminUsageTimeline);
+server.tool('admin-usage-sessions', adminUsageSessions);
+server.tool('admin-usage-session-detail', adminUsageSessionDetail);
+
+// ── LLM Health & Observability ──
+server.tool('admin-model-health', adminModelHealth);
+server.tool('admin-model-health-timeseries', adminModelHealthTimeseries);
+server.tool('admin-upstream-errors', adminUpstreamErrors);
+server.tool('admin-in-flight', adminInFlight);
+server.tool('admin-provider-status', adminProviderStatus);
 
 // ── Feature Flags ──
 server.tool('admin-feature-flags-list', adminFeatureFlagsList);

@@ -70,8 +70,8 @@ beforeAll(async () => {
   } as any);
   // Membership rows for canAccessApp (workspace-access.ts reads this collection).
   await db.collection('workspace_members').insertMany([
-    { workspaceId: WORKSPACE, userId: ADMIN },
-    { workspaceId: WORKSPACE, userId: MEMBER },
+    { workspaceId: WORKSPACE, userId: ADMIN, role: 'admin' },
+    { workspaceId: WORKSPACE, userId: MEMBER, role: 'write' },
   ]);
   await db.collection('mca_catalog').insertOne({
     mcaId: 'mca.test.perms',

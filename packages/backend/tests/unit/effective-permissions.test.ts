@@ -14,6 +14,7 @@
  */
 
 import { describe, expect, it } from 'bun:test'
+import { readFileSync } from 'fs'
 import type { McaToolAnnotations } from '@teros/shared'
 import {
   buildToolPermissionsView,
@@ -84,6 +85,28 @@ describe('createInstallPermissions — install-time seed', () => {
     const perms = createInstallPermissions([])
     expect(perms).toEqual({ tools: {}, defaultPermission: 'ask' })
   })
+
+  it('safeWriteHint: a mutating tool with a safe write seeds as allow', () => {
+    const SAFE_WRITE: McaToolAnnotations = { readOnlyHint: false, safeWriteHint: true }
+    const perms = createInstallPermissions([
+      { name: 'save-knowledge', annotations: SAFE_WRITE },
+      { name: 'save-conversation', annotations: RW }, // same MCA, no hint → ask
+    ])
+    expect(perms.tools['save-knowledge']).toBe('allow')
+    expect(perms.tools['save-conversation']).toBe('ask')
+  })
+
+  it('safeWriteHint loses to alwaysAsk (confirmation lock wins)', () => {
+    const perms = createInstallPermissions([
+      { name: 'save-knowledge', annotations: { readOnlyHint: false, safeWriteHint: true, alwaysAsk: true } },
+    ])
+    expect(perms.tools['save-knowledge']).toBe('ask')
+  })
+
+  it('safeWriteHint does not change the runtime gate — user ask on a safe-write tool sticks', () => {
+    const SAFE_WRITE: McaToolAnnotations = { readOnlyHint: false, safeWriteHint: true }
+    expect(getEffectiveToolPermission(app('ask', { 'save-knowledge': 'ask' }), 'save-knowledge', SAFE_WRITE)).toBe('ask')
+  })
 })
 
 describe('getEffectiveToolPermission — configured value is what runs', () => {
@@ -150,4 +173,90 @@ describe('buildToolPermissionsView', () => {
     expect(tools[0].permission).toBe('allow') // configured value untouched
     expect(summary).toEqual({ allow: 0, ask: 1, forbid: 0 }) // effective clamped
   })
+})
+
+// ---------------------------------------------------------------------------
+// Rollout regression (2026-10-01) — pins Pablo's owner decisions on the real
+// tools.json manifests. If a future regen or annotation edit silently drops
+// safeWriteHint from a SÍ-list tool (or adds it to a NO-list tool), this fails.
+// ---------------------------------------------------------------------------
+
+const MCAS_ROOT = '../../mcas'
+
+/** Tools that MUST seed 'allow' (safeWriteHint or readOnlyHint), per MCA. */
+const MUST_SEED_ALLOW: Record<string, string[]> = {
+  'mca.teros.feedback': ['report-bug', 'report-suggestion'],
+  'mca.teros.board-manager': ['add-progress-note'],
+  'mca.teros.todo-list': [
+    'add-node', 'update-node', 'toggle-complete', 'toggle-collapse',
+    'move-node', 'delete-node', 'add-log-entry',
+    'set-state', 'set-kind', 'set-progress', 'set-input', 'set-output', 'toggle-instruction-item',
+    'plan-node', 'assign-node',
+    // To Do autoplay (TODOAP): runners and the manual start; get-autoplay is a read.
+    'get-autoplay', 'set-agent-slots', 'set-agent-play', 'set-agent-scope', 'remove-agent', 'start-node',
+    // To Do output window (TODOOV): reading the caller's io share link.
+    'get-io-share',
+  ],
+  'mca.teros.board-runner': ['complete-my-task', 'block-my-task', 'cancel-my-task', 'add-progress-note'],
+  'mca.teros.file-processor': ['file-to-markdown', 'file-to-markdown-async', 'cancel-job', 'audio-to-text', 'svg-to-png'],
+  'mca.teros.conversations': ['create-conversation', 'delegate-task', 'rename-channel', 'import-attachment'],
+  'mca.teros.core': ['skill-list', 'workspace-app-list', 'workspace-agent-list', 'skill-get-agent-skills'],
+  'mca.teros.messaging': ['notify-by-email'], // readOnlyHint — platform email to the user themselves
+  // Playwright (Pablo 2026-10-01): every browser action acts on the agent's OWN
+  // browser — reversible, private, non-notifying. 9 pure reads + 18 safe writes.
+  'mca.teros.browser': [
+    // readOnlyHint — pure reads, touch nothing
+    'browser-console-messages', 'browser-console-errors', 'browser-console-clear',
+    'browser-network-requests', 'browser-snapshot', 'browser-take-screenshot',
+    'browser-tabs', 'browser-wait-for', 'browser-navigate-back',
+    // safeWriteHint — actions on the agent's own browser
+    'browser-navigate', 'browser-click', 'browser-type', 'browser-fill-form',
+    'browser-press-key', 'browser-hover', 'browser-select-option', 'browser-drag',
+    'browser-evaluate', 'browser-run-code', 'browser-resize', 'browser-emulate-device',
+    'browser-close', 'browser-install', 'browser-handle-dialog',
+    'browser-start-recording', 'browser-stop-recording', 'browser-html-to-pdf',
+  ],
+}
+
+/** Tools that MUST stay 'ask' (owner said NO to safe-write), per MCA. */
+const MUST_SEED_ASK: Record<string, string[]> = {
+  'mca.teros.board-manager': [
+    'subscribe-to-board', 'unsubscribe-from-board',
+    'subscribe-to-events', 'unsubscribe-from-events',
+    'create-project', 'create-task', 'delete-task', 'move-task',
+  ],
+  'mca.teros.core': ['skill-create', 'skill-update', 'skill-delete'],
+  'mca.teros.conversations': ['send-message'],
+  // TODOOV (2026-10-27): publishing or revoking a public link of a task's io
+  // is never done by an agent without asking.
+  'mca.teros.todo-list': ['share-io', 'unshare-io'],
+  // Pablo 2026-10-01: uploads real files to external sites — the only playwright
+  // action with an effect outside the agent's own browser. Pure mutation.
+  'mca.teros.browser': ['browser-file-upload'],
+}
+
+describe('safeWriteHint rollout (2026-10-01) — real tools.json manifests', () => {
+  const mcas = new Set([...Object.keys(MUST_SEED_ALLOW), ...Object.keys(MUST_SEED_ASK)])
+
+  const loadSeed = (mcaId: string) => {
+    const raw = JSON.parse(
+      readFileSync(`${MCAS_ROOT}/${mcaId}/tools.json`, 'utf-8'),
+    ) as { tools: Array<{ name: string; annotations?: McaToolAnnotations }> }
+    return createInstallPermissions(
+      raw.tools.map((t) => ({ name: t.name, annotations: t.annotations })),
+    )
+  }
+
+  for (const mcaId of mcas) {
+    it(`${mcaId}: SÍ-list tools seed allow, NO-list tools stay ask`, () => {
+      const seed = loadSeed(mcaId)
+
+      for (const tool of MUST_SEED_ALLOW[mcaId] ?? []) {
+        expect(seed.tools[tool], `${mcaId}/${tool} should seed allow`).toBe('allow')
+      }
+      for (const tool of MUST_SEED_ASK[mcaId] ?? []) {
+        expect(seed.tools[tool], `${mcaId}/${tool} should stay ask`).toBe('ask')
+      }
+    })
+  }
 })

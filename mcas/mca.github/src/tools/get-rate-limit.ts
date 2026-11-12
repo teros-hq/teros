@@ -2,8 +2,8 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 /**
- * Read the current GitHub API rate-limit budget for the installation token.
- * Useful for autorun decisions ("do I have budget for a 50-call batch?").
+ * Read the current GitHub API rate-limit budget for the authenticated user
+ * token. Useful for batch planning ("do I have budget for a 50-call batch?").
  *
  * Returns `{ resources: { core, search, graphql, code_search,
  * integration_manifest, code_scanning_upload }, rate }`. Each bucket has
@@ -12,7 +12,7 @@ import { githubRequest } from '../lib';
 export const getRateLimit: ToolConfig = {
   annotations: { readOnlyHint: true },
   description:
-    'Read the current GitHub API rate-limit budget for the installation token. Returns per-bucket {limit, remaining, reset, used} — core, search, graphql, code_search.',
+    'Read the current GitHub API rate-limit budget for the authenticated user token. Returns per-bucket {limit, remaining, reset, used} — core, search, graphql, code_search.',
   parameters: { type: 'object', properties: {} },
   handler: async (_args, context) => {
     return await githubRequest(context, '/rate_limit');

@@ -7,6 +7,12 @@
 
 import { enrichTaskWithColumn } from '../handlers/domains/board/_helpers';
 import type { QueryHandlerContext, ActiveConnection } from './mca-connection-manager.types';
+import { guardReviewClaim } from './mca-connection-manager.review-claim-guard';
+import {
+  emitTaskArchived,
+  emitTaskProgressNote,
+  emitTaskUpdated,
+} from './board-event-emitters';
 
 export async function handleBoardWriteAction(
   ctx: QueryHandlerContext,
@@ -16,6 +22,17 @@ export async function handleBoardWriteAction(
   effectiveAgentId: string | undefined,
   connection: ActiveConnection,
 ): Promise<unknown> {
+  // MCA query handlers are only called by agents, never humans.
+  // effectiveAgentId must always be present. If it isn't, the calling MCA
+  // tool failed to pass agentId in its queryConversations params — throw
+  // so the bug surfaces immediately instead of silently storing null.
+  if (!effectiveAgentId) {
+    throw new Error(
+      `Cannot determine agent for board action "${action}". ` +
+      `The MCA tool must pass agentId in its queryConversations params.`
+    );
+  }
+  const actor = effectiveAgentId;
   let data: unknown;
 
   switch (action) {
@@ -30,7 +47,7 @@ case 'link_conversation': {
   }
   const linkedTask = await ctx.boardService.linkConversation(
     lcTaskId,
-    userId,
+    actor,
     lcChannelId,
   );
   if (!linkedTask) {
@@ -42,6 +59,11 @@ case 'link_conversation': {
     type: 'board_task_updated',
     task: linkedTask,
   });
+  // Emit board.task_updated to subscribers (fb_d211b16343bd3034 — linking a
+  // conversation is a task mutation; task_updated is the closest domain event).
+  if (ctx.boardSubscriptionService) {
+    emitTaskUpdated(ctx.boardSubscriptionService, linkedTask, { actorAgentId: actor });
+  }
   break;
 }
 
@@ -76,7 +98,7 @@ case 'archive_task': {
   const atTaskId = params.taskId as string;
   const atArchived = params.archived as boolean;
   const atArchiveNote = params.archiveNote as string | undefined;
-  const atActor = params.actor as string || userId;
+  const atActor = params.actor as string || actor;
   if (!atTaskId || atArchived === undefined) {
     throw new Error('taskId and archived are required');
   }
@@ -92,6 +114,11 @@ case 'archive_task': {
     type: 'board_task_updated',
     task: archiveResult,
   });
+  // Emit board.task_archived to subscribers (fb_d211b16343bd3034 — mirrors
+  // handlers/domains/board/archive-task.ts).
+  if (ctx.boardSubscriptionService) {
+    emitTaskArchived(ctx.boardSubscriptionService, archiveResult, atArchived, { actorAgentId: atActor });
+  }
   break;
 }
 
@@ -101,7 +128,7 @@ case 'archive_project': {
   }
   const apProjectId = params.projectId as string;
   const apArchiveNote = params.archiveNote as string | undefined;
-  const apActor = params.actor as string || userId;
+  const apActor = params.actor as string || actor;
   if (!apProjectId) {
     throw new Error('projectId is required');
   }
@@ -123,9 +150,16 @@ case 'add_progress_note': {
   }
   const apnTaskId = params.taskId as string;
   const apnText = params.text as string;
-  const apnActor = params.actor as string || userId;
+  const apnActor = params.actor as string || actor;
   if (!apnTaskId || !apnText) {
     throw new Error('taskId and text are required');
+  }
+  // Single-flight review claim: a review note is guarded (not terminal → no
+  // release here; the claim is released by the move that follows, or by TTL).
+  const apnClaimSkip = await guardReviewClaim(ctx, connection, 'add_progress_note', apnTaskId, apnActor, params);
+  if (apnClaimSkip) {
+    data = apnClaimSkip;
+    break;
   }
   const noteTask = await ctx.boardService.addProgressNote(apnTaskId, apnText, apnActor);
   if (!noteTask) {
@@ -137,6 +171,12 @@ case 'add_progress_note': {
     type: 'board_task_updated',
     task: noteTask,
   });
+  // Emit board.task_progress_note to subscribers (fb_d211b16343bd3034 —
+  // mirrors handlers/domains/board/add-progress-note.ts). MCA callers are
+  // agents, so the actor is attributed as agent (self-wake guard).
+  if (ctx.boardSubscriptionService) {
+    emitTaskProgressNote(ctx.boardSubscriptionService, noteTask, apnText, { actorAgentId: apnActor });
+  }
   break;
 }
 
@@ -161,7 +201,7 @@ case 'delete_project': {
   if (dpRole !== 'owner' && dpRole !== 'admin') {
     throw new Error('Only workspace admin or owner can delete projects');
   }
-  await ctx.boardService.deleteProject(dpProjectId);
+  await ctx.boardService.deleteProject(dpProjectId, userId);
   data = { projectId: dpProjectId, deleted: true };
   ctx.pubSubService?.broadcastToTopic(`board:${dpProject.boardId}`, {
     type: 'board_project_deleted',

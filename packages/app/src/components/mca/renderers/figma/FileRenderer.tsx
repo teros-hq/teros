@@ -13,7 +13,6 @@ import {
   Empty,
   EntityRow,
   ErrorBlock,
-  colors as globalColors,
   IconChip,
   IconTile,
   KeyValueGrid,
@@ -21,6 +20,7 @@ import {
   PillList,
   parseOutput,
   ResourceCard,
+  useColors,
 } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
 import {
@@ -49,6 +49,7 @@ export function GetFileRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const { t } = useTranslation()
   const file = output ? (parseOutput<FigmaFileSummary>(output) as FigmaFileSummary | null) : null
   const pages = getNodeChildren(file?.document)
@@ -114,7 +115,7 @@ export function GetFileRenderer({
                           : null
                       }
                       meta={
-                        <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+                        <Text color={c.text2} fontSize={9} fontFamily="$mono">
                           {childCount === 0 ? t('mca.figma.empty') : t('mca.figma.children', { count: childCount })}
                         </Text>
                       }
@@ -125,7 +126,7 @@ export function GetFileRenderer({
             </ScrollView>
           )}
           {pages.some((p) => (p.children?.length ?? 0) > 0 || (p.childCount ?? 0) > 0) && (
-            <Text color={globalColors.muted} fontSize={9}>
+            <Text color={c.text3} fontSize={9}>
               Tip: call get-node with a child id to explore deeper.
             </Text>
           )}
@@ -165,6 +166,7 @@ export function GetNodeRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const { t } = useTranslation()
   const node = output
     ? (parseOutput<FigmaSimplifiedNode>(output) as FigmaSimplifiedNode | null)
@@ -186,7 +188,7 @@ export function GetNodeRenderer({
                 return props ? <IconChip {...props} /> : null
               })()}
               {getNodeBoundingBoxLabel(node) && (
-                <IconChip text={getNodeBoundingBoxLabel(node) ?? ""} accent={globalColors.muted} />
+                <IconChip text={getNodeBoundingBoxLabel(node) ?? ""} accent={c.text3} />
               )}
             </XStack>
           }
@@ -195,7 +197,7 @@ export function GetNodeRenderer({
           {(node.fills?.length ?? 0) > 0 && (
             <YStack gap={4}>
               <Text
-                color={globalColors.secondary}
+                color={c.text2}
                 fontSize={9}
                 fontFamily="$mono"
                 textTransform="uppercase"
@@ -213,7 +215,7 @@ export function GetNodeRenderer({
                     />
                   ) : (
                     // biome-ignore lint/suspicious/noArrayIndexKey: stable index
-                    <IconChip key={i} text={f.type} accent={globalColors.muted} />
+                    <IconChip key={i} text={f.type} accent={c.text3} />
                   ),
                 )}
               />
@@ -222,7 +224,7 @@ export function GetNodeRenderer({
           {node.textStyle && (
             <YStack gap={4}>
               <Text
-                color={globalColors.secondary}
+                color={c.text2}
                 fontSize={9}
                 fontFamily="$mono"
                 textTransform="uppercase"
@@ -235,7 +237,7 @@ export function GetNodeRenderer({
           {children.length > 0 && (
             <YStack gap={4}>
               <Text
-                color={globalColors.secondary}
+                color={c.text2}
                 fontSize={9}
                 fontFamily="$mono"
                 textTransform="uppercase"

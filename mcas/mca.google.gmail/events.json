@@ -1,0 +1,41 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-events.json",
+  "mcaId": "mca.google.gmail",
+  "events": [
+    {
+      "topic": "gmail.email.received",
+      "description": "A new email arrived in the connected Gmail account.",
+      "payload": {
+        "messageId": "string",
+        "threadId": "string",
+        "from": "string (sender, name + address)",
+        "subject": "string",
+        "snippet": "string",
+        "date": "string (RFC 2822)",
+        "receivedAt": "ISO date",
+        "accountEmail": "string",
+        "channelId": "string (backend envelope)",
+        "appId": "string (backend envelope)",
+        "workspaceId": "string (backend envelope)",
+        "occurredAt": "ISO date (backend envelope)"
+      },
+      "filters": {
+        "from": {
+          "type": "string",
+          "operator": "contains",
+          "description": "Sender contains this text (case-insensitive) — an address or a name."
+        },
+        "subject": {
+          "type": "string",
+          "operator": "contains",
+          "description": "Subject contains this text (case-insensitive)."
+        },
+        "accountEmail": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only emails of this connected account (multi-account setups)."
+        }
+      }
+    }
+  ]
+}

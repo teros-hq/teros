@@ -85,6 +85,7 @@ export const MessageCircle = NoopIcon
 export const MessageSquare = NoopIcon
 export const MinusCircle = NoopIcon
 export const MonitorPlay = NoopIcon
+export const MoreHorizontal = NoopIcon
 export const MoreVertical = NoopIcon
 export const MousePointer = NoopIcon
 export const Move = NoopIcon

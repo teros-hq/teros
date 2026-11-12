@@ -13,7 +13,7 @@ import {
 
 export const getTask: ToolConfig = {
   description:
-    'Get task detail + sub-tasks. Returns: { task: { taskId, title, description, columnName, columnSlug, priority, tags, assigneeName, running, stopRequested, dependencies, progressNotes, projectName, parentTaskTitle? }, subTasks: [...], agents }.',
+    'Get task detail + sub-tasks. Returns: { task: { taskId, title, description, columnName, columnSlug, priority, tags, assigneeName, running, stopRequested, dependencies, progressNotes, projectName, parentTaskTitle?, workflowInputData?, workflowOutputData?, workflowExecutionId?, workflowNodeId?, workflowInputGate?, workflowOutputGate? }, subTasks: [...], agents }. Workflow extension fields are present only when the task was created by the workflow engine.',
   annotations: { readOnlyHint: true, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
@@ -28,15 +28,17 @@ export const getTask: ToolConfig = {
     },
     required: ['taskId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const taskId = args?.taskId as string;
     if (!taskId) throw new Error('taskId is required');
 
     const result = await withRetry(
       () =>
-        withTimeout(wsClient.queryConversations<any>('get_task', { taskId }), 15_000, 'get_task'),
+        withTimeout(wsClient.queryConversations<any>('get_task', { taskId, callerAgentId }), 15_000, 'get_task'),
       { retries: 2, delayMs: 500, label: 'get_task' },
     );
 

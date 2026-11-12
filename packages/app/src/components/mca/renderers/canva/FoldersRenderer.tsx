@@ -23,6 +23,7 @@ import {
   ResourceCard,
   colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
@@ -62,6 +63,10 @@ export function ListFoldersRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
+  // Hoisted above the conditional JSX below: hooks must run unconditionally,
+  // or a status/items change flips the branch and the hook count with it.
+  const scrollStyle = useScrollStyle(360);
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items, total, nextCursor } = unwrapList<CanvaFolderItem>(parsed, 'items');
   const folderId = String(input?.folderId ?? 'root');
@@ -80,7 +85,7 @@ export function ListFoldersRenderer({
           {items.length === 0 ? (
             <Empty message="Folder is empty" />
           ) : (
-            <ScrollView style={useScrollStyle(360)} showsVerticalScrollIndicator>
+            <ScrollView style={scrollStyle} showsVerticalScrollIndicator>
               <YStack>
                 {items.map((it) => {
                   const accent = (it.type && FOLDER_ITEM_ACCENTS[it.type]) ?? CANVA_BRAND.teal;
@@ -121,12 +126,12 @@ export function ListFoldersRenderer({
           {(nextCursor || typeof total === 'number') && (
             <XStack gap={6} justifyContent="flex-end" paddingHorizontal={4} paddingTop={2}>
               {typeof total === 'number' && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   {total} shown
                 </Text>
               )}
               {nextCursor && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   · cursor available
                 </Text>
               )}

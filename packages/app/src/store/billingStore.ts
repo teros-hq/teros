@@ -25,6 +25,22 @@ export interface BillingUsageWarning {
 }
 
 /** Outcome of an admin resolution pushed to the requesting user. */
+/** Payload of automate.quota-exhausted: the user's daily Automate budget is spent (once a day). */
+export interface AutomateQuotaNotice {
+  used: number
+  limit: number
+  planId: string
+  planName: string
+  /** ISO — next 00:00 UTC. */
+  resetsAt: string
+  /** The automation whose run was refused. */
+  starterId: string
+  starterName: string
+  workspaceId: string
+  /** Today's busiest automations (which one ate the budget). */
+  topStarters: Array<{ starterId: string; name: string; workspaceId: string; count: number }>
+}
+
 export interface BillingResolution {
   requestType: 'boost' | 'upgrade'
   status: 'approved' | 'denied'
@@ -38,10 +54,15 @@ interface BillingState {
   /** Count of unseen pending access requests (admin badge). */
   pendingAdminRequests: number
   lastResolution: BillingResolution | null
+  automateQuota: AutomateQuotaNotice | null
+  automateQuotaDismissed: boolean
 
   setWarning: (warning: BillingUsageWarning) => void
   dismissWarning: () => void
   clearWarning: () => void
+  setAutomateQuota: (notice: AutomateQuotaNotice) => void
+  dismissAutomateQuota: () => void
+  clearAutomateQuota: () => void
   incPendingAdminRequests: () => void
   resetPendingAdminRequests: () => void
   setLastResolution: (resolution: BillingResolution | null) => void
@@ -52,11 +73,16 @@ export const useBillingStore = create<BillingState>((set) => ({
   warningDismissed: false,
   pendingAdminRequests: 0,
   lastResolution: null,
+  automateQuota: null,
+  automateQuotaDismissed: false,
 
   // A fresh warning resurfaces the banner even if a previous one was dismissed.
   setWarning: (warning) => set({ warning, warningDismissed: false }),
   dismissWarning: () => set({ warningDismissed: true }),
   clearWarning: () => set({ warning: null, warningDismissed: false }),
+  setAutomateQuota: (automateQuota) => set({ automateQuota, automateQuotaDismissed: false }),
+  dismissAutomateQuota: () => set({ automateQuotaDismissed: true }),
+  clearAutomateQuota: () => set({ automateQuota: null, automateQuotaDismissed: false }),
   incPendingAdminRequests: () =>
     set((s) => ({ pendingAdminRequests: s.pendingAdminRequests + 1 })),
   resetPendingAdminRequests: () => set({ pendingAdminRequests: 0 }),

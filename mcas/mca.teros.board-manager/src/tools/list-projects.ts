@@ -25,8 +25,10 @@ export const listProjects: ToolConfig = {
       cursor: { type: 'string', description: 'Pagination cursor' },
     },
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const workspaceId = (args?.workspaceId as string) || WORKSPACE_ID;
     if (!workspaceId) throw new Error('workspaceId is required (no execution workspace available)');
@@ -36,7 +38,7 @@ export const listProjects: ToolConfig = {
     const result = await withRetry(
       () =>
         withTimeout(
-          wsClient.queryConversations<any>('list_projects', { workspaceId, includeArchived }),
+          wsClient.queryConversations<any>('list_projects', { workspaceId, includeArchived, callerAgentId }),
           15_000,
           'list_projects',
         ),

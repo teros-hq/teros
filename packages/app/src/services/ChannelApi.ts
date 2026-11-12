@@ -25,7 +25,12 @@ export interface ChannelData {
   createdAt?: string
   updatedAt?: string
   workspaceId?: string
-  isPrivate?: boolean
+  /** Conversation metadata — `name` is the title shown in the sidebar (channel.autoname / rename). */
+  metadata?: { name?: string; [key: string]: unknown }
+  /** Channel scope — 'personal' (default) or 'shared' (visible to all workspace members). Missing = 'personal'. */
+  scope?: 'personal' | 'shared'
+  /** The userId of the channel creator (used for sidebar sectioning and toggle permission). */
+  userId?: string
 }
 
 export interface MessageContent {
@@ -110,7 +115,11 @@ export class ChannelApi {
     /** When false, the channel is created and the message saved without waking the
      *  agent — used to batch multiple first-message attachments before a single turn. */
     wakeUpAgent?: boolean
+    /** Skills to load on-demand for this first message (backend support pending — see TER-618). */
+    skillIds?: string[]
   }): Promise<{ channelId: string; agentId: string; channel: ChannelData }> {
+    // TODO(TER-618): backend create-with-message handler does not yet accept skillIds.
+    // Only sendMessage (channel.send-message) supports skillIds in M1.
     return this.transport.request('channel.create-with-message', data as Record<string, unknown>)
   }
 
@@ -129,12 +138,55 @@ export class ChannelApi {
     return this.transport.request('channel.reopen', { channelId })
   }
 
-  /** Mark a channel as private or public */
-  setPrivate(
+  /** Move a channel to a different workspace */
+  moveToWorkspace(
     channelId: string,
-    isPrivate: boolean,
-  ): Promise<{ channelId: string; isPrivate: boolean }> {
-    return this.transport.request('channel.set-private', { channelId, isPrivate })
+    targetWorkspaceId: string,
+  ): Promise<{
+    channelId: string
+    sourceWorkspaceId: string
+    targetWorkspaceId: string
+    warnings: string[]
+    channel: { channelId: string; status: string; workspaceId: string; updatedAt: string }
+  }> {
+    return this.transport.request('channel.move-to-workspace', { channelId, targetWorkspaceId })
+  }
+
+  /**
+   * Set channel scope — 'personal' or 'shared'.
+   * Only the channel creator can call this — the backend enforces via canToggleScope.
+   * Non-creators receive ACCESS_DENIED.
+   */
+  setScope(
+    channelId: string,
+    scope: 'personal' | 'shared',
+  ): Promise<{ channelId: string; scope: 'personal' | 'shared' }> {
+    return this.transport.request('channel.set-scope', { channelId, scope })
+  }
+
+  /**
+   * Pre-publish scan: check for personal app usage before making a channel
+   * public (REQ-8). The backend scans all tool-execution messages and checks
+   * the **current** scope of each app used. Advisory only — does not block
+   * setScope. The frontend uses the result to show a warning dialog.
+   */
+  prePublishScan(
+    channelId: string,
+  ): Promise<{ hasWarning: boolean; personalApps: Array<{ appId: string; name: string }> }> {
+    return this.transport.request('channel.pre-publish-scan', { channelId })
+  }
+
+  /**
+   * Toggle redaction on a message (REQ-4).
+   * Only the channel creator can call this — the backend enforces via canRedact.
+   * Non-creators receive ACCESS_DENIED.
+   */
+  toggleRedaction(
+    channelId: string,
+    messageId: string,
+    redacted: boolean,
+  ): Promise<{ channelId: string; messageId: string; redacted: boolean; redactedAt?: string }> {
+    return this.transport.request('channel.toggle-redaction', { channelId, messageId, redacted })
   }
 
   /** Rename a channel */
@@ -145,6 +197,28 @@ export class ChannelApi {
   /** Auto-generate a channel name via LLM based on conversation content */
   autoname(channelId: string): Promise<{ channelId: string; name: string }> {
     return this.transport.request('channel.autoname', { channelId }, { timeout: 30_000 })
+  }
+
+  /**
+   * Live welcome letter for a new conversation with an agent — prose segments
+   * (with navigable links) + starter prompts in the agent's own voice.
+   * Returns generated:false with a minimal template when LLM generation fails.
+   */
+  letter(
+    agentId: string,
+    options?: { workspaceId?: string; locale?: string },
+  ): Promise<{
+    agentId: string
+    generated: boolean
+    segments: Array<{ type: 'text' | 'em' | 'link'; value: string; target?: { kind: 'agent' | 'board' | 'channel'; id: string; name?: string } }>
+    prompts?: Array<{ label: string; message: string }>
+    boardNames?: string[]
+  }> {
+    return this.transport.request(
+      'channel.letter',
+      { agentId, workspaceId: options?.workspaceId, locale: options?.locale },
+      { timeout: 20_000 },
+    )
   }
 
   /** Mark a channel as read for the current user */
@@ -184,12 +258,13 @@ export class ChannelApi {
   sendMessage(
     channelId: string,
     content: MessageContent,
-    options?: { wakeUpAgent?: boolean },
+    options?: { wakeUpAgent?: boolean; skillIds?: string[] },
   ): Promise<Record<string, never>> {
     return this.transport.request('channel.send-message', {
       channelId,
       content: content as unknown as Record<string, unknown>,
       ...(options?.wakeUpAgent !== undefined ? { wakeUpAgent: options.wakeUpAgent } : {}),
+      ...(options?.skillIds !== undefined ? { skillIds: options.skillIds } : {}),
     })
   }
 

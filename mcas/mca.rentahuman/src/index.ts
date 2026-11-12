@@ -212,6 +212,7 @@ const server = new McaServer({
 // -----------------------------------------------------------------------------
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies RentAHuman.ai API connectivity.',
   parameters: {
     type: 'object',

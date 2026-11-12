@@ -1,0 +1,574 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.microsoft.onedrive",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-items",
+      "description": "List files and folders inside a OneDrive folder. Defaults to the drive root. Address the folder by itemId or by path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Folder item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Folder path relative to the drive root, e.g. \"Documents/Reports\". Pass literal folder names, not pre-encoded ones."
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of items to return (default: 50, max: 200)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-item",
+      "description": "Get metadata for a single OneDrive file or folder, addressed by itemId or by path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Item path relative to the drive root, e.g. \"Documents/notes.txt\". Pass literal file and folder names, not pre-encoded ones."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "search-items",
+      "description": "Search OneDrive for files and folders matching a free-text query.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Free-text search query"
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 25, max: 200)"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "download-file",
+      "description": "Download a OneDrive file and save it to the local filesystem. Files above 50 MB are refused.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "File path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Output directory (default: /workspace/onedrive-downloads)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-file-content",
+      "description": "Read the contents of a text-based OneDrive file inline, without saving it to disk. Limited to 1 MB.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "File path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "convert-file",
+      "description": "Convert a OneDrive document (Word, Excel, PowerPoint, and other supported types) to PDF and save it locally. Files above 50 MB are refused.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "File path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Output directory (default: /workspace/onedrive-downloads)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "upload-file",
+      "description": "Upload a local file to OneDrive. Files below 4 MB upload directly; larger files use a chunked upload session — a failed chunk aborts the whole upload rather than resuming. Overwrites an existing file with the same name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "localPath": {
+            "type": "string",
+            "description": "Absolute path of the local file to upload"
+          },
+          "destinationPath": {
+            "type": "string",
+            "description": "Destination folder path relative to the drive root, e.g. \"Documents\". Pass literal folder names, not pre-encoded ones. Defaults to the root."
+          },
+          "fileName": {
+            "type": "string",
+            "description": "Name to store the file under, as a literal name rather than a pre-encoded one. Defaults to the local file name."
+          }
+        },
+        "required": [
+          "localPath"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-folder",
+      "description": "Create a new folder in OneDrive. Address the containing folder with parentId or parentPath; with neither, the folder is created at the drive root.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the new folder"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "ID of the folder to create the new folder inside. Takes precedence over parentPath. Defaults to the drive root."
+          },
+          "parentPath": {
+            "type": "string",
+            "description": "Path of the folder to create the new folder inside, relative to the drive root, e.g. \"Documents/Reports\". Pass literal folder names, not pre-encoded ones. Defaults to the drive root."
+          },
+          "itemId": {
+            "type": "string",
+            "description": "Deprecated alias for parentId."
+          },
+          "path": {
+            "type": "string",
+            "description": "Deprecated alias for parentPath."
+          },
+          "conflictBehavior": {
+            "type": "string",
+            "description": "What to do if the name exists: \"rename\" (default), \"replace\", or \"fail\"."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "copy-item",
+      "description": "Copy a OneDrive file or folder to another folder. Waits for the copy to finish before returning. Specify the item with itemId or path, and the destination with destinationFolderId or destinationPath; with neither destination, the copy is placed at the drive root.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID to copy. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path of the item to copy, relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          },
+          "destinationFolderId": {
+            "type": "string",
+            "description": "Destination folder ID. Takes precedence over destinationPath."
+          },
+          "destinationPath": {
+            "type": "string",
+            "description": "Destination folder path relative to the drive root. Pass literal folder names, not pre-encoded ones. Omitting both destination arguments copies to the drive root."
+          },
+          "newName": {
+            "type": "string",
+            "description": "Optional new name for the copy"
+          },
+          "pollIntervalMs": {
+            "type": "number",
+            "description": "Milliseconds between progress checks (default: 1000)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "move-item",
+      "description": "Move a OneDrive file or folder into a different folder. Specify the item with itemId or path, and the destination with destinationFolderId or destinationPath; with neither destination, the item is moved to the drive root.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID to move. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path of the item to move, relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          },
+          "destinationFolderId": {
+            "type": "string",
+            "description": "Destination folder ID. Takes precedence over destinationPath."
+          },
+          "destinationPath": {
+            "type": "string",
+            "description": "Destination folder path relative to the drive root. Pass literal folder names, not pre-encoded ones. Omitting both destination arguments moves the item to the drive root."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "rename-item",
+      "description": "Rename a OneDrive file or folder without moving it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          },
+          "newName": {
+            "type": "string",
+            "description": "The new name for the item"
+          }
+        },
+        "required": [
+          "newName"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-item",
+      "description": "Delete a OneDrive file or folder. The item moves to the recycle bin, but this app cannot restore it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-share-link",
+      "description": "Create a sharing link for a OneDrive item, with a chosen permission level and audience.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          },
+          "type": {
+            "type": "string",
+            "description": "Link permission: \"view\" (default), \"edit\", or \"embed\"."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Audience: \"anonymous\" (default) or \"organization\"."
+          },
+          "expirationDateTime": {
+            "type": "string",
+            "description": "Optional ISO 8601 expiry, e.g. \"2026-12-31T23:59:59Z\"."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "invite-people",
+      "description": "Share a OneDrive item with specific people by email, granting read or write access.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          },
+          "emails": {
+            "type": "string",
+            "description": "Comma-separated email addresses to invite"
+          },
+          "role": {
+            "type": "string",
+            "description": "Access level: \"read\" (default) or \"write\"."
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message included in the invitation"
+          },
+          "requireSignIn": {
+            "type": "boolean",
+            "description": "Whether recipients must sign in (default: true)"
+          },
+          "sendInvitation": {
+            "type": "boolean",
+            "description": "Whether to email the invitation (default: true)"
+          }
+        },
+        "required": [
+          "emails"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-permissions",
+      "description": "List everyone and every sharing link that currently has access to a OneDrive item.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "remove-permission",
+      "description": "Revoke a sharing grant or link on a OneDrive item. Use list-permissions to find the permission ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          },
+          "permissionId": {
+            "type": "string",
+            "description": "The permission ID to revoke"
+          }
+        },
+        "required": [
+          "permissionId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-shared-with-me",
+      "description": "List OneDrive files and folders that other people have shared with this account. Listing only: a shared item lives on the drive of the person who shared it, and every other tool in this app addresses /me/drive, so the IDs returned here cannot be passed to get-item, download-file, or any other tool. Use webUrl to open a shared item.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of items to return (default: 50, max: 200)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-recent",
+      "description": "List OneDrive files this account accessed recently, most recent first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of items to return (default: 25, max: 200)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-drive-info",
+      "description": "Get information about the OneDrive account, including storage quota and usage.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-versions",
+      "description": "List the version history of a OneDrive file. Use this to recover an earlier version after an unwanted overwrite.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID. Takes precedence over path."
+          },
+          "path": {
+            "type": "string",
+            "description": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    }
+  ]
+}

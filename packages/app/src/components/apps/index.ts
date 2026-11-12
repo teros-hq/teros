@@ -31,6 +31,9 @@ export {
   AuthPanel,
   type AuthPanelProps,
   type CredentialField,
+  DisconnectButton,
+  type GitHubInstallation,
+  type GitHubSavedBranch,
   type OAuthInfo,
   type OAuthStatus,
 } from './AuthPanel';

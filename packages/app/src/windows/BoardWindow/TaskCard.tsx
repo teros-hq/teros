@@ -1,20 +1,36 @@
 // ============================================================================
-// TASK CARD
+// TASK CARD — the `.tcard` of the OS prototype (design-testing, Oct 2026)
+//
+// A white/step card one step off the washed column, radius 16, padding 14:
+//   row 1  status glyph (by column) + title (sans 13)
+//   row 2  priority Badge + #tag chips
+//   row 3  dependency note (amber / red) when the task waits on others
+//   row 4  assignee Avatar 20 + name · meta (chat glyph, age in mono)
+// The whole card is the drag handle (cursor grab, opacity .4 while dragging).
 // ============================================================================
 
-import { GripVertical, MessageSquare } from '@tamagui/lucide-icons';
-import React, { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, TouchableOpacity, View } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
-import { type BoardColumn, type Task } from '../../store/boardStore';
-import { BLOCK_STATUS_CONFIG, type DependencyHighlight, getBlockStatus, timeAgo } from './board-utils';
-import { AppSpinner } from '../../components/ui';
-import { useColors } from '../../components/mca/primitives/useColors';
-import { colors } from '../../components/mca/primitives/colors';
+import React, { useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { Platform, Pressable, View } from "react-native"
+import { PRIORITY_CONFIG, type BoardColumn, type Task } from "../../store/boardStore"
+import {
+  BLOCK_STATUS_CONFIG,
+  type DependencyHighlight,
+  getBlockStatus,
+  timeAgo,
+  type AgentMapEntry,
+} from "./board-utils"
+import { AppSpinner } from "../../components/ui"
+import { Avatar } from "../../components/Avatar"
+import { Badge, type BadgeTone, Ph, T } from "../../components/ui/ds"
+import { useColors } from "../../components/mca/primitives/useColors"
+import { colors } from "../../components/mca/primitives/colors"
+import { normalizeTags } from "@teros/shared"
+import { useChannelAgentHours } from "../../hooks/useChannelAgentHours"
 
 interface TaskCardProps {
-  task: Task;
-  isSelected: boolean;
+  task: Task
+  isSelected: boolean
   /**
    * Highlight state driven by hovering/selecting another task that this task
    * depends on:
@@ -22,39 +38,82 @@ interface TaskCardProps {
    *   - 'still-blocked' → this task would still be blocked by other deps (dark red)
    *   - null            → no highlight
    */
-  dependencyHighlight?: DependencyHighlight;
-  allColumns: BoardColumn[];
-  allTasks: Task[];
-  currentColumnSlug: string;
-  onPress: () => void;
-  onMoveTask: (taskId: string, columnId: string, position?: number) => void;
-  onDeleteTask: (taskId: string) => void;
-  onOpenConversation: (channelId: string) => void;
-  agentMap: Record<string, { name: string; avatarUrl?: string }>;
+  dependencyHighlight?: DependencyHighlight
+  allColumns: BoardColumn[]
+  allTasks: Task[]
+  currentColumnSlug: string
+  onPress: () => void
+  onMoveTask: (taskId: string, columnId: string, position?: number) => void
+  onDeleteTask: (taskId: string) => void
+  onOpenConversation: (channelId: string) => void
+  agentMap: Record<string, AgentMapEntry>
   /** Called when the card is hovered (mouse enter) */
-  onHoverIn?: () => void;
+  onHoverIn?: () => void
   /** Called when the card is no longer hovered (mouse leave) */
-  onHoverOut?: () => void;
+  onHoverOut?: () => void
 }
 
-// Dependency highlight style config
+// ─── Shared bits (also used by the list view) ───────────────────────────────
+
+/** Priority → badge tone + label (the prototype's Media/Alta/Baja/Urgente tints).
+ *  Labels come from the store's PRIORITY_CONFIG so cards, list and detail agree;
+ *  `board.priority_<key>` overrides them per locale when present. */
+export function priorityMeta(
+  priority: Task["priority"] | undefined,
+  t: (k: string, o?: any) => string,
+): { tone: BadgeTone; label: string } {
+  const key = priority ?? "medium"
+  const label = t(`board.priority_${key}`, { defaultValue: PRIORITY_CONFIG[key]?.label ?? key })
+  const tone: BadgeTone =
+    key === "urgent" ? "r" : key === "high" ? "a" : key === "low" ? "neutral" : "i"
+  return { tone, label }
+}
+
+/** The `.status-mark` glyph of a task, decided by the column it sits in. */
+export function StatusMark({
+  slug,
+  running,
+  size = 18,
+}: {
+  slug: string
+  running?: boolean
+  size?: number
+}) {
+  const c = useColors()
+  if (running) return <AppSpinner size="xs" variant="warning" />
+  let name = "circle-dashed"
+  let color = c.text3
+  switch (slug) {
+    case "in_progress":
+      name = "circle-notch"
+      color = colors.amber
+      break
+    case "blocked":
+      name = "x-circle"
+      color = colors.red
+      break
+    case "review":
+      name = "circle"
+      color = c.accent
+      break
+    case "done":
+      name = "check-circle"
+      color = colors.green
+      break
+    default:
+      break
+  }
+  return <Ph name={name} size={size} color={color} />
+}
+
+// Dependency highlight style config (hover of a dependency)
 const DEPENDENCY_HIGHLIGHT_CONFIG: Record<
   NonNullable<DependencyHighlight>,
-  { bg: string; border: string; labelColor: string; label: string }
+  { tone: "a" | "r"; color: string; label: string }
 > = {
-  'will-unblock': {
-    bg: 'rgba(249,115,22,0.12)',
-    border: 'rgba(249,115,22,0.55)',
-    labelColor: colors.orange,
-    label: 'Would unblock',
-  },
-  'still-blocked': {
-    bg: 'rgba(153,27,27,0.15)',
-    border: 'rgba(185,28,28,0.5)',
-    labelColor: colors.red,
-    label: 'Would remain blocked',
-  },
-};
+  "will-unblock": { tone: "a", color: colors.orange, label: "Would unblock" },
+  "still-blocked": { tone: "r", color: colors.red, label: "Would remain blocked" },
+}
 
 export function TaskCard({
   task,
@@ -64,241 +123,261 @@ export function TaskCard({
   allTasks,
   currentColumnSlug,
   onPress,
-  onMoveTask,
-  onDeleteTask,
   onOpenConversation,
   agentMap,
   onHoverIn,
   onHoverOut,
 }: TaskCardProps) {
-  const c = useColors();
-  const [showActions, setShowActions] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const blockStatus = getBlockStatus(task, allTasks);
-  const blockConfig = BLOCK_STATUS_CONFIG[blockStatus];
-  const dragHandleRef = useRef<any>(null);
-  const cardRef = useRef<any>(null);
+  const { t } = useTranslation()
+  const c = useColors()
+  const [isDragging, setIsDragging] = useState(false)
+  const [hover, setHover] = useState(false)
+  const blockStatus = getBlockStatus(task, allTasks, allColumns)
+  const blockConfig = BLOCK_STATUS_CONFIG[blockStatus]
+  const cardRef = useRef<any>(null)
 
-  const depConfig = dependencyHighlight ? DEPENDENCY_HIGHLIGHT_CONFIG[dependencyHighlight] : null;
+  const depConfig = dependencyHighlight ? DEPENDENCY_HIGHLIGHT_CONFIG[dependencyHighlight] : null
 
-  // Attach native drag events (RNW doesn't forward drag events)
+  // Attach native drag events (RNW doesn't forward drag events). The whole
+  // card is the handle, like the prototype (`.tcard { cursor: grab }`).
   useEffect(() => {
-    const handle = dragHandleRef.current as HTMLElement | null;
-    const card = cardRef.current as HTMLElement | null;
-    if (!handle || !card) return;
-    handle.draggable = true;
+    const card = cardRef.current as HTMLElement | null
+    if (!card) return
+    card.draggable = true
     const handleDragStart = (e: DragEvent) => {
-      e.dataTransfer?.setData('text/plain', task.taskId);
-      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-      // Use the whole card as drag image
+      e.dataTransfer?.setData("text/plain", task.taskId)
       if (e.dataTransfer) {
-        e.dataTransfer.setDragImage(card, 20, 20);
+        e.dataTransfer.effectAllowed = "move"
+        e.dataTransfer.setDragImage(card, 20, 20)
       }
       // Hide original after a tick (browser needs it visible to capture drag image)
-      requestAnimationFrame(() => setIsDragging(true));
-    };
+      requestAnimationFrame(() => setIsDragging(true))
+    }
     const handleDragEnd = () => {
-      setIsDragging(false);
-    };
-    handle.addEventListener('dragstart', handleDragStart);
-    handle.addEventListener('dragend', handleDragEnd);
+      setIsDragging(false)
+    }
+    card.addEventListener("dragstart", handleDragStart)
+    card.addEventListener("dragend", handleDragEnd)
     return () => {
-      handle.removeEventListener('dragstart', handleDragStart);
-      handle.removeEventListener('dragend', handleDragEnd);
-    };
-  }, [task.taskId]);
+      card.removeEventListener("dragstart", handleDragStart)
+      card.removeEventListener("dragend", handleDragEnd)
+    }
+  }, [task.taskId])
 
   // Attach hover events via native DOM (RNW onHoverIn/onHoverOut not always reliable)
   useEffect(() => {
-    const card = cardRef.current as HTMLElement | null;
-    if (!card || (!onHoverIn && !onHoverOut)) return;
-    const handleMouseEnter = () => onHoverIn?.();
-    const handleMouseLeave = () => onHoverOut?.();
-    card.addEventListener('mouseenter', handleMouseEnter);
-    card.addEventListener('mouseleave', handleMouseLeave);
+    const card = cardRef.current as HTMLElement | null
+    if (!card) return
+    const handleMouseEnter = () => {
+      setHover(true)
+      onHoverIn?.()
+    }
+    const handleMouseLeave = () => {
+      setHover(false)
+      onHoverOut?.()
+    }
+    card.addEventListener("mouseenter", handleMouseEnter)
+    card.addEventListener("mouseleave", handleMouseLeave)
     return () => {
-      card.removeEventListener('mouseenter', handleMouseEnter);
-      card.removeEventListener('mouseleave', handleMouseLeave);
-    };
-  }, [onHoverIn, onHoverOut]);
+      card.removeEventListener("mouseenter", handleMouseEnter)
+      card.removeEventListener("mouseleave", handleMouseLeave)
+    }
+  }, [onHoverIn, onHoverOut])
 
-  // Compute border color with priority: dependency highlight > running > selected > default
-  // Note: 'blocked' is now a column concept only — visual blocking is handled by column position
+  const assignee = task.assignedAgentId ? agentMap[task.assignedAgentId] : undefined
+  const assigneeName = task.assignedAgentId
+    ? assignee?.name || task.assignedAgentId.slice(0, 12)
+    : ""
+  const priority = priorityMeta(task.priority, t)
+  // WS2: the task inherits the agent-hours of its linked conversation (same
+  // shared cache as the chat header chip and the conversations list).
+  const agentHours = useChannelAgentHours(task.channelId)
+  // Legacy data guard: tags can arrive as a JSON/CSV string from Mongo —
+  // normalize before any array op (bug "task.tags.slice(...).map is not a function").
+  const tags = normalizeTags(task.tags)
+  const hasDeps = !!task.dependencies && task.dependencies.length > 0
+  const showBlockNote = hasDeps && blockStatus !== "green" && !depConfig
+
+  // Left accent strip: running → amber, blocked column → red (the prototype's
+  // In Progress / Blocked cards carry a coloured edge).
+  const edge =
+    task.running || currentColumnSlug === "in_progress"
+      ? colors.amber
+      : currentColumnSlug === "blocked"
+        ? colors.red
+        : null
+
+  // Border: dependency highlight > selected > hairline (transparent).
   const borderColor = depConfig
-    ? depConfig.border
-    : task.running
-      ? 'rgba(245,158,11,0.5)'
-      : isSelected
-        ? 'rgba(139,92,246,0.35)'
-        : c.borderStrong;
-
-  const backgroundColor = depConfig
-    ? depConfig.bg
+    ? depConfig.color
     : isSelected
-      ? 'rgba(139,92,246,0.10)'
-      : c.bgCard;
+      ? c.borderAccentStrong
+      : "transparent"
+  const backgroundColor = depConfig ? c.tint[depConfig.tone].bg : c.bgStep
 
   return (
     <Pressable
       onPress={onPress}
-      {...(Platform.OS === 'web' ? { 'data-task-card': true } as any : {})}
+      {...(Platform.OS === "web" ? ({ "data-task-card": true } as any) : {})}
     >
-      {/* @ts-ignore — web-only style */}
-      <XStack
+      <View
         ref={cardRef}
-        backgroundColor={backgroundColor}
-        borderRadius={8}
-        borderWidth={1}
-        borderColor={borderColor}
-        opacity={isDragging ? 0.15 : 1}
-        // @ts-ignore — web-only
-        style={{ userSelect: 'none', transition: 'background-color 0.15s ease, border-color 0.15s ease' }}
+        style={[
+          {
+            borderRadius: 16,
+            backgroundColor,
+            borderWidth: 1,
+            borderColor,
+            padding: 14,
+            paddingLeft: edge ? 14 : 14,
+            gap: 10,
+            opacity: isDragging ? 0.4 : 1,
+            overflow: "hidden",
+          },
+          Platform.OS === "web"
+            ? ({
+                cursor: "grab",
+                userSelect: "none",
+                boxShadow: hover ? c.liftSmHover : c.liftSm,
+                transform: hover && !isDragging ? "translateY(-2px)" : "none",
+                transition:
+                  "box-shadow 0.3s cubic-bezier(.16,1,.3,1), transform 0.3s cubic-bezier(.16,1,.3,1), border-color 0.2s, opacity 0.2s",
+              } as any)
+            : null,
+        ]}
       >
-        {/* Left strip: block-status dot (absolute top) + drag handle (centered) */}
-        <View
-          ref={dragHandleRef}
-          style={{
-            width: 22,
-            borderTopLeftRadius: 8,
-            borderBottomLeftRadius: 8,
-            alignItems: 'center',
-            justifyContent: 'center',
-            // @ts-ignore web-only cursor
-            cursor: 'grab' as any,
-            position: 'relative',
-          } as any}
-        >
-          {/* Block status indicator — colored dot */}
+        {edge ? (
           <View
             style={{
-              position: 'absolute',
-              top: 9,
-              width: 6,
-              height: 6,
-              borderRadius: 3,
-              backgroundColor: blockConfig.color,
-              opacity: 0.9,
+              position: "absolute",
+              left: 0,
+              top: 10,
+              bottom: 10,
+              width: 3,
+              borderRadius: 2,
+              backgroundColor: edge,
             }}
           />
+        ) : null}
 
-          {/* Grip icon — always centered */}
-          <GripVertical size={10} color={c.text3} />
+        {/* Row 1: status glyph + title (+ stop badge) */}
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+          <View
+            style={{
+              width: 18,
+              height: 18,
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: 0,
+            }}
+          >
+            <StatusMark slug={currentColumnSlug} running={task.running} />
+          </View>
+          <T step="sm" style={{ flex: 1 }} numberOfLines={3}>
+            {task.title}
+          </T>
+          {task.stopRequested ? (
+            <Badge tone="a" sm cap>
+              {t("board.stopPending", { defaultValue: "Stop" })}
+            </Badge>
+          ) : null}
         </View>
 
-        {/* Card content */}
-        <YStack flex={1} padding="$2" paddingLeft={6} gap={4}>
-          {/* Title + Running indicator */}
-          <XStack alignItems="flex-start" gap={6}>
-            {/* @ts-ignore — web-only style */}
-            <Text
-              fontSize={13}
-              color={c.text}
-              fontWeight="500"
-              flex={1}
-              numberOfLines={2}
-              style={{ userSelect: 'text', cursor: 'text' }}
+        {/* Row 2: priority + tags + agent-hours (WS2) */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <Badge tone={priority.tone} sm>
+            {priority.label}
+          </Badge>
+          {tags.slice(0, 3).map((tag) => (
+            <Badge key={tag} tone="neutral" sm>
+              {`#${tag}`}
+            </Badge>
+          ))}
+          {tags.length > 3 ? (
+            <T step="codenote" tone="text3">
+              +{tags.length - 3}
+            </T>
+          ) : null}
+          {/* WS2: agent-hours inherited from the linked conversation. Quiet
+              text3 mini badge under the title — hidden until loaded and for
+              tasks without a linked channel. */}
+          {task.channelId && !agentHours.loading ? (
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 3, marginLeft: "auto" }}
+              testID={`task-card-agent-hours-${task.taskId}`}
             >
-              {task.title}
-            </Text>
-            {task.running && (
-              <AppSpinner size="xs" variant="warning" />
-            )}
-            {task.stopRequested && (
-              <View
-                style={{
-                  backgroundColor: 'rgba(251,146,60,0.14)',
-                  borderRadius: 3,
-                  paddingHorizontal: 4,
-                  paddingVertical: 1,
-                  borderWidth: 1,
-                  borderColor: 'rgba(251,146,60,0.35)',
-                  marginTop: 1,
-                }}
-              >
-                <Text fontSize={8} color={c.badges.warn.text} fontWeight="700">
-                  ⏹ Stop
-                </Text>
-              </View>
-            )}
-          </XStack>
+              <Ph name="clock" size={11} color={c.text3} />
+              <T step="codenote" tone="text3">
+                {agentHours.formatted}
+              </T>
+            </View>
+          ) : null}
+        </View>
 
-          {/* Dependency highlight label */}
-          {depConfig && (
-            <XStack alignItems="center" gap={4}>
-              <View
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  backgroundColor: depConfig.labelColor,
-                }}
+        {/* Row 3: dependency notes */}
+        {depConfig ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Ph
+              name={dependencyHighlight === "will-unblock" ? "lock-key-open" : "lock-key"}
+              size={12}
+              color={depConfig.color}
+            />
+            <T step="12" color={depConfig.color}>
+              {depConfig.label}
+            </T>
+          </View>
+        ) : showBlockNote ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Ph
+              name={blockStatus === "circular" ? "warning" : "hourglass"}
+              size={12}
+              color={blockConfig.color}
+            />
+            <T step="12" color={blockConfig.color}>
+              {blockConfig.label}
+            </T>
+          </View>
+        ) : null}
+
+        {/* Row 4: assignee + meta */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {task.assignedAgentId ? (
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 7, flex: 1, minWidth: 0 }}
+            >
+              <Avatar
+                name={assigneeName}
+                imageUrl={assignee?.avatarUrl}
+                size={20}
+                isAgent={assignee?.type !== "human"}
               />
-              <Text fontSize={9} color={depConfig.labelColor} fontWeight="600" opacity={0.95}>
-                {depConfig.label}
-              </Text>
-            </XStack>
+              <T step="12" tone="text2" ellipsis style={{ flexShrink: 1 }}>
+                {assigneeName}
+              </T>
+            </View>
+          ) : (
+            <View style={{ flex: 1 }} />
           )}
 
-          {/* Bottom row: agent + conversation + actions */}
-          <XStack alignItems="center" marginTop={2}>
-            {task.assignedAgentId && (
-              <XStack alignItems="center" gap={4} flex={1}>
-                {agentMap[task.assignedAgentId]?.avatarUrl ? (
-                  <View
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: 7,
-                      overflow: 'hidden',
-                      backgroundColor: colors.violetGlow,
-                    }}
-                  >
-                    <img
-                      src={agentMap[task.assignedAgentId].avatarUrl}
-                      style={{ width: 14, height: 14, borderRadius: 7, objectFit: 'cover' }}
-                    />
-                  </View>
-                ) : (
-                  <View
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: 7,
-                      backgroundColor: 'rgba(139,92,246,0.18)',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text fontSize={8} color={colors.violet} fontWeight="700">
-                      {(agentMap[task.assignedAgentId]?.name || '?')[0]}
-                    </Text>
-                  </View>
-                )}
-                <Text fontSize={10} color={c.text2} numberOfLines={1}>
-                  {agentMap[task.assignedAgentId]?.name || task.assignedAgentId.slice(0, 12)}
-                </Text>
-              </XStack>
-            )}
-            {!task.assignedAgentId && <View style={{ flex: 1 }} />}
+          {task.channelId ? (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation?.()
+                onOpenConversation(task.channelId!)
+              }}
+              hitSlop={6}
+              {...(Platform.OS === "web" ? ({ title: t("board.conversation") } as any) : {})}
+              style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+            >
+              <Ph name="chat-circle" size={13} color={c.text3} />
+            </Pressable>
+          ) : null}
 
-            {task.channelId && (
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  onOpenConversation(task.channelId!);
-                }}
-                style={{ padding: 2, marginRight: 4 }}
-              >
-                <MessageSquare size={12} color={c.badges.info.text} />
-              </TouchableOpacity>
-            )}
-
-            <Text fontSize={9} color={c.text3}>
-              {timeAgo(task.createdAt)}
-            </Text>
-          </XStack>
-        </YStack>
-      </XStack>
+          <T step="codenote" tone="text3">
+            {timeAgo(task.createdAt)}
+          </T>
+        </View>
+      </View>
     </Pressable>
-  );
+  )
 }

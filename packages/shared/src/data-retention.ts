@@ -24,7 +24,7 @@
  * A provider can avoid training yet still retain (e.g. 30 days for abuse).
  *
  * Classification verified against official policies on {@link RETENTION_VERIFIED_AT}.
- *
+ * See docs/design/model-data-retention-warning.md for sources per provider.
  * NOTE: provider policies change — `data-retention.test.ts` fails if this date
  * goes stale, forcing a re-audit. Keep it in sync when you re-verify.
  */
@@ -71,6 +71,10 @@ export const PROVIDER_RETENTION: Record<string, RetentionInfo> = {
   fireworks: ZDR,
   'ollama-cloud': ZDR,
   cloudflare: ZDR,
+  // Helmcode: EU-hosted open-weight inference, zero logs, no training. Uses its OWN
+  // notice slug so the notice names the EU residency explicitly, instead of the
+  // generic ZDR copy (which says "zero retention" but not WHERE the data lives).
+  helmcode: { tier: 'zdr', noticeSlug: 'helmcode' },
   // Local inference — data never leaves the user's machine (ZDR by construction).
   ollama: { tier: 'zdr', noticeSlug: 'local' },
 
@@ -127,6 +131,11 @@ const ZHIPU_CHINA: RetentionInfo = {
  * Nuances handled:
  *   - `zhipu` / `zhipu-coding` with `providerConfig.useChina === true` → routed
  *     to open.bigmodel.cn (China) → strictly worse than the z.ai default.
+ *   - ANY provider with `providerConfig.zdr === true` → forced ZDR. This is the
+ *     model-level override: a model that is Zero Data Retention by contract or
+ *     by design (e.g. an enterprise-ZDR endpoint, or a local Ollama model)
+ *     can be marked in the catalog even when the provider's default posture
+ *     is `retains`/`trains`.
  *
  * Unknown providers fail safe to `retains` (never `zdr` — we won't promise
  * Zero Data Retention for a provider we have not classified).
@@ -137,6 +146,11 @@ export function resolveRetention(
 ): RetentionInfo {
   if ((provider === 'zhipu' || provider === 'zhipu-coding') && providerConfig?.useChina === true) {
     return ZHIPU_CHINA;
+  }
+  // Model-level ZDR override (catalog `providerConfig.zdr: true`) — wins over
+  // the provider default. `false` does NOT downgrade a ZDR provider.
+  if (providerConfig?.zdr === true) {
+    return ZDR;
   }
   return PROVIDER_RETENTION[provider] ?? UNKNOWN_RETENTION;
 }

@@ -1,6 +1,5 @@
 export {
   type DriveToolContext,
-  ensureAuthenticated,
   type GoogleClients,
   getGoogleClients,
   initializeGoogleClients,

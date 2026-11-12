@@ -5,7 +5,7 @@
  * pinned to `AgentTurnTelemetry` catches any accidental change to the attribute
  * mapping (Teros-side churn) — the moment the emitter drifts, this fails loud
  * and forces a re-run of the parser smoke against the pinned Latitude digest
- *.
+ * (see docs/runbooks/20260706_latitude-export-swap-target.md).
  *
  * Part 2 (the parser smoke: ingest a span into a real Latitude at the pinned
  * digest and assert it parses invoke_agent → chat/execute_tool) needs the

@@ -45,6 +45,9 @@ describe('SessionManager.createSession', () => {
       ws,
       connectedAt: expect.any(Date),
       lastActivityAt: expect.any(Date),
+      lastPingAt: expect.any(Date),
+      ip: 'unknown',
+      userAgent: null,
     });
     expect(session.sessionId.length).toBeGreaterThan(0);
     expect(session.connectedAt.getTime()).toBeGreaterThanOrEqual(before);
@@ -52,6 +55,18 @@ describe('SessionManager.createSession', () => {
     expect(sm.getSession(session.sessionId)).toBe(session);
     expect(sm.getConnectionCount()).toBe(1);
     expect(sm.getActiveSessions()).toEqual([session.sessionId]);
+  });
+
+  it('stores handshake metadata (ip, userAgent) when provided', () => {
+    const sm = new SessionManager();
+    const ws = makeWs();
+    const session = sm.createSession('user_1' as any, ws, {
+      ip: '203.0.113.7',
+      userAgent: 'Mozilla/5.0 (X11; Linux) TerosDesktop/1.0 Electron/33',
+    });
+
+    expect(session.ip).toBe('203.0.113.7');
+    expect(session.userAgent).toBe('Mozilla/5.0 (X11; Linux) TerosDesktop/1.0 Electron/33');
   });
 
   it('delegates registration to PubSubService with (sessionId, ws)', () => {
@@ -202,5 +217,27 @@ describe('SessionManager.updateActivity', () => {
   it('unknown sessionId is a no-op without throwing', () => {
     const sm = new SessionManager();
     expect(() => sm.updateActivity('sess_ghost')).not.toThrow();
+  });
+});
+
+describe('SessionManager.updatePing', () => {
+  it('bumps lastPingAt WITHOUT touching lastActivityAt', async () => {
+    const sm = new SessionManager();
+    const session = sm.createSession('user_1' as any, makeWs());
+    const initialPing = session.lastPingAt.getTime();
+    const initialActivity = session.lastActivityAt.getTime();
+
+    await new Promise((r) => setTimeout(r, 5));
+    sm.updatePing(session.sessionId);
+
+    const updated = sm.getSession(session.sessionId)!;
+    expect(updated.lastPingAt.getTime()).toBeGreaterThan(initialPing);
+    // The whole point: keepalive pings must not fake "real activity"
+    expect(updated.lastActivityAt.getTime()).toBe(initialActivity);
+  });
+
+  it('unknown sessionId is a no-op without throwing', () => {
+    const sm = new SessionManager();
+    expect(() => sm.updatePing('sess_ghost')).not.toThrow();
   });
 });

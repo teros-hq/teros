@@ -79,6 +79,23 @@ export type WsServerMessage = WsResponse | WsError | WsEvent
 // ============================================================================
 
 /** Context passed to every handler */
+/**
+ * Who is really acting when a handler runs. Absent for a plain app session
+ * (the human behind `userId`); set by the MCA bridge when an agent tool
+ * invokes a domain action on behalf of the turn's user.
+ */
+export interface WsHandlerActor {
+  kind: 'user' | 'agent'
+  /** Agent executing the tool (kind === 'agent'). */
+  agentId?: string
+  /** Workspace the MCA connection belongs to. */
+  workspaceId?: string
+  /** Installed app (MCA) that made the call. */
+  appId?: string
+  /** Channel the tool call came from, when known. */
+  channelId?: string
+}
+
 export interface WsHandlerContext {
   userId: string
   sessionId: string
@@ -86,6 +103,8 @@ export interface WsHandlerContext {
   /** The raw session token (opaque string) for the current authenticated session.
    *  Available so handlers can hash it or reference the MongoDB user_session. */
   sessionToken?: string
+  /** Acting identity when the call did not come from the user's own session. */
+  actor?: WsHandlerActor
 }
 
 /** A handler function that processes a request and returns data */

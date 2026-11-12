@@ -20,6 +20,14 @@ export function configurePersistedDriver(getWorkspaceId: () => string | null): v
   _getWorkspaceId = getWorkspaceId
 }
 
+/** Read the workspace id injected via configurePersistedDriver — the same source
+ *  the PersistedDriver buckets state by. tilingStore tags each completed layout
+ *  restore with it (layoutRestoredForWorkspace) so consumers can tell WHICH
+ *  workspace's layout is currently in the store. */
+export function getCurrentWorkspaceId(): string | null {
+  return _getWorkspaceId()
+}
+
 export const persistedDriver = new PersistedDriver(
   () => getTerosClient().transport,
   () => _getWorkspaceId(),
@@ -32,6 +40,14 @@ export const storage = new StorageRegistry({
   tabState:     new TypedStorage(isWeb ? new SessionStorageDriver() : new InMemoryDriver()),
   persisted:    new TypedStorage(persistedDriver),
 })
+
+/**
+ * On web, the session token is kept in-memory only (Zustand state) to prevent
+ * XSS exfiltration via localStorage. On native, SecureStorage is safe to use.
+ * authStore uses this flag to decide whether to include sessionToken in
+ * persisted auth data.
+ */
+export const shouldPersistSessionToken = !isWeb
 
 export { STORAGE_KEYS } from './storageKeys'
 export type { StorageKey, StorageDomain } from './storageKeys'

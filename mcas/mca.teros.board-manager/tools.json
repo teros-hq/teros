@@ -8,6 +8,147 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "-subscribe",
+      "description": "Subscribe this conversation to one of this app's events (task_created, task_moved, task_assigned, task_unassigned, task_started, task_completed, task_blocked, task_cancelled, task_updated, task_priority_changed, task_progress_note, task_archived, task_unarchived, task_dependency_added, task_dependency_removed, task_linked). Matching events are delivered here as they happen and wake the agent (self-wake guard: an agent is never woken by an event it caused itself). The subscription lives in the backend — it survives restarts of this app. Subscribing again to the same event REPLACES the previous filter. Returns: { subscription: { subscriptionId, topic, event, channelId, mode, filter, wakeUpOn, createdAt }, message }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "enum": [
+              "task_created",
+              "task_moved",
+              "task_assigned",
+              "task_unassigned",
+              "task_started",
+              "task_completed",
+              "task_blocked",
+              "task_cancelled",
+              "task_updated",
+              "task_priority_changed",
+              "task_progress_note",
+              "task_archived",
+              "task_unarchived",
+              "task_dependency_added",
+              "task_dependency_removed",
+              "task_linked"
+            ],
+            "description": "Local event name (the app namespace is implicit). Valid: task_created — A task was created on a board.; task_moved — A task changed column.; task_assigned — A task was assigned to an agent.; task_unassigned — A task lost its assignee.; task_started — An agent started working on a task.; task_completed — A task was completed.; task_blocked — A task was marked as blocked.; task_cancelled — A task was cancelled.; task_updated — A task field changed (title, description, instructions, tags, priority…).; task_priority_changed — A task priority changed.; task_progress_note — A progress note was added to a task.; task_archived — A task was archived.; task_unarchived — A task was restored from the archive.; task_dependency_added — A dependency was added between two tasks.; task_dependency_removed — A dependency was removed.; task_linked — A conversation was linked to a task (its context now lives in that channel)."
+          },
+          "filter": {
+            "type": "object",
+            "description": "Optional filter. Fields AND-ed, values within a field OR-ed. Only the fields declared for the event are valid — see the event list."
+          },
+          "wakeUpOn": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "task_created",
+                "task_moved",
+                "task_assigned",
+                "task_unassigned",
+                "task_started",
+                "task_completed",
+                "task_blocked",
+                "task_cancelled",
+                "task_updated",
+                "task_priority_changed",
+                "task_progress_note",
+                "task_archived",
+                "task_unarchived",
+                "task_dependency_added",
+                "task_dependency_removed",
+                "task_linked"
+              ]
+            },
+            "description": "Event names that wake the agent (response turn). Default: the subscribed event always wakes. Rarely needed with a single-event subscription."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Conversation that receives the events. Defaults to the calling conversation — omit it."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "notify",
+              "wake"
+            ],
+            "description": "notify = silent delivery, wake = trigger an agent response turn. Default: wake."
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "-unsubscribe",
+      "description": "Cancel this conversation's subscription(s) to this app's events. By subscriptionId, by event name, or — with neither — ALL of this conversation's subscriptions to this app. Idempotent. Returns: { unsubscribed, deleted?, channelId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subscriptionId": {
+            "type": "string",
+            "description": "Specific subscription to cancel (from -list-subscriptions)."
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "task_created",
+              "task_moved",
+              "task_assigned",
+              "task_unassigned",
+              "task_started",
+              "task_completed",
+              "task_blocked",
+              "task_cancelled",
+              "task_updated",
+              "task_priority_changed",
+              "task_progress_note",
+              "task_archived",
+              "task_unarchived",
+              "task_dependency_added",
+              "task_dependency_removed",
+              "task_linked"
+            ],
+            "description": "Cancel the subscription to this event."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Defaults to the calling conversation."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "-list-subscriptions",
+      "description": "List this conversation's subscriptions to this app's events, plus the app's event catalog (events, payload fields and valid filter fields) to subscribe to. Returns: { subscriptions: [...], events: [...] }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Defaults to the calling conversation."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
       }
     },
     {
@@ -85,7 +226,7 @@
     },
     {
       "name": "get-task",
-      "description": "Get task detail + sub-tasks. Returns: { task: { taskId, title, description, columnName, columnSlug, priority, tags, assigneeName, running, stopRequested, dependencies, progressNotes, projectName, parentTaskTitle? }, subTasks: [...], agents }.",
+      "description": "Get task detail + sub-tasks. Returns: { task: { taskId, title, description, columnName, columnSlug, priority, tags, assigneeName, running, stopRequested, dependencies, progressNotes, projectName, parentTaskTitle?, workflowInputData?, workflowOutputData?, workflowExecutionId?, workflowNodeId?, workflowInputGate?, workflowOutputGate? }, subTasks: [...], agents }. Workflow extension fields are present only when the task was created by the workflow engine.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -246,7 +387,7 @@
     },
     {
       "name": "create-task",
-      "description": "Create a task on a project board. Defaults to Backlog column. Returns: { task: { taskId, title, columnId, priority, tags, assignedAgentId } }. Use batch-create-tasks to create many atomically. Providing `instructions` is encouraged — it gives the assigned agent the context and steps needed to work autonomously.",
+      "description": "Create a task on a project board. Defaults to Backlog column. Returns: { task: { taskId, title, columnId, priority, tags, assignedAgentId } }. Use batch-create-tasks to create many atomically. `instructions` is required — it gives the assigned agent the context and steps needed to work autonomously.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -302,7 +443,8 @@
         },
         "required": [
           "projectId",
-          "title"
+          "title",
+          "instructions"
         ]
       },
       "annotations": {
@@ -313,7 +455,7 @@
     },
     {
       "name": "batch-create-tasks",
-      "description": "Create multiple tasks atomically (all succeed or all fail). Max 100 per call. Returns: { projectId, tasks: [{ taskId, title, columnId, priority, tags }], count }. Use create-task for a single task. Providing `instructions` for each task is encouraged — it gives the assigned agent the context and steps needed to work autonomously.",
+      "description": "Create multiple tasks atomically (all succeed or all fail). Max 100 per call. Returns: { projectId, tasks: [{ taskId, title, columnId, priority, tags }], count }. Use create-task for a single task. `instructions` is required for each task — it gives the assigned agent the context and steps needed to work autonomously.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -370,7 +512,8 @@
                 }
               },
               "required": [
-                "title"
+                "title",
+                "instructions"
               ]
             }
           },
@@ -539,6 +682,7 @@
         ]
       },
       "annotations": {
+        "readOnlyHint": false,
         "version": "1.0.0",
         "stability": "stable"
       }
@@ -591,6 +735,10 @@
           "includeRaw": {
             "type": "boolean",
             "description": "Return full task document"
+          },
+          "reviewAction": {
+            "type": "boolean",
+            "description": "Set true ONLY when this move is the terminal action of a review (verdict) while reacting to a task_moved→Review event. Enables the single-flight claim so concurrent sessions of yours move the task at most once. Leave unset for normal task management moves."
           }
         },
         "required": [
@@ -713,6 +861,10 @@
           "includeRaw": {
             "type": "boolean",
             "description": "Return full task document"
+          },
+          "reviewAction": {
+            "type": "boolean",
+            "description": "Set true ONLY when this note is a review verdict posted while reacting to a task_moved→Review event. Enables the single-flight claim so concurrent sessions of yours post at most one review note. Leave unset for normal progress reporting."
           }
         },
         "required": [
@@ -722,6 +874,7 @@
       },
       "annotations": {
         "readOnlyHint": false,
+        "safeWriteHint": true,
         "version": "1.0.0",
         "stability": "stable"
       }
@@ -929,7 +1082,7 @@
     },
     {
       "name": "subscribe-to-board",
-      "description": "Subscribe the current conversation to real-time board events. Events (task moves, status changes, progress notes, dependency changes, autoplay toggles) are delivered to the conversation as they happen. Use filter to narrow events. Returns: { subscription: { subscriptionId, boardId, filter, createdAt } }. Use unsubscribe-from-board to stop.",
+      "description": "DEPRECATED (v1.4.4): use the reserved tool `board_manager__subscribe` instead — one event per subscription with declarative filters (e.g. event \"task_moved\", filter { projectId, taskId, toColumn }); the subscription lives in the backend and survives respawns. This tool still works (kept for existing conversations) but will be removed. Subscribe the current conversation to real-time board events. Events (task moves, archives, assignments, progress notes, dependency changes, autoplay toggles) are delivered to the conversation as they happen. Use filter to narrow events. Returns: { subscription: { subscriptionId, boardId, filter, createdAt } }. Use unsubscribe-from-board to stop.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -967,14 +1120,21 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "Valid: board.task_moved, board.task_status_changed, board.task_assigned, board.task_created, board.task_updated, board.task_progress_note, board.agent_play_changed, board.agent_slots_changed, board.dependency_added, board.dependency_removed"
+                "description": "Valid: board.task_moved, board.task_archived, board.task_assigned, board.task_created, board.task_updated, board.task_progress_note, board.agent_play_changed, board.agent_slots_changed, board.dependency_added, board.dependency_removed"
+              },
+              "taskIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Only events for these specific tasks (task IDs)"
               },
               "wakeUpOn": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 },
-                "description": "Event types that wake the agent (trigger a response turn). Default: board.task_progress_note"
+                "description": "Event types that wake the agent (trigger a response turn). Default: ALL event types wake the agent (only a wakeUpOn list narrows it). Note: an agent is never woken by an event it caused itself (self-wake guard)."
               }
             }
           },
@@ -1049,7 +1209,7 @@
     },
     {
       "name": "get-board-status",
-      "description": "Operational status of a board: per-agent workload + summary. Returns: { boardId, boardName, agents: [{ agentName, slots, playEnabled, tasksInProgress, tasksInReview, tasksBlocked, tasksToDo }], summary: { total, byColumn, blockedTasks } }. Use to identify bottlenecks.",
+      "description": "Operational status of a board: per-agent workload + summary. Returns: { boardId, boardName, agents: [{ agentName, slots, playEnabled, activeSlots, activeTasks: [{ taskId, title, projectName }], tasksInProgress, tasksInReview, tasksBlocked, tasksToDo }], summary: { total, byColumn, blockedTasks } }. activeTasks lists the running tasks for each agent with activeSlots > 0. Use to identify bottlenecks.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1106,13 +1266,13 @@
     },
     {
       "name": "subscribe-to-events",
-      "description": "Subscribe the current conversation to MCA events on a topic. Events matching the topic are delivered to the conversation as they happen. Use rules to narrow events. Returns: { subscription: { id, topic, channelId, rules, mode, createdAt } }. Use unsubscribe-from-events to stop.",
+      "description": "DEPRECATED (v1.4.4): use the reserved per-app tools instead — `board_manager__subscribe` for this app's events, `<app>__subscribe` for any other app's (e.g. gmail__subscribe with event \"email.received\"). The reserved tools take the LOCAL event name, validate filters against the app's declaration and keep state in the backend. This tool still works (raw topic + rules) but will be removed. Subscribe the current conversation to MCA events on a topic. Events matching the topic are delivered to the conversation as they happen. Use rules to narrow events. Returns: { subscription: { id, topic, channelId, rules, mode, createdAt } }. Use unsubscribe-from-events to stop.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "topic": {
             "type": "string",
-            "description": "Event topic to subscribe to (e.g. \"mca.teros.scheduler.reminder\")"
+            "description": "Event topic to subscribe to (e.g. \"telegram.message.received\")"
           },
           "channelId": {
             "type": "string",
@@ -1131,7 +1291,7 @@
               "notify",
               "wake"
             ],
-            "description": "Delivery mode: notify = silent notification, wake = trigger agent response turn. Default: notify"
+            "description": "Delivery mode: notify = silent notification, wake = trigger agent response turn (the agent gets a response turn). Default: wake"
           },
           "includeRaw": {
             "type": "boolean",

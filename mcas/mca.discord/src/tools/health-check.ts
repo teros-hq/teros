@@ -5,7 +5,7 @@ export const healthCheck: ToolConfig = {
   description:
     "Internal health check tool. Verifies Discord OAuth credentials and API connectivity.",
   parameters: { type: "object", properties: {} },
-  annotations: { version: "1.0.0", stability: "stable" },
+  annotations: { readOnlyHint: true, version: "1.0.0", stability: "stable" },
   handler: async (_args, context) => {
     const builder = new HealthCheckBuilder()
       .setVersion("1.0.0")

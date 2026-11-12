@@ -13,6 +13,7 @@ cp system/anthropic.example.json system/anthropic.json
 cp system/openai.example.json system/openai.json
 cp system/database.example.json system/database.json
 cp system/auth.example.json system/auth.json
+cp system/admin.example.json system/admin.json
 cp system/mca.example.json system/mca.json
 ```
 
@@ -48,7 +49,8 @@ cp mcas/mca.teros.perplexity/credentials.example.json mcas/mca.teros.perplexity/
 │   ├── anthropic.json          # Anthropic API key
 │   ├── openai.json             # OpenAI API key
 │   ├── database.json           # MongoDB connection
-│   └── auth.json               # Session secrets
+│   ├── auth.json               # Session token secret
+│   └── admin.json              # Admin API key
 │
 └── mcas/                        # MCA-specific secrets
     ├── mca.teros.perplexity/

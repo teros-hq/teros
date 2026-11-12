@@ -1,0 +1,100 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.terminal",
+  "name": "Terminal",
+  "version": "1.3.1",
+  "description": "Drive terminals the user watches: open Claude Code (or Codex/opencode) and give it tasks, or run shell commands. terminal-create agent=\"claude\" starts Claude Code with the user's sign-in; terminal-prompt sends a task and waits for its turn to end; terminal-run runs a command and returns its output; terminal-wait waits for a state; terminal-screen shows the screen. The user can take the wheel and give it back. Requires the Bash app (mca.teros.bash).",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Nira Solana",
+    "email": "nira@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": true,
+    "role": "user",
+    "defaultEnabled": false
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app",
+    "dockerImage": "teros/mca-runtime-bash:latest",
+    "appDataMount": true,
+    "workspaceMount": true,
+    "resources": {
+      "cpus": 1,
+      "memoryMb": 1024
+    }
+  },
+  "keywords": [
+    "terminal",
+    "pty",
+    "shell",
+    "interactive",
+    "session",
+    "claude code",
+    "coding agent",
+    "codex",
+    "opencode"
+  ],
+  "changelog": [
+    {
+      "version": "1.3.1",
+      "date": "2026-10-21",
+      "notes": "terminal-create (with agent=…) and terminal-list say whether the user's coding-agent sign-in reaches the agent's sessions: signed in and shared with this workspace's agents, signed in but not shared, or not signed in, with the next step to ask the user for (never the credential itself). Same data as structuredContent.agentAuth."
+    },
+    {
+      "version": "1.3.0",
+      "date": "2026-10-20",
+      "notes": "Sessions never expire any more, and pin is gone: idle sessions sleep instead. After 15 min with no input, output or viewer the workspace's terminal machine is frozen (no CPU, nothing lost); after 2 h frozen each session is saved and the machine stops. Every tool that uses a session (terminal-prompt, -run, -write, -send-key, -screen, -read, -wait, -wait-for) wakes it first and says so: a sleeping session comes back in the same directory with its old output shown dimmed, Claude Code resumes its conversation, and a program that was running (e.g. a dev server) is reported as not restarted. terminal-list shows frozen and sleeping sessions. terminal-create no longer takes pinned (still accepted, ignored)."
+    },
+    {
+      "version": "1.2.0",
+      "date": "2026-10-20",
+      "notes": "Agent-first tools. New terminal-prompt (send a task to Claude Code/Codex/opencode and wait for its turn to end), terminal-wait (wait for a coding agent's turn, a ready agent, a finished command, quiet output or screen text — no sleeping or polling), terminal-run (run a shell command, get its output) and terminal-show (bring a session up in the user's Terminal window). terminal-create takes agent=claude|codex|opencode and returns once the agent is ready, shows the session in the user's window by default and gives every session a real title. Answers are plain text for the model (what happened, the screen, the next step) with the same data as structuredContent. terminal-send-key knows shift-tab, backspace, delete, home/end, page keys, F-keys, ctrl-<letter>, alt-<key> and key sequences. Multi-line text is pasted as one block into programs that support it."
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-10-19",
+      "notes": "Sessions live in the workspace's terminal host (tmux): they survive backend restarts and the user watches/types in the same session from the Terminal window. New terminal-screen tool (rendered screen: rows, cursor, title, foreground command). terminal-create takes title and pinned; terminal-list reports title, command, agent state, pinned and watchers."
+    },
+    {
+      "version": "1.0.2",
+      "date": "2026-10-17",
+      "notes": "The bridge only allows terminal.* backend actions (admin-api.* was declared but never used). Host shells were removed with mca.teros.admin.bash (2026-10-19): terminal sessions run in the workspace bash container."
+    },
+    {
+      "version": "1.0.1",
+      "date": "2026-10-10",
+      "notes": "terminal-wait-for now matches interactive prompts (\"&#8250;&#8250;&#8250; \", \"$ \") that never end in newline: PtyManager evaluates the pending partial line as a virtual buffer line. E2E validated: integration suite (6 tests, scripted PTYs) + real-PTY smoke (scripts/smoke-terminal-mca.mts under node/tsx — bun+node-pty is unstable)."
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-10-10",
+      "notes": "Initial release — create, write, read, wait-for, list and destroy interactive PTY sessions hosted in the workspace bash container"
+    }
+  ],
+  "backend": {
+    "actions": [
+      "terminal.*"
+    ]
+  },
+  "dependencies": [
+    "mca.teros.bash"
+  ]
+}

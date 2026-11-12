@@ -34,6 +34,8 @@ export interface MentionResource {
   name: string;
   subtitle?: string;
   avatarUrl?: string;
+  /** Only applicable for skills. 'always' = loaded in every turn; 'on-demand' = loaded via @mention */
+  loadMode?: 'always' | 'on-demand';
 }
 
 export interface MentionGroup {
@@ -130,7 +132,12 @@ function newChipId(): string {
 
 // workspaceId is intentionally NOT a parameter — the hook always reads it from
 // useWorkspaceStore so that the active workspace is the single source of truth.
-interface UseAtMentionOptions {}
+export interface UseAtMentionOptions {
+  /** Only fetch these resource types (default: all). Skipping unused types reduces round-trips. */
+  fetchTypes?: MentionResourceType[];
+  /** Filter resources after fetching (applied to dropdown groups and chip eligibility). */
+  resourceFilter?: (resource: MentionResource) => boolean;
+}
 
 export interface UseAtMentionReturn {
   // Dropdown state
@@ -142,6 +149,10 @@ export interface UseAtMentionReturn {
 
   // Chips
   chips: MentionChip[];
+
+  // Trigger tracking
+  /** Position of the active `@` trigger in the text, or -1 if none. */
+  triggerPos: number;
 
   // Actions
   /** Call this on every text change, passing the new text and current cursor position */
@@ -156,11 +167,12 @@ export interface UseAtMentionReturn {
   onKeyDown: (key: string) => boolean;
   closeDropdown: () => void;
   clearChips: () => void;
-  /** Produces the context string to append to the message text at send time */
+  /** Produces the Markdown inline links to append to the message text at send time */
   resolveContext: () => string;
 }
 
-export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionReturn {
+export function useAtMention(options: UseAtMentionOptions = {}): UseAtMentionReturn {
+  const { resourceFilter } = options;
   const client = getTerosClient();
   const workspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
 
@@ -171,6 +183,7 @@ export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionRe
   const [chips, setChips] = useState<MentionChip[]>([]);
   const [allResources, setAllResources] = useState<MentionResource[]>([]);
   const [isFetchingResources, setIsFetchingResources] = useState(false);
+  const [triggerPos, setTriggerPos] = useState(-1);
 
   // Keep isOpen in a ref so the keydown handler (closure) always sees current value
   const isOpenRef = useRef(isOpen);
@@ -279,6 +292,7 @@ export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionRe
           type: 'skill',
           name: s.name,
           subtitle: s.description,
+          loadMode: s.loadMode ?? 'always', // fallback for pre-migration skills
         });
       }
       console.log('[useAtMention] skills loaded:', (res as any)?.skills?.length ?? 0);
@@ -327,6 +341,12 @@ export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionRe
     setIsFetchingResources(false);
   }, [client, workspaceId]);
 
+  // ── Filtered resources (caller-supplied filter) ────────────────────────────
+  const filteredResources = useMemo(() => {
+    if (!resourceFilter) return allResources;
+    return allResources.filter(resourceFilter);
+  }, [allResources, resourceFilter]);
+
   // ── Filtered & grouped results ─────────────────────────────────────────────
   const groups = useMemo((): MentionGroup[] => {
     if (!isOpen) return [];
@@ -334,7 +354,7 @@ export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionRe
     const result: MentionGroup[] = [];
 
     for (const type of GROUP_ORDER) {
-      const items = allResources.filter(
+      const items = filteredResources.filter(
         (r) =>
           r.type === type &&
           (q === '' ||
@@ -346,7 +366,7 @@ export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionRe
       }
     }
     return result;
-  }, [isOpen, query, allResources]);
+  }, [isOpen, query, filteredResources]);
 
   const flatItems = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
@@ -388,6 +408,7 @@ export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionRe
       if (atPos !== -1) {
         const q = text.slice(atPos + 1, pos);
         setQuery(q);
+        setTriggerPos(atPos);
         if (!isOpenRef.current) {
           // Fix: update ref synchronously so re-entrant calls see the new value
           // immediately (before the useEffect that syncs isOpen → isOpenRef fires).
@@ -401,6 +422,7 @@ export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionRe
           isOpenRef.current = false;
           setIsOpen(false);
           setQuery('');
+          setTriggerPos(-1);
         }
       }
     },
@@ -421,6 +443,7 @@ export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionRe
     isOpenRef.current = false;
     setIsOpen(false);
     setQuery('');
+    setTriggerPos(-1);
   }, []);
 
   // ── Remove chip ────────────────────────────────────────────────────────────
@@ -453,6 +476,7 @@ export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionRe
       if (key === 'Escape') {
         setIsOpen(false);
         setQuery('');
+        setTriggerPos(-1);
         return true;
       }
       return false;
@@ -467,6 +491,7 @@ export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionRe
     isOpenRef.current = false;
     setIsOpen(false);
     setQuery('');
+    setTriggerPos(-1);
   }, []);
 
   const clearChips = useCallback(() => setChips([]), []);
@@ -488,6 +513,7 @@ export function useAtMention(_options: UseAtMentionOptions = {}): UseAtMentionRe
     selectedIndex,
     isFetchingResources,
     chips,
+    triggerPos,
     onInputChange,
     onSelectResource,
     onRemoveChip,

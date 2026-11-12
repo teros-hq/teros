@@ -7,9 +7,9 @@ export const adminUsageTimeline: ToolConfig = {
   parameters: {
     type: 'object',
     properties: {
-      granularity: { type: 'string', enum: ['day', 'week', 'month'], description: 'Time granularity' },
-      startDate: { type: 'string', description: 'Start date (ISO)' },
-      endDate: { type: 'string', description: 'End date (ISO)' },
+      granularity: { type: 'string', enum: ['hour', 'day', 'week', 'month'], description: 'Time granularity for aggregation (default: day)' },
+      startDate: { type: 'string', description: 'Start date (ISO 8601). If omitted, returns all available data from the earliest rollup.' },
+      endDate: { type: 'string', description: 'End date (ISO 8601). If omitted, no upper bound.' },
     },
     required: [],
   },

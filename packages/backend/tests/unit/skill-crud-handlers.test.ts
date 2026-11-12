@@ -85,7 +85,7 @@ describe('skill.create', () => {
     const h = createCreateSkillHandler(svc, makeDb());
     await h(ctx(USER_ALICE), { workspaceId: WS_ALICE, name: 'x', content: '' });
     expect(svc.createSkill).toHaveBeenCalledWith(WS_ALICE, USER_ALICE, {
-      name: 'x', description: undefined, content: '', category: undefined, tags: undefined,
+      name: 'x', description: undefined, content: '', category: undefined, tags: undefined, loadMode: undefined,
     });
   });
 
@@ -102,6 +102,36 @@ describe('skill.create', () => {
     const h = createCreateSkillHandler(makeSkillService(), makeDb());
     const res = await h(ctx(USER_ALICE), { workspaceId: WS_ALICE, name: 'x', content: 'c' });
     expect(res).toEqual({ skill: { skillId: 'sk_new', name: 'A', workspaceId: WS_ALICE } });
+  });
+
+  // PR #375 #4: loadMode reaches the service.
+  it('forwards loadMode=always to createSkill', async () => {
+    const svc = makeSkillService();
+    const h = createCreateSkillHandler(svc, makeDb());
+    const res = await h(ctx(USER_ALICE), { workspaceId: WS_ALICE, name: 'x', content: 'c', loadMode: 'always' });
+    expect(res).toEqual({ skill: { skillId: 'sk_new', name: 'A', workspaceId: WS_ALICE } });
+    expect(svc.createSkill).toHaveBeenCalledWith(WS_ALICE, USER_ALICE, {
+      name: 'x', description: undefined, content: 'c', category: undefined, tags: undefined, loadMode: 'always',
+    });
+  });
+
+  it('forwards loadMode=on-demand to createSkill', async () => {
+    const svc = makeSkillService();
+    const h = createCreateSkillHandler(svc, makeDb());
+    const res = await h(ctx(USER_ALICE), { workspaceId: WS_ALICE, name: 'x', content: 'c', loadMode: 'on-demand' });
+    expect(res).toEqual({ skill: { skillId: 'sk_new', name: 'A', workspaceId: WS_ALICE } });
+    expect(svc.createSkill).toHaveBeenCalledWith(WS_ALICE, USER_ALICE, {
+      name: 'x', description: undefined, content: 'c', category: undefined, tags: undefined, loadMode: 'on-demand',
+    });
+  });
+
+  it('rejects an invalid loadMode and does not create', async () => {
+    const svc = makeSkillService();
+    const h = createCreateSkillHandler(svc, makeDb());
+    await expect(
+      h(ctx(USER_ALICE), { workspaceId: WS_ALICE, name: 'x', content: 'c', loadMode: 'sometimes' }),
+    ).rejects.toMatchObject({ code: 'INVALID_LOAD_MODE' });
+    expect(svc.createSkill).not.toHaveBeenCalled();
   });
 });
 
@@ -186,8 +216,38 @@ describe('skill.update', () => {
     const res = await h(ctx(USER_ALICE), { skillId: 'sk_1', name: 'A2' });
     expect(res).toEqual({ skill: { ...SKILL_ALICE, name: 'A2' } });
     expect(svc.updateSkill).toHaveBeenCalledWith('sk_1', {
-      name: 'A2', description: undefined, content: undefined, category: undefined, tags: undefined,
+      name: 'A2', description: undefined, content: undefined, category: undefined, tags: undefined, loadMode: undefined,
     });
+  });
+
+  // PR #375 #4: loadMode reaches the service on update.
+  it('forwards loadMode=always to updateSkill', async () => {
+    const svc = makeSkillService();
+    const h = createUpdateSkillHandler(svc, makeDb());
+    const res = await h(ctx(USER_ALICE), { skillId: 'sk_1', loadMode: 'always' });
+    expect(res).toEqual({ skill: { ...SKILL_ALICE, name: 'A2' } });
+    expect(svc.updateSkill).toHaveBeenCalledWith('sk_1', {
+      name: undefined, description: undefined, content: undefined, category: undefined, tags: undefined, loadMode: 'always',
+    });
+  });
+
+  it('forwards loadMode=on-demand to updateSkill', async () => {
+    const svc = makeSkillService();
+    const h = createUpdateSkillHandler(svc, makeDb());
+    const res = await h(ctx(USER_ALICE), { skillId: 'sk_1', loadMode: 'on-demand' });
+    expect(res).toEqual({ skill: { ...SKILL_ALICE, name: 'A2' } });
+    expect(svc.updateSkill).toHaveBeenCalledWith('sk_1', {
+      name: undefined, description: undefined, content: undefined, category: undefined, tags: undefined, loadMode: 'on-demand',
+    });
+  });
+
+  it('rejects an invalid loadMode and does not mutate', async () => {
+    const svc = makeSkillService();
+    const h = createUpdateSkillHandler(svc, makeDb());
+    await expect(
+      h(ctx(USER_ALICE), { skillId: 'sk_1', loadMode: 'weekly' }),
+    ).rejects.toMatchObject({ code: 'INVALID_LOAD_MODE' });
+    expect(svc.updateSkill).not.toHaveBeenCalled();
   });
 });
 

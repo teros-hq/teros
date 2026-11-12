@@ -1,0 +1,191 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Herramienta de verificación de salud interna. Verifica credenciales OAuth y conectividad."
+    },
+    "list-items": {
+      "name": "list-items",
+      "description": "Listar archivos y carpetas dentro de una carpeta de OneDrive. Por defecto, la raíz del drive.",
+      "params": {
+        "itemId": "ID del elemento de la carpeta. Tiene precedencia sobre path.",
+        "path": "Ruta de la carpeta relativa a la raíz del drive, ej. \"Documents/Reports\".",
+        "maxResults": "Número máximo de elementos a devolver (por defecto: 50, máximo: 200)"
+      }
+    },
+    "list-recent": {
+      "name": "list-recent",
+      "description": "Listar archivos de OneDrive a los que esta cuenta ha accedido recientemente.",
+      "params": {
+        "maxResults": "Número máximo de elementos a devolver (por defecto: 25, máximo: 200)"
+      }
+    },
+    "list-shared-with-me": {
+      "name": "list-shared-with-me",
+      "description": "Listar archivos y carpetas de OneDrive que otras personas han compartido con esta cuenta.",
+      "params": {
+        "maxResults": "Número máximo de elementos a devolver (por defecto: 50, máximo: 200)"
+      }
+    },
+    "search-items": {
+      "name": "search-items",
+      "description": "Buscar archivos y carpetas en OneDrive que coincidan con una consulta de texto libre.",
+      "params": {
+        "query": "Consulta de búsqueda de texto libre",
+        "maxResults": "Número máximo de resultados a devolver (por defecto: 25, máximo: 200)"
+      }
+    },
+    "get-item": {
+      "name": "get-item",
+      "description": "Obtener metadatos de un archivo o carpeta de OneDrive, por itemId o por ruta.",
+      "params": {
+        "itemId": "ID del elemento. Tiene precedencia sobre path.",
+        "path": "Ruta del elemento relativa a la raíz del drive, ej. \"Documents/notes.txt\"."
+      }
+    },
+    "get-drive-info": {
+      "name": "get-drive-info",
+      "description": "Obtener información sobre la cuenta de OneDrive, incluyendo cuota de almacenamiento y uso."
+    },
+    "get-file-content": {
+      "name": "get-file-content",
+      "description": "Leer el contenido de un archivo de texto de OneDrive en línea, sin guardarlo en disco. Límite de 1 MB.",
+      "params": {
+        "itemId": "ID del elemento. Tiene precedencia sobre path.",
+        "path": "Ruta del archivo relativa a la raíz del drive."
+      }
+    },
+    "download-file": {
+      "name": "download-file",
+      "description": "Descargar un archivo de OneDrive y guardarlo localmente. Archivos mayores a 50 MB son rechazados.",
+      "params": {
+        "itemId": "ID del elemento. Tiene precedencia sobre path.",
+        "path": "Ruta del archivo relativa a la raíz del drive.",
+        "outputPath": "Directorio de salida (por defecto: /workspace/onedrive-downloads)"
+      }
+    },
+    "upload-file": {
+      "name": "upload-file",
+      "description": "Subir un archivo local a OneDrive. Archivos menores a 4 MB se suben directamente; los mayores usan sesión por fragmentos. Sobrescribe archivos existentes.",
+      "params": {
+        "localPath": "Ruta absoluta del archivo local a subir",
+        "destinationPath": "Ruta de la carpeta destino relativa a la raíz del drive. Por defecto, la raíz.",
+        "fileName": "Nombre con el que guardar el archivo. Por defecto, el nombre local."
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "Crear una nueva carpeta en OneDrive.",
+      "params": {
+        "name": "Nombre de la nueva carpeta",
+        "parentId": "ID de la carpeta padre. Por defecto, la raíz del drive.",
+        "parentPath": "Ruta de la carpeta padre, relativa a la raíz del drive.",
+        "conflictBehavior": "Qué hacer si el nombre existe: \"rename\" (por defecto), \"replace\", o \"fail\"."
+      }
+    },
+    "copy-item": {
+      "name": "copy-item",
+      "description": "Copiar un archivo o carpeta de OneDrive a otra carpeta. Espera a que termine antes de devolver.",
+      "params": {
+        "itemId": "ID del elemento a copiar. Tiene precedencia sobre path.",
+        "path": "Ruta del elemento a copiar, relativa a la raíz del drive.",
+        "destinationFolderId": "ID de la carpeta destino. Tiene precedencia sobre destinationPath.",
+        "destinationPath": "Ruta de la carpeta destino relativa a la raíz del drive.",
+        "newName": "Nuevo nombre opcional para la copia",
+        "pollIntervalMs": "Milisegundos entre verificaciones de progreso (por defecto: 1000)"
+      }
+    },
+    "move-item": {
+      "name": "move-item",
+      "description": "Mover un archivo o carpeta de OneDrive a otra carpeta.",
+      "params": {
+        "itemId": "ID del elemento a mover. Tiene precedencia sobre path.",
+        "path": "Ruta del elemento a mover, relativa a la raíz del drive.",
+        "destinationFolderId": "ID de la carpeta destino. Tiene precedencia sobre destinationPath.",
+        "destinationPath": "Ruta de la carpeta destino relativa a la raíz del drive."
+      }
+    },
+    "rename-item": {
+      "name": "rename-item",
+      "description": "Renombrar un archivo o carpeta de OneDrive sin moverlo.",
+      "params": {
+        "itemId": "ID del elemento. Tiene precedencia sobre path.",
+        "path": "Ruta del elemento relativa a la raíz del drive.",
+        "newName": "El nuevo nombre del elemento"
+      }
+    },
+    "delete-item": {
+      "name": "delete-item",
+      "description": "Eliminar un archivo o carpeta de OneDrive. El elemento se mueve a la papelera de reciclaje.",
+      "params": {
+        "itemId": "ID del elemento. Tiene precedencia sobre path.",
+        "path": "Ruta del elemento relativa a la raíz del drive."
+      }
+    },
+    "list-versions": {
+      "name": "list-versions",
+      "description": "Listar el historial de versiones de un archivo de OneDrive.",
+      "params": {
+        "itemId": "ID del elemento. Tiene precedencia sobre path.",
+        "path": "Ruta del elemento relativa a la raíz del drive."
+      }
+    },
+    "create-share-link": {
+      "name": "create-share-link",
+      "description": "Crear un enlace de compartir para un elemento de OneDrive, con permiso y audiencia elegidos.",
+      "params": {
+        "itemId": "ID del elemento. Tiene precedencia sobre path.",
+        "path": "Ruta del elemento relativa a la raíz del drive.",
+        "type": "Permiso del enlace: \"view\" (por defecto), \"edit\", o \"embed\".",
+        "scope": "Audiencia: \"anonymous\" (por defecto) u \"organization\".",
+        "expirationDateTime": "Expiración opcional en formato ISO 8601."
+      }
+    },
+    "invite-people": {
+      "name": "invite-people",
+      "description": "Compartir un elemento de OneDrive con personas por email, otorgando acceso de lectura o escritura.",
+      "params": {
+        "itemId": "ID del elemento. Tiene precedencia sobre path.",
+        "path": "Ruta del elemento relativa a la raíz del drive.",
+        "emails": "Direcciones de email separadas por comas",
+        "role": "Nivel de acceso: \"read\" (por defecto) o \"write\".",
+        "message": "Mensaje opcional incluido en la invitación",
+        "requireSignIn": "Si los destinatarios deben iniciar sesión (por defecto: true)",
+        "sendInvitation": "Si enviar la invitación por email (por defecto: true)"
+      }
+    },
+    "list-permissions": {
+      "name": "list-permissions",
+      "description": "Listar todas las personas y enlaces con acceso a un elemento de OneDrive.",
+      "params": {
+        "itemId": "ID del elemento. Tiene precedencia sobre path.",
+        "path": "Ruta del elemento relativa a la raíz del drive."
+      }
+    },
+    "remove-permission": {
+      "name": "remove-permission",
+      "description": "Revocar un permiso de compartir o enlace en un elemento de OneDrive.",
+      "params": {
+        "itemId": "ID del elemento. Tiene precedencia sobre path.",
+        "path": "Ruta del elemento relativa a la raíz del drive.",
+        "permissionId": "El ID del permiso a revocar"
+      }
+    },
+    "convert-file": {
+      "name": "convert-file",
+      "description": "Convertir un documento de OneDrive a PDF y guardarlo localmente. Archivos mayores a 50 MB son rechazados.",
+      "params": {
+        "itemId": "ID del elemento. Tiene precedencia sobre path.",
+        "path": "Ruta del archivo relativa a la raíz del drive.",
+        "outputPath": "Directorio de salida (por defecto: /workspace/onedrive-downloads)"
+      }
+    }
+  },
+  "name": "OneDrive",
+  "description": "Integración de Microsoft OneDrive vía Microsoft Graph API",
+  "changelog": [
+    {
+      "notes": "Versión inicial — navegar, subir, descargar, organizar, compartir y buscar archivos de OneDrive"
+    }
+  ]
+}

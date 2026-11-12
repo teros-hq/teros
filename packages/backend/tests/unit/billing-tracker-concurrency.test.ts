@@ -30,6 +30,9 @@ import { describe, expect, it } from "bun:test"
 import { MongoServerError } from "mongodb"
 import { AgentHoursTracker } from "../../src/services/agent-hours-tracker"
 
+/** Every rolled-up hour counts as final here (the billable horizon has its own tests). */
+const billAllHours = async () => new Date(8_640_000_000_000_000)
+
 const stubLogger = {
   info: () => {},
   warn: () => {},
@@ -207,8 +210,8 @@ describe("AgentHoursTracker — multi-instance race (anti double-count)", () => 
     const aggBarrier = makeBarrier(2)
     const db = makeDb([sub], rollups, ledger, { aggBarrier })
 
-    const t1 = new AgentHoursTracker(db, stubLogger, null)
-    const t2 = new AgentHoursTracker(db, stubLogger, null)
+    const t1 = new AgentHoursTracker(db, stubLogger, null, undefined, undefined, billAllHours)
+    const t2 = new AgentHoursTracker(db, stubLogger, null, undefined, undefined, billAllHours)
     const [r1, r2] = await Promise.all([t1.runOnce(), t2.runOnce()])
 
     // Billed ONCE. BITE: dropping the CAS guard makes this 6 (3h twice).
@@ -229,8 +232,8 @@ describe("AgentHoursTracker — multi-instance race (anti double-count)", () => 
     const ledger: Ledger[] = []
     const aggBarrier = makeBarrier(2)
     const db = makeDb([sub], rollups, ledger, { aggBarrier })
-    const t1 = new AgentHoursTracker(db, stubLogger, null)
-    const t2 = new AgentHoursTracker(db, stubLogger, null)
+    const t1 = new AgentHoursTracker(db, stubLogger, null, undefined, undefined, billAllHours)
+    const t2 = new AgentHoursTracker(db, stubLogger, null, undefined, undefined, billAllHours)
 
     await Promise.all([t1.runOnce(), t2.runOnce()])
 
@@ -247,7 +250,7 @@ describe("AgentHoursTracker — invariant: every $inc has a ledger entry", () =>
     const ledger: Ledger[] = []
     const callOrder: string[] = []
     const db = makeDb([sub], rollups, ledger, { callOrder })
-    const tracker = new AgentHoursTracker(db, stubLogger, null)
+    const tracker = new AgentHoursTracker(db, stubLogger, null, undefined, undefined, billAllHours)
 
     await tracker.runOnce()
 
@@ -259,7 +262,14 @@ describe("AgentHoursTracker — invariant: every $inc has a ledger entry", () =>
     const sub: Sub = { _id: "s1", userId: "A", status: "active", agentHoursUsed: 0 }
     const rollups = [roll("A", 1), roll("A", 2)]
     const ledger: Ledger[] = []
-    const tracker = new AgentHoursTracker(makeDb([sub], rollups, ledger), stubLogger, null)
+    const tracker = new AgentHoursTracker(
+      makeDb([sub], rollups, ledger),
+      stubLogger,
+      null,
+      undefined,
+      undefined,
+      billAllHours,
+    )
 
     await tracker.runOnce()
     rollups.push(roll("A", 3), roll("A", 4), roll("A", 5))
@@ -287,6 +297,9 @@ describe("AgentHoursTracker — per-subscription error isolation", () => {
       makeDb([bad, good], rollups, ledger, { throwAggFor: new Set(["BAD"]) }),
       stubLogger,
       null,
+      undefined,
+      undefined,
+      billAllHours,
     )
 
     const result = await tracker.runOnce()

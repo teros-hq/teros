@@ -1,4 +1,4 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
+import type { HttpToolConfig as ToolConfig, ToolContext } from '@teros/mca-sdk';
 import { CURRENT_CHANNEL_ID, getWsClient, isWsConnected, type SearchMessagesResult } from '../lib';
 
 export const searchMessages: ToolConfig = {
@@ -19,7 +19,7 @@ export const searchMessages: ToolConfig = {
     },
     required: ['query'],
   },
-  handler: async (args) => {
+  handler: async (args, context: ToolContext) => {
     const wsClient = getWsClient();
     if (!isWsConnected()) {
       throw new Error('Not connected to backend. Please try again in a moment.');
@@ -36,6 +36,8 @@ export const searchMessages: ToolConfig = {
       query,
       limit,
       excludeChannelId: CURRENT_CHANNEL_ID,
+      // Caller channel — lets the backend gate personal history out of a shared context.
+      callerChannelId: context.execution.channelId,
     });
 
     return {

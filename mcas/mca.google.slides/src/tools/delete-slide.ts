@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const deleteSlide: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -25,7 +25,6 @@ export const deleteSlide: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const { presentationId, slideObjectId, slideIndex } = args as {
       presentationId: string;

@@ -24,7 +24,7 @@ export function CreateListRenderer({ input, status, output, error, appIcon }: To
   return (
     <ToolCallCard
       status={status}
-      verb="Create list"
+      description="Create list"
       iconUri={appIcon}
       animateExpand
       defaultExpanded={status === 'completed'}

@@ -10,7 +10,7 @@
 #   All tests use bun:test (no vitest in this repo — @teros/core has vitest
 #   declared but no .test.ts files written yet).
 
-FROM oven/bun:1.3.4-alpine
+FROM oven/bun:1.3.4-alpine@sha256:1d653098bf847813e26adb2435f932b7cfa3c132a7e25dd5216dbb1f67dbd118
 
 # yarn is required for workspace-aware dependency installation
 RUN apk add --no-cache nodejs npm && npm install -g yarn

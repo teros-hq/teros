@@ -1,7 +1,8 @@
 import { type ReactNode, useState } from "react"
-import { ScrollView } from "react-native"
-import { Text, XStack, YStack } from "tamagui"
-import { scrollbarThin, tokens } from "./colors"
+import { Platform, Pressable, ScrollView, View } from "react-native"
+import { useColors } from "../mca/primitives/useColors"
+import { Ph } from "../ui/ds/Icon"
+import { T } from "../ui/ds/Text"
 
 export interface Column<T> {
   key: string
@@ -58,7 +59,7 @@ function nextSort(sort: SortState, key: string): SortState {
 
 const JC = { left: "flex-start", right: "flex-end", center: "center" } as const
 
-/** Sizing props for a cell/header cell: fixed width, or flex with min-width floor. */
+/** Sizing style for a cell/header cell: fixed width, or flex with min-width floor. */
 function cellSize<T>(col: Column<T>) {
   return col.flex
     ? { flexGrow: col.flex, flexShrink: 0, flexBasis: col.width, minWidth: col.width }
@@ -66,27 +67,30 @@ function cellSize<T>(col: Column<T>) {
 }
 
 function Cell<T>({ col, row }: { col: Column<T>; row: T }) {
+  const c = useColors()
   const content = col.render(row)
   const node =
     typeof content === "string" ? (
-      <Text
-        fontSize={12}
-        fontFamily={col.mono === false ? "$body" : "$mono"}
-        color={col.color ? col.color(row) : tokens.textSecondary}
+      <T
+        step={col.mono === false ? "sm" : "code"}
+        color={col.color ? col.color(row) : c.text2}
         numberOfLines={1}
-        ellipsizeMode="tail"
-        textAlign={col.align ?? "left"}
-        width="100%"
+        style={{ textAlign: col.align ?? "left", width: "100%" }}
       >
         {content}
-      </Text>
+      </T>
     ) : (
       content
     )
   return (
-    <XStack {...cellSize(col)} ai="center" jc={JC[col.align ?? "left"]}>
+    <View
+      style={[
+        cellSize(col),
+        { flexDirection: "row", alignItems: "center", justifyContent: JC[col.align ?? "left"] },
+      ]}
+    >
       {node}
-    </XStack>
+    </View>
   )
 }
 
@@ -95,14 +99,21 @@ const CARET_W = 22
  *  glues to the next left-aligned one ("0.00completed"). Counted in minWidth. */
 const COL_GAP = 12
 
+const KEY_ACTIVATE = (fn: () => void) => (e: { key: string; preventDefault: () => void }) => {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault()
+    fn()
+  }
+}
+
 /**
- * Solid, scrollable data table — the fix for the Model Health tables that collapsed.
- * Fixed per-column min-widths + a single horizontal scroll (so many columns scroll
- * instead of crushing), single-line ellipsized cells, and headers that never wrap.
- * The content STRETCHES to the viewport (`flexGrow` on the scroll content) so a
- * table never ends mid-screen — mark which columns absorb the extra width via
- * `Column.flex`. Stack two tables with the SAME leading columns (flex only on the
- * last one) and their leading columns stay aligned.
+ * Solid, scrollable data table drawn as the OS prototype's `LGroup`: one card
+ * on the sheet, codenote column headers, hairline-separated rows that wash on
+ * hover. Fixed per-column min-widths + a single horizontal scroll (so many
+ * columns scroll instead of crushing), single-line ellipsized cells, and
+ * headers that never wrap. The content STRETCHES to the viewport (`flexGrow`
+ * on the scroll content) so a table never ends mid-screen — mark which columns
+ * absorb the extra width via `Column.flex`.
  *
  * `renderExpanded` turns rows into disclosure rows (caret + Enter/Space +
  * aria-expanded): pressing toggles an inline detail panel — put drill buttons
@@ -125,17 +136,25 @@ export function DataTable<T>({
   renderExpanded?: (row: T) => ReactNode
   header?: boolean
 }) {
+  const c = useColors()
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [sort, setSort] = useState<SortState>(null)
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
   const displayRows = sortRows(rows, sort, columns)
   const expandable = !!renderExpanded
   const cellCount = columns.length + (expandable ? 1 : 0)
   const minWidth =
-    columns.reduce((a, c) => a + c.width, expandable ? CARET_W : 0) +
+    columns.reduce((a, col) => a + col.width, expandable ? CARET_W : 0) +
     COL_GAP * Math.max(0, cellCount - 1)
+  const web = Platform.OS === "web"
 
   return (
-    <YStack borderWidth={1} borderColor={tokens.border} borderRadius={12} overflow="hidden">
+    <View
+      style={[
+        { borderRadius: 16, backgroundColor: c.bgStep, overflow: "hidden" },
+        web ? ({ boxShadow: c.liftSm } as any) : null,
+      ]}
+    >
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator
@@ -144,53 +163,68 @@ export function DataTable<T>({
         // the window empty. When the viewport is NARROWER, minWidth keeps the
         // columns solid and the horizontal scroll kicks in.
         contentContainerStyle={{ flexGrow: 1 }}
-        // @ts-expect-error — RN-Web thin scrollbar (Teros standard)
-        style={scrollbarThin}
+        style={
+          web
+            ? ({ scrollbarWidth: "thin", scrollbarColor: `${c.borderStrong} transparent` } as any)
+            : undefined
+        }
       >
-        <YStack minWidth={minWidth} flex={1}>
+        <View style={{ minWidth, flex: 1 }}>
           {header && (
-            <XStack
-              paddingVertical={9}
-              paddingHorizontal={12}
-              gap={COL_GAP}
-              backgroundColor={tokens.gray800}
-              borderBottomWidth={1}
-              borderBottomColor={tokens.border}
+            <View
+              style={{
+                flexDirection: "row",
+                paddingVertical: 10,
+                paddingHorizontal: 16,
+                gap: COL_GAP,
+                borderBottomWidth: 1,
+                borderBottomColor: c.border,
+              }}
             >
-              {expandable ? <XStack width={CARET_W} minWidth={CARET_W} flexShrink={0} /> : null}
-              {columns.map((c) => {
+              {expandable ? (
+                <View style={{ width: CARET_W, minWidth: CARET_W, flexShrink: 0 }} />
+              ) : null}
+              {columns.map((col) => {
                 const label = (
-                  <Text
-                    fontSize={10}
-                    fontWeight="600"
-                    letterSpacing={0.5}
-                    textTransform="uppercase"
-                    color={tokens.textTertiary}
+                  <T
+                    step="codenote"
+                    tone="text3"
                     numberOfLines={1}
-                    textAlign={c.align ?? "left"}
+                    style={{ textAlign: col.align ?? "left" }}
                   >
-                    {c.header}
-                  </Text>
+                    {col.header}
+                  </T>
                 )
-                if (!c.sortable) {
+                if (!col.sortable) {
                   return (
-                    <XStack key={c.key} {...cellSize(c)} jc={JC[c.align ?? "left"]}>
+                    <View
+                      key={col.key}
+                      style={[
+                        cellSize(col),
+                        { flexDirection: "row", justifyContent: JC[col.align ?? "left"] },
+                      ]}
+                    >
                       {label}
-                    </XStack>
+                    </View>
                   )
                 }
-                const isActive = sort?.key === c.key
-                const toggleSort = () => setSort((s) => nextSort(s, c.key))
+                const isActive = sort?.key === col.key
+                const toggleSort = () => setSort((s) => nextSort(s, col.key))
                 return (
-                  <XStack
-                    key={c.key}
-                    {...cellSize(c)}
-                    ai="center"
-                    gap={4}
-                    jc={JC[c.align ?? "left"]}
-                    cursor="pointer"
-                    hoverStyle={{ opacity: 0.75 }}
+                  <Pressable
+                    key={col.key}
                     onPress={toggleSort}
+                    accessibilityRole="button"
+                    style={[
+                      cellSize(col),
+                      {
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
+                        justifyContent: JC[col.align ?? "left"],
+                      },
+                      web ? ({ cursor: "pointer" } as any) : null,
+                    ]}
                     {...({
                       role: "button",
                       tabIndex: 0,
@@ -199,89 +233,103 @@ export function DataTable<T>({
                           ? "ascending"
                           : "descending"
                         : "none",
-                      onKeyDown: (e: { key: string; preventDefault: () => void }) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault()
-                          toggleSort()
-                        }
-                      },
+                      onKeyDown: KEY_ACTIVATE(toggleSort),
                     } as any)}
                   >
                     {label}
                     {isActive ? (
-                      <Text fontSize={9} color={tokens.textSecondary} aria-hidden>
-                        {sort?.dir === 1 ? "▲" : "▼"}
-                      </Text>
+                      <Ph
+                        name={sort?.dir === 1 ? "caret-up" : "caret-down"}
+                        size={10}
+                        color={c.text2}
+                      />
                     ) : null}
-                  </XStack>
+                  </Pressable>
                 )
               })}
-            </XStack>
+            </View>
           )}
           {displayRows.map((row, i) => {
             const key = rowKey(row, i)
             const isExpanded = expandable && expandedKey === key
             const toggle = () => setExpandedKey(isExpanded ? null : key)
-            const cells = columns.map((c) => <Cell key={c.key} col={c} row={row} />)
+            const cells = columns.map((col) => <Cell key={col.key} col={col} row={row} />)
             const pressable = expandable || !!onRowPress
-            const rowProps = pressable
+            const onPress = expandable ? toggle : () => onRowPress?.(row)
+            const rowStyle = [
+              {
+                flexDirection: "row" as const,
+                alignItems: "center" as const,
+                paddingVertical: 10,
+                paddingHorizontal: 16,
+                gap: COL_GAP,
+                borderTopWidth: i > 0 || header ? 1 : 0,
+                borderTopColor: c.border,
+                backgroundColor: hoverKey === key ? c.nestHover : "transparent",
+              },
+              web
+                ? ({
+                    cursor: pressable ? "pointer" : "default",
+                    transition: "background 0.25s",
+                  } as any)
+                : null,
+            ]
+            const hoverProps = web
               ? {
-                  cursor: "pointer" as const,
-                  onPress: expandable ? toggle : () => onRowPress?.(row),
-                  ...(expandable
-                    ? ({
-                        role: "button",
-                        tabIndex: 0,
-                        "aria-expanded": isExpanded,
-                        onKeyDown: (e: { key: string; preventDefault: () => void }) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault()
-                            toggle()
-                          }
-                        },
-                      } as any)
-                    : {}),
+                  onHoverIn: () => setHoverKey(key),
+                  onHoverOut: () => setHoverKey((k) => (k === key ? null : k)),
                 }
               : {}
             return (
-              <YStack key={key}>
-                <XStack
-                  paddingVertical={8}
-                  paddingHorizontal={12}
-                  gap={COL_GAP}
-                  ai="center"
-                  borderBottomWidth={1}
-                  borderBottomColor={tokens.border}
-                  hoverStyle={{ backgroundColor: tokens.bgHover }}
-                  {...rowProps}
-                >
-                  {expandable ? (
-                    <XStack width={CARET_W} minWidth={CARET_W} flexShrink={0}>
-                      <Text fontSize={10} color={tokens.textTertiary} aria-hidden>
-                        {isExpanded ? "▼" : "▶"}
-                      </Text>
-                    </XStack>
-                  ) : null}
-                  {cells}
-                </XStack>
+              <View key={key}>
+                {pressable ? (
+                  <Pressable
+                    onPress={onPress}
+                    style={rowStyle}
+                    {...hoverProps}
+                    {...(expandable
+                      ? ({
+                          role: "button",
+                          tabIndex: 0,
+                          "aria-expanded": isExpanded,
+                          onKeyDown: KEY_ACTIVATE(toggle),
+                        } as any)
+                      : {})}
+                  >
+                    {expandable ? (
+                      <View style={{ width: CARET_W, minWidth: CARET_W, flexShrink: 0 }}>
+                        <Ph
+                          name={isExpanded ? "caret-down" : "caret-right"}
+                          size={11}
+                          color={c.text3}
+                        />
+                      </View>
+                    ) : null}
+                    {cells}
+                  </Pressable>
+                ) : (
+                  <View style={rowStyle}>{cells}</View>
+                )}
                 {isExpanded ? (
-                  <YStack
-                    paddingVertical={12}
-                    paddingHorizontal={16}
-                    paddingLeft={CARET_W + 12}
-                    gap={8}
-                    backgroundColor={tokens.bgInner}
-                    borderBottomWidth={1}
-                    borderBottomColor={tokens.border}
+                  <View
+                    style={{
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      paddingLeft: CARET_W + 16,
+                      gap: 8,
+                      backgroundColor: c.nest,
+                      borderTopWidth: 1,
+                      borderTopColor: c.border,
+                    }}
                   >
                     {renderExpanded?.(row)}
-                  </YStack>
+                  </View>
                 ) : null}
-              </YStack>
+              </View>
             )
           })}
-        </YStack>
+        </View>
       </ScrollView>
-    </YStack>
+    </View>
   )
 }

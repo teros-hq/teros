@@ -248,11 +248,13 @@ test.describe("agent-core rollout @admin", () => {
     // create form uses the SAME CoreForm component as edit, so this covers both.
     await superPage.getByText(CREATE_RE).first().click()
     await superPage
-      .waitForFunction(() => /\bfullName\b/.test(document.body.innerText), null, { timeout: 8000 })
+      .waitForFunction(() => /\bfullName\b/i.test(document.body.innerText), null, { timeout: 8000 })
       .catch(() => {})
     const formBody = await superPage.evaluate(() => document.body.innerText)
     expect(
-      /coreId/.test(formBody) && /fullName/.test(formBody) && /version/.test(formBody),
+      // Case-insensitive: since 156e4deff the field labels are uppercased via CSS
+      // (text-transform), and innerText returns the rendered "COREID" / "FULLNAME".
+      /\bcoreId\b/i.test(formBody) && /\bfullName\b/i.test(formBody) && /\bversion\b/i.test(formBody),
       `el form de crear core rinde sus campos (CoreForm). Body: ${formBody.slice(0, 300)}`,
     ).toBe(true)
 

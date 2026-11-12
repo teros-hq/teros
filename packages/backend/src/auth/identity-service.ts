@@ -6,6 +6,7 @@
  */
 
 import * as bcrypt from 'bcrypt';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import { type Collection, type Db, ObjectId } from 'mongodb';
 import type {
   IdentityProvider,
@@ -29,12 +30,9 @@ export class IdentityService {
    * Initialize indexes for the user_identities collection
    */
   async ensureIndexes(): Promise<void> {
-    // Unique: one identity per provider+providerUserId
-    await this.identities.createIndex({ type: 1, providerUserId: 1 }, { unique: true });
-    // Find all identities for a user
-    await this.identities.createIndex({ userId: 1 });
-    // Find identity by email (for linking)
-    await this.identities.createIndex({ type: 1, email: 1 });
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.identities, COLLECTIONS.userIdentities);
   }
 
   // ============================================================================
@@ -110,36 +108,11 @@ export class IdentityService {
       };
     }
 
-    // If a lockout was set but has already elapsed, start a fresh attempt
-    // window. Otherwise the counter stays at MAX and a single mistake by a
-    // legitimate user who waited out the lockout re-locks them immediately.
-    // OWASP: the failed-attempt counter resets once the lockout duration
-    // passes (Authentication Cheat Sheet). (TER-450)
-    const priorFailedAttempts = data.lockedUntil ? 0 : data.failedAttempts;
-
     // Verify password
     const isValid = await bcrypt.compare(password, data.passwordHash);
 
     if (!isValid) {
-      // Increment failed attempts
-      const newFailedAttempts = priorFailedAttempts + 1;
-      // Lock account if too many failures; otherwise clear any stale lockout.
-      const lockedUntil =
-        newFailedAttempts >= MAX_FAILED_ATTEMPTS
-          ? new Date(Date.now() + LOCKOUT_DURATION_MS)
-          : null;
-
-      await this.identities.updateOne(
-        { _id: identity._id },
-        {
-          $set: {
-            'data.failedAttempts': newFailedAttempts,
-            'data.lockedUntil': lockedUntil,
-            updatedAt: new Date(),
-          },
-        },
-      );
-
+      const lockedUntil = await this.recordFailedAttempt(identity._id);
       return {
         success: false,
         error: 'invalid_credentials',
@@ -164,6 +137,55 @@ export class IdentityService {
   }
 
   /**
+   * Count a failed password attempt and lock the identity at MAX_FAILED_ATTEMPTS.
+   *
+   * One pipeline update computes the new counter from the stored value, so
+   * concurrent wrong guesses can't overwrite each other's increment (MOD-6:
+   * read-then-$set let parallel attempts be under-counted, weakening the
+   * lockout). Returns the lock expiry, or null when not locked.
+   */
+  private async recordFailedAttempt(identityId: ObjectId): Promise<Date | null> {
+    const now = new Date();
+    // A lockout that has already elapsed starts a fresh attempt window.
+    // Otherwise the counter stays at MAX and a single mistake by a legitimate
+    // user who waited out the lockout re-locks them immediately. OWASP: the
+    // failed-attempt counter resets once the lockout duration passes
+    // (Authentication Cheat Sheet). (TER-450)
+    const lockoutElapsed = {
+      $lte: [{ $ifNull: ['$data.lockedUntil', new Date(8640000000000000)] }, now],
+    };
+
+    const updated = await this.identities.findOneAndUpdate(
+      { _id: identityId },
+      [
+        {
+          $set: {
+            'data.failedAttempts': {
+              $add: [{ $cond: [lockoutElapsed, 0, { $ifNull: ['$data.failedAttempts', 0] }] }, 1],
+            },
+          },
+        },
+        {
+          $set: {
+            // Lock on too many failures; otherwise clear any stale lockout
+            'data.lockedUntil': {
+              $cond: [
+                { $gte: ['$data.failedAttempts', MAX_FAILED_ATTEMPTS] },
+                new Date(now.getTime() + LOCKOUT_DURATION_MS),
+                null,
+              ],
+            },
+            updatedAt: now,
+          },
+        },
+      ],
+      { returnDocument: 'after' },
+    );
+
+    return (updated?.data as PasswordIdentityData | undefined)?.lockedUntil ?? null;
+  }
+
+  /**
    * Change password for a password identity
    */
   async changePassword(userId: string, newPassword: string): Promise<boolean> {
@@ -185,23 +207,57 @@ export class IdentityService {
     return result.modifiedCount > 0;
   }
 
+  /**
+   * Store a hashed password reset token on the identity.
+   * The token is hashed (sha256) before storage — never kept in plaintext.
+   */
+  async setPasswordResetToken(identityId: ObjectId, tokenHash: string, expiresAt: Date): Promise<void> {
+    await this.identities.updateOne(
+      { _id: identityId },
+      {
+        $set: {
+          'data.resetToken': tokenHash,
+          'data.resetTokenExpiresAt': expiresAt,
+          updatedAt: new Date(),
+        },
+      },
+    );
+  }
+
+  /**
+   * Clear the password reset token after a successful reset.
+   */
+  async clearPasswordResetToken(identityId: ObjectId): Promise<void> {
+    await this.identities.updateOne(
+      { _id: identityId },
+      {
+        $unset: {
+          'data.resetToken': '',
+          'data.resetTokenExpiresAt': '',
+        },
+        $set: {
+          updatedAt: new Date(),
+        },
+      },
+    );
+  }
+
   // ============================================================================
   // OAUTH IDENTITY
   // ============================================================================
 
   /**
-   * Create or update an OAuth identity
-   * If identity exists, updates tokens and profile
-   * If not, creates new identity
+   * Create or update an OAuth identity (profile and scopes).
+   *
+   * The provider's access/refresh tokens are NOT stored (SEC-4): sign-in only
+   * needs the verified identity, nothing ever read them back, and they sat in
+   * plaintext. Updating an identity also removes any stored by older code.
    */
   async upsertOAuthIdentity(params: {
     userId: string;
     type: Exclude<IdentityProvider, 'password'>;
     providerUserId: string;
     email: string;
-    accessToken?: string;
-    refreshToken?: string;
-    tokenExpiresAt?: Date;
     providerProfile: OAuthIdentityData['providerProfile'];
     scopes?: string[];
   }): Promise<UserIdentity> {
@@ -219,14 +275,12 @@ export class IdentityService {
         {
           $set: {
             email: params.email.toLowerCase(),
-            'data.accessToken': params.accessToken,
-            'data.refreshToken': params.refreshToken,
-            'data.tokenExpiresAt': params.tokenExpiresAt,
             'data.providerProfile': params.providerProfile,
             'data.scopes': params.scopes,
             lastUsedAt: now,
             updatedAt: now,
           },
+          $unset: { 'data.accessToken': '', 'data.refreshToken': '', 'data.tokenExpiresAt': '' },
         },
       );
 
@@ -241,9 +295,6 @@ export class IdentityService {
       providerUserId: params.providerUserId,
       email: params.email.toLowerCase(),
       data: {
-        accessToken: params.accessToken,
-        refreshToken: params.refreshToken,
-        tokenExpiresAt: params.tokenExpiresAt,
         providerProfile: params.providerProfile,
         scopes: params.scopes,
       } as OAuthIdentityData,
@@ -345,13 +396,16 @@ export class IdentityService {
   }
 
   /**
-   * Check if user has a password identity
+   * Check if user has a password identity with an actual password hash.
+   * An identity without a hash (e.g. created by a script or migration without
+   * setting a password) should NOT count — the user can't verify with it.
    */
   async hasPasswordIdentity(userId: string): Promise<boolean> {
     const identity = await this.identities.findOne({
       userId,
       type: 'password',
       status: 'active',
+      'data.passwordHash': { $exists: true, $ne: null },
     });
     return identity !== null;
   }
@@ -359,6 +413,11 @@ export class IdentityService {
   /**
    * Count identities for a user
    */
+  /** Whether the user has any identity at all, active or revoked. */
+  async hasAnyIdentity(userId: string): Promise<boolean> {
+    return (await this.identities.countDocuments({ userId }, { limit: 1 })) > 0;
+  }
+
   async countIdentities(userId: string): Promise<number> {
     return this.identities.countDocuments({
       userId,

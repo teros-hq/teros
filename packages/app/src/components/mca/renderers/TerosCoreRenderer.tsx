@@ -1,7 +1,7 @@
 /**
  * mca.teros.core — Tool Call Renderer
  *
- * Cobertura 100%: cada uno de los 40 tools del MCA Core tiene un renderer
+ * Cobertura 100%: cada uno de los 43 tools del MCA Core tiene un renderer
  * dedicado que pinta los datos devueltos usando primitivos semánticos
  * (ResourceCard, DualEntity, EntityRow, KeyValueGrid, …).
  *
@@ -22,7 +22,7 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, TouchableOpacity } from 'react-native';
+import { Platform, Pressable, ScrollView, TextInput, TouchableOpacity } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { getTerosClient } from '../../../services/terosClientSingleton';
@@ -34,6 +34,8 @@ import {
   Avatar,
   Badge,
   colors,
+  ConfirmDialog,
+  type DescriptionVars,
   useColors,
   DualEntity,
   type DualAction,
@@ -41,6 +43,7 @@ import {
   EntityCard,
   EntityRow,
   ErrorBlock,
+  firstName,
   getShortToolName,
   IconChip,
   IconTile,
@@ -52,12 +55,14 @@ import {
   PillList,
   ResourceCard,
   SuccessBlock,
-  tenseByStatus,
   ToolCallCard,
   truncate,
+  useToolDescription,
 } from '../primitives';
+import { FONT_SANS } from '../primitives/fonts';
 import type { ToolCallRendererProps } from '../types';
 import { withPermissionSupport } from '../withPermissionSupport';
+import { backendUrl } from '../../../config/runtime';
 
 // ============================================================================
 // 1. SHARED TYPES (shape del output de las tools del MCA Core)
@@ -77,7 +82,6 @@ interface Agent {
   maxSteps?: number;
   updatedAt?: string;
   context?: string;
-  availableProviders?: string[];
   selectedProviderId?: string | null;
   selectedModelId?: string | null;
   core?: { coreId: string; name?: string; fullName?: string; avatarUrl?: string };
@@ -153,93 +157,46 @@ interface Skill {
 // 2. LABELS + HELPERS
 // ============================================================================
 
-const TOOL_LABELS: Record<string, string> = {
-  // Agents
-  'list-agents': 'Agents',
-  'get-agent': 'Agent details',
-  'create-agent': 'Create agent',
-  'update-agent': 'Update agent',
-  'delete-agent': 'Delete agent',
-  'list-agent-apps': 'Agent apps',
-  'get-agent-providers': 'Agent providers',
-  'set-agent-providers': 'Set agent providers',
-  'set-agent-preferred-provider': 'Set preferred provider',
-  // Workspaces
-  'list-workspaces': 'Workspaces',
-  'get-workspace': 'Workspace details',
-  'create-workspace': 'Create workspace',
-  'update-workspace': 'Update workspace',
-  'archive-workspace': 'Archive workspace',
-  'add-workspace-member': 'Add member',
-  'remove-workspace-member': 'Remove member',
-  'update-workspace-member-role': 'Update member role',
-  'workspace-agent-list': 'Workspace agents',
-  'workspace-app-list': 'Workspace apps',
-  // Apps
-  'list-apps': 'Apps',
-  'get-app': 'App details',
-  'install-app': 'Install app',
-  'uninstall-app': 'Uninstall app',
-  'rename-app': 'Rename app',
-  'check-app-auth': 'Check app authentication',
-  'show-app-auth': 'App authentication',
-  'list-app-access': 'App access',
-  // Catalog / Providers
-  'list-catalog': 'MCA catalog',
-  'list-providers': 'LLM providers',
-  // Access control (apps)
-  'grant-app-access': 'Grant app access',
-  'revoke-app-access': 'Revoke app access',
-  'get-app-permissions': 'App permissions',
-  'set-app-permissions': 'Set app permissions',
-  // Skills
-  'skill-list': 'Skills',
-  'skill-create': 'Create skill',
-  'skill-update': 'Update skill',
-  'skill-delete': 'Delete skill',
-  'skill-grant-access': 'Grant skill access',
-  'skill-revoke-access': 'Revoke skill access',
-  'skill-set-enabled': 'Toggle skill',
-  'skill-get-agent-skills': 'Agent skills',
-};
+/**
+ * Header copy lives in i18n under `mca.tools.terosCore.<tool>` and follows
+ * the description standard (primitives/tool-description.ts): one string per
+ * phase, with names — never ids — and `*Generic` variants when a name is
+ * unknown.
+ */
+const DESCRIPTION_KEY = 'mca.tools.terosCore';
 
-function humanize(name: string): string {
-  if (!name) return '';
-  const joined = name.replace(/-/g, ' ');
-  return joined.charAt(0).toUpperCase() + joined.slice(1);
-}
-
-function getToolLabel(toolName: string): string {
-  const short = getShortToolName(toolName);
-  return TOOL_LABELS[short] ?? humanize(short);
+function useCoreDescription(
+  tool: string,
+  status: ToolCallRendererProps['status'],
+  vars?: DescriptionVars,
+): string {
+  return useToolDescription(`${DESCRIPTION_KEY}.${tool}`, status, vars);
 }
 
 /**
- * Best-effort tense derivation from the canonical tool label (guide §2):
- *   "List agents"   → { future: "list agents",   present: "Listing agents",   past: "Listed agents" }
- *   "Create agent"  → { future: "create agent",  present: "Creating agent",  past: "Created agent" }
- *   "Stat workspace" → falls through to a single static form
- *
- * The TOOL_LABELS table is verb-first so this works for ~all tools; the
- * fallback (humanize) yields a noun phrase that we treat as the past form.
+ * Names for the ids a tool receives, resolved from the navbar caches. They
+ * cover the window before the output arrives (pending approval, running) and
+ * tools whose output carries no name. Undefined when unknown — the header
+ * then falls back to its generic copy, never to the raw id.
  */
-function getTenseForms(toolName: string): { future: string; present: string; past: string } {
-  const label = getToolLabel(toolName);
-  const lower = label.toLowerCase();
-  const [verb, ...rest] = lower.split(' ');
-  const tail = rest.join(' ');
-  if (!verb) return { future: lower, present: label, past: label };
-  const present = verb.endsWith('e') ? `${verb.slice(0, -1)}ing` : `${verb}ing`;
-  const past = verb.endsWith('e') ? `${verb}d` : `${verb}ed`;
-  return {
-    future: `${verb}${tail ? ` ${tail}` : ''}`,
-    present: capitalize(`${present}${tail ? ` ${tail}` : ''}`),
-    past: capitalize(`${past}${tail ? ` ${tail}` : ''}`),
-  };
+function useAgentName(agentId: unknown): string | undefined {
+  return useNavbarStore((s) =>
+    typeof agentId === 'string' ? s.agents.find((a) => a.agentId === agentId)?.name : undefined,
+  );
 }
 
-function capitalize(s: string): string {
-  return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
+function useWorkspaceName(workspaceId: unknown): string | undefined {
+  return useNavbarStore((s) =>
+    typeof workspaceId === 'string'
+      ? s.workspaces.find((w) => w.workspaceId === workspaceId)?.name
+      : undefined,
+  );
+}
+
+function useAppName(appId: unknown): string | undefined {
+  return useNavbarStore((s) =>
+    typeof appId === 'string' ? s.apps.find((a) => a.appId === appId)?.name : undefined,
+  );
 }
 
 /**
@@ -420,15 +377,11 @@ function Cell({ text, muted = false }: { text: string; muted?: boolean }) {
 }
 
 /**
- * Card-shell estándar para todos los renderers. Unifica el header (label +
- * status badge + duration) y el slot de body + error/empty handling.
- */
-/**
  * Card-shell estándar para todos los renderers TerosCore. Guide §2: el
  * dot ya comunica el status (running/completed/failed/pending_permission),
  * no se añade `badge` con el mismo texto (anti-pattern §7 DON'T
- * "Show a badge that duplicates what the dot already says"). La
- * descripción se pasa por `tenseByStatus` para que respete el tense.
+ * "Show a badge that duplicates what the dot already says"). Cada
+ * renderer compone su `description` con `useCoreDescription`.
  *
  * `irreversible` se propaga desde el dispatch para que las tools
  * destructivas (delete/uninstall/revoke/archive/remove) muestren el
@@ -439,6 +392,7 @@ function ToolShell({
   status,
   error,
   appIcon,
+  description,
   children,
   irreversible,
 }: {
@@ -446,17 +400,17 @@ function ToolShell({
   status: ToolCallRendererProps['status'];
   error?: string;
   appIcon?: string;
+  description: string;
   children: React.ReactNode;
   irreversible?: boolean;
 }) {
-  const c = useColors();
   // Auto-derive `irreversible` from the tool name when the caller didn't
   // override. Keeps the binding in one place (guide §8 — binary).
   const isIrreversible = irreversible ?? isIrreversibleTool(toolName);
   return (
     <ToolCallCard
       status={status}
-      description={tenseByStatus(status, getTenseForms(toolName))}
+      description={description}
       iconUri={appIcon}
       defaultExpanded={false}
       irreversible={isIrreversible}
@@ -485,8 +439,21 @@ function ListAgentsRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: agents, nextCursor } = unwrapList<Agent>(parsed, 'agents');
 
+  const workspaceName = useWorkspaceName(props.input?.workspaceId);
+  const scoped = typeof props.input?.workspaceId === 'string';
+  const description = useCoreDescription(
+    scoped ? 'listWorkspaceAgents' : 'listAgents',
+    status,
+    scoped ? { workspace: workspaceName } : undefined,
+  );
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {agents.length === 0 ? (
         <Empty message="No agents found" />
       ) : (
@@ -531,8 +498,18 @@ function GetAgentRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const agent = unwrap<Agent>(parsed, 'agent', 'agentId');
 
+  const storedName = useAgentName(props.input?.agentId);
+  const description = useCoreDescription('getAgent', status, {
+    agent: firstName(agent?.fullName, agent?.name, storedName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {agent && (
         <ResourceCard
           leading={agentLeadingAvatar(agent, 36)}
@@ -565,6 +542,8 @@ function GetAgentRenderer(props: ToolCallRendererProps) {
 
 interface AgentAppAccess {
   appId: string;
+  /** Field returned by list-agent-apps. */
+  name?: string;
   appName?: string;
   mcaId?: string;
   mcaName?: string;
@@ -577,8 +556,16 @@ function AgentAppsRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: apps } = unwrapList<AgentAppAccess>(parsed, 'apps');
 
+  const agentName = useAgentName(props.input?.agentId);
+  const description = useCoreDescription('listAgentApps', status, { agent: agentName });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {apps.length === 0 ? (
         <Empty message="No apps granted to this agent" />
       ) : (
@@ -587,8 +574,8 @@ function AgentAppsRenderer(props: ToolCallRendererProps) {
             {apps.slice(0, MAX_ITEMS).map((a) => (
               <EntityRow
                 key={a.appId}
-                leading={<IconTile label={(a.appName ?? a.appId).slice(0, 2)} size={22} radius={5} />}
-                title={a.appName ?? a.appId}
+                leading={<IconTile label={(a.name ?? a.appName ?? '?').slice(0, 2)} size={22} radius={5} />}
+                title={a.name ?? a.appName ?? '—'}
                 subtitle={a.mcaName ?? a.mcaId ?? '—'}
                 meta={<Cell text={formatDate(a.grantedAt)} muted />}
               />
@@ -602,9 +589,10 @@ function AgentAppsRenderer(props: ToolCallRendererProps) {
 
 interface AgentProvidersOutput {
   agentId?: string;
-  availableProviders?: string[];
   selectedProviderId?: string | null;
   selectedModelId?: string;
+  /** 2-level model resolution (2026-10-21): agent_pin | user_default_provider | unresolved */
+  resolved?: { providerId?: string; modelId?: string; source?: string };
   providers?: Array<{ providerId: string; name?: string; status?: string; models?: unknown[] }>;
 }
 
@@ -615,8 +603,16 @@ function AgentProvidersRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const data = parsed && typeof parsed === 'object' ? (parsed as AgentProvidersOutput) : null;
 
+  const agentName = useAgentName(props.input?.agentId);
+  const description = useCoreDescription('getAgentProviders', status, { agent: agentName });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {data && (
         <EntityCard
           title={t('mca.terosCore.providersConfig')}
@@ -624,19 +620,16 @@ function AgentProvidersRenderer(props: ToolCallRendererProps) {
         >
           <KeyValueGrid
             rows={[
-              { key: 'preferred', value: data.selectedProviderId ?? '— (system default)' },
+              {
+                key: 'resolved',
+                value: data.resolved
+                  ? `${data.resolved.modelId ?? '—'} (${data.resolved.source ?? '—'})`
+                  : data.selectedModelId ?? '— (system default)',
+              },
               { key: 'model', value: data.selectedModelId ?? '—' },
               { key: 'total', value: `${data.providers?.length ?? 0} providers` },
             ]}
           />
-          {data.availableProviders && data.availableProviders.length > 0 && (
-            <YStack gap={3} marginTop={4}>
-              <Text color={c.text2} fontSize={9} fontFamily="$mono" textTransform="uppercase">
-                available
-              </Text>
-              <PillList items={data.availableProviders} max={8} />
-            </YStack>
-          )}
         </EntityCard>
       )}
     </ToolShell>
@@ -649,8 +642,17 @@ function CreateAgentRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const agent = unwrap<Agent>(parsed, 'agent', 'agentId');
 
+  const description = useCoreDescription('createAgent', status, {
+    agent: firstName(agent?.fullName, agent?.name, props.input?.fullName, props.input?.name),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {agent && (
         <ResourceCard
           leading={agentLeadingAvatar(agent, 32)}
@@ -685,8 +687,18 @@ function UpdateAgentRenderer(props: ToolCallRendererProps) {
   const agent = unwrap<Agent>(parsed, 'agent', 'agentId');
   const changes = diffFields(input, ['name', 'fullName', 'role', 'intro', 'context', 'avatarUrl', 'responseStyle']);
 
+  const storedName = useAgentName(input?.agentId);
+  const description = useCoreDescription('updateAgent', status, {
+    agent: firstName(agent?.fullName, agent?.name, storedName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {agent && (
         <ResourceCard
           leading={agentLeadingAvatar(agent, 32)}
@@ -725,8 +737,18 @@ function DeleteAgentRenderer(props: ToolCallRendererProps) {
   const data = (parsed && typeof parsed === 'object' ? parsed : {}) as DeleteResult;
   const name = data.fullName ?? data.name ?? (input?.agentId as string | undefined) ?? data.agentId ?? '?';
 
+  const storedName = useAgentName(input?.agentId);
+  const description = useCoreDescription('deleteAgent', status, {
+    agent: firstName(data.fullName, data.name, storedName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <EntityCard
         leading={<Avatar name={name} size={22} />}
         title={name}
@@ -737,68 +759,93 @@ function DeleteAgentRenderer(props: ToolCallRendererProps) {
   );
 }
 
-interface SetProvidersResult {
+interface SetAgentModelResult {
   agentId?: string;
   agentName?: string;
-  availableProviders?: string[];
+  selectedProviderId?: string;
+  selectedModelId?: string;
+  /** Audit-only (goes to the server log) — never painted. */
+  reason?: string | null;
 }
 
-function SetAgentProvidersRenderer(props: ToolCallRendererProps) {
+function SetAgentModelRenderer(props: ToolCallRendererProps) {
   const c = useColors();
   const { t } = useTranslation();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error, duration, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
-  const data = (parsed && typeof parsed === 'object' ? parsed : {}) as SetProvidersResult;
-  const providers = data.availableProviders ?? [];
+  const data = (parsed && typeof parsed === 'object' ? parsed : {}) as SetAgentModelResult;
+  const modelId = data.selectedModelId ?? (input?.modelId as string | undefined) ?? null;
+  const providerId = data.selectedProviderId ?? (input?.providerId as string | undefined) ?? null;
 
+  const storedName = useAgentName(input?.agentId);
+  const description = useCoreDescription('setAgentModel', status, {
+    agent: firstName(data.agentName, storedName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <ResourceCard
         leading={<Avatar name={data.agentName} size={28} />}
         title={data.agentName ?? shortId(data.agentId)}
-        subtitle={t('mca.terosCore.providersUpdated')}
+        subtitle={t('mca.terosCore.modelPinned')}
         verb="updated"
       >
-        {providers.length === 0 ? (
-          <Text color={c.text3} fontSize={10} fontFamily="$mono">
-            (cleared — agent will have no providers until set again)
-          </Text>
-        ) : (
-          <PillList items={providers} max={8} />
-        )}
+        <YStack gap={6}>
+          {modelId ? (
+            <IconChip text={modelId} accent={colors.indigo} outline />
+          ) : (
+            <Text color={c.text3} fontSize={10} fontFamily="$mono">
+              (no model pinned)
+            </Text>
+          )}
+          {providerId && (
+            <Text color={c.text3} fontSize={10} fontFamily="$mono">
+              {t('mca.terosCore.viaProvider', { provider: providerId })}
+            </Text>
+          )}
+        </YStack>
       </ResourceCard>
     </ToolShell>
   );
 }
 
-interface SetPreferredProviderResult {
+interface ResetAgentModelResult {
   agentId?: string;
   agentName?: string;
-  selectedProviderId?: string | null;
+  selectedProviderId?: null;
+  selectedModelId?: null;
 }
 
-function SetAgentPreferredProviderRenderer(props: ToolCallRendererProps) {
-  const c = useColors();
+function ResetAgentModelRenderer(props: ToolCallRendererProps) {
+  const { t } = useTranslation();
   const { toolName, status, output, error, duration, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
-  const data = (parsed && typeof parsed === 'object' ? parsed : {}) as SetPreferredProviderResult;
-  const selected = data.selectedProviderId ?? (input?.providerId as string | undefined) ?? null;
+  const data = (parsed && typeof parsed === 'object' ? parsed : {}) as ResetAgentModelResult;
 
+  const storedName = useAgentName(input?.agentId);
+  const description = useCoreDescription('resetAgentModel', status, {
+    agent: firstName(data.agentName, storedName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <ResourceCard
         leading={<Avatar name={data.agentName} size={28} />}
         title={data.agentName ?? shortId(data.agentId)}
-        subtitle="Preferred provider"
+        subtitle={t('mca.terosCore.modelReset')}
         verb="updated"
       >
-        {selected ? (
-          <IconChip text={selected} accent={colors.indigo} outline />
-        ) : (
-          <Text color={c.text3} fontSize={10} fontFamily="$mono">
-            (cleared — system will auto-pick)
-          </Text>
-        )}
+        <IconChip text={t('mca.terosCore.systemDefault')} accent={colors.indigo} outline />
       </ResourceCard>
     </ToolShell>
   );
@@ -829,8 +876,15 @@ function ListWorkspacesRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: workspaces } = unwrapList<Workspace>(parsed, 'workspaces');
 
+  const description = useCoreDescription('listWorkspaces', status);
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {workspaces.length === 0 ? (
         <Empty message="No workspaces found" />
       ) : (
@@ -882,8 +936,18 @@ function GetWorkspaceRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const ws = unwrap<Workspace>(parsed, 'workspace', 'workspaceId');
 
+  const storedName = useWorkspaceName(props.input?.workspaceId);
+  const description = useCoreDescription('getWorkspace', status, {
+    workspace: firstName(ws?.name, storedName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {ws && (
         <ResourceCard
           leading={workspaceLeading(ws, 36)}
@@ -930,8 +994,17 @@ function CreateWorkspaceRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const ws = unwrap<Workspace>(parsed, 'workspace', 'workspaceId');
 
+  const description = useCoreDescription('createWorkspace', status, {
+    workspace: firstName(ws?.name, props.input?.name),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {ws && (
         <ResourceCard
           leading={workspaceLeading(ws, 32)}
@@ -964,8 +1037,18 @@ function UpdateWorkspaceRenderer(props: ToolCallRendererProps) {
   const ws = unwrap<Workspace>(parsed, 'workspace', 'workspaceId');
   const changes = diffFields(input, ['name', 'description', 'context', 'appearance']);
 
+  const storedName = useWorkspaceName(input?.workspaceId);
+  const description = useCoreDescription('updateWorkspace', status, {
+    workspace: firstName(ws?.name, storedName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {ws && (
         <ResourceCard
           leading={workspaceLeading(ws, 32)}
@@ -1004,8 +1087,18 @@ function ArchiveWorkspaceRenderer(props: ToolCallRendererProps) {
   const data = (parsed && typeof parsed === 'object' ? parsed : {}) as WorkspaceActionResult;
   const name = data.name ?? data.workspaceName ?? shortId(data.workspaceId ?? (input?.workspaceId as string | undefined));
 
+  const storedName = useWorkspaceName(input?.workspaceId);
+  const description = useCoreDescription('archiveWorkspace', status, {
+    workspace: firstName(data.name, data.workspaceName, storedName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <EntityCard
         leading={<IconTile label={name.slice(0, 2)} accent={c.text3} size={24} radius={5} />}
         title={name}
@@ -1033,8 +1126,19 @@ function AddWorkspaceMemberRenderer(props: ToolCallRendererProps) {
   const userName = data.userName ?? shortId(data.userId ?? (input?.userId as string | undefined));
   const role = data.role ?? (input?.role as string | undefined) ?? '?';
 
+  const storedName = useWorkspaceName(input?.workspaceId);
+  const description = useCoreDescription('addWorkspaceMember', status, {
+    email: firstName(input?.email),
+    workspace: firstName(data.workspaceName, storedName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <DualEntity
         left={{
           visual: <Avatar name={userName} size={24} />,
@@ -1061,8 +1165,18 @@ function RemoveWorkspaceMemberRenderer(props: ToolCallRendererProps) {
   const wsName = data.workspaceName ?? shortId(data.workspaceId ?? (input?.workspaceId as string | undefined));
   const userName = data.userName ?? shortId(data.userId ?? (input?.userId as string | undefined));
 
+  const storedName = useWorkspaceName(input?.workspaceId);
+  const description = useCoreDescription('removeWorkspaceMember', status, {
+    workspace: firstName(data.workspaceName, storedName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <DualEntity
         left={{
           visual: <Avatar name={userName} size={24} />,
@@ -1089,8 +1203,18 @@ function UpdateWorkspaceMemberRoleRenderer(props: ToolCallRendererProps) {
   const userName = data.userName ?? shortId(data.userId ?? (input?.userId as string | undefined));
   const role = data.role ?? (input?.role as string | undefined) ?? '?';
 
+  const storedName = useWorkspaceName(input?.workspaceId);
+  const description = useCoreDescription('updateWorkspaceMemberRole', status, {
+    workspace: firstName(data.workspaceName, storedName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <DualEntity
         left={{
           visual: <Avatar name={userName} size={24} />,
@@ -1135,8 +1259,20 @@ function ListAppsRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: apps } = unwrapList<App>(parsed, 'apps');
 
+  const workspaceName = useWorkspaceName(props.input?.workspaceId);
+  // list-apps (unscoped) was removed from the core MCA (fb_3dcf1df824a1b5ee) —
+  // only workspace-app-list calls reach this renderer now, always scoped.
+  const description = useCoreDescription('listWorkspaceApps', status, {
+    workspace: workspaceName,
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {apps.length === 0 ? (
         <Empty message="No apps found" />
       ) : (
@@ -1173,8 +1309,16 @@ function GetAppRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const app = unwrap<App>(parsed, 'app', 'appId');
 
+  const storedName = useAppName(props.input?.appId);
+  const description = useCoreDescription('getApp', status, { app: firstName(app?.name, storedName) });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {app && (
         <ResourceCard
           leading={appLeading(app, 36)}
@@ -1215,8 +1359,17 @@ function InstallAppRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const app = unwrap<App>(parsed, 'app', 'appId');
 
+  const description = useCoreDescription('installApp', status, {
+    app: firstName(app?.name, props.input?.name, app?.mcaName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {app && (
         <ResourceCard
           leading={appLeading(app, 32)}
@@ -1249,8 +1402,16 @@ function UninstallAppRenderer(props: ToolCallRendererProps) {
   const data = (parsed && typeof parsed === 'object' ? parsed : {}) as AppActionResult;
   const name = data.name ?? shortId(data.appId ?? (input?.appId as string | undefined));
 
+  const storedName = useAppName(input?.appId);
+  const description = useCoreDescription('uninstallApp', status, { app: firstName(data.name, storedName) });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <EntityCard
         leading={<IconTile label={name.slice(0, 2)} accent={colors.red} size={24} radius={5} />}
         title={name}
@@ -1268,8 +1429,15 @@ function RenameAppRenderer(props: ToolCallRendererProps) {
   const app = unwrap<App>(parsed, 'app', 'appId');
   const newName = app?.name ?? (input?.name as string | undefined) ?? '?';
 
+  const description = useCoreDescription('renameApp', status, { name: firstName(app?.name, input?.name) });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <ResourceCard
         leading={<IconTile label={newName.slice(0, 2)} size={28} radius={5} />}
         title={newName}
@@ -1297,8 +1465,20 @@ function GrantAppAccessRenderer(props: ToolCallRendererProps) {
   const agentName = data.agentName ?? shortId(data.agentId ?? (input?.agentId as string | undefined));
   const appName = data.appName ?? shortId(data.appId ?? (input?.appId as string | undefined));
 
+  const storedAgent = useAgentName(input?.agentId);
+  const storedApp = useAppName(input?.appId);
+  const description = useCoreDescription('grantAppAccess', status, {
+    agent: firstName(data.agentName, storedAgent),
+    app: firstName(data.appName, storedApp),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <DualEntity
         left={{
           visual: <Avatar name={agentName} size={24} />,
@@ -1324,8 +1504,20 @@ function RevokeAppAccessRenderer(props: ToolCallRendererProps) {
   const agentName = data.agentName ?? shortId(data.agentId ?? (input?.agentId as string | undefined));
   const appName = data.appName ?? shortId(data.appId ?? (input?.appId as string | undefined));
 
+  const storedAgent = useAgentName(input?.agentId);
+  const storedApp = useAppName(input?.appId);
+  const description = useCoreDescription('revokeAppAccess', status, {
+    agent: firstName(data.agentName, storedAgent),
+    app: firstName(data.appName, storedApp),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <DualEntity
         left={{
           visual: <Avatar name={agentName} size={24} />,
@@ -1343,70 +1535,11 @@ function RevokeAppAccessRenderer(props: ToolCallRendererProps) {
   );
 }
 
-interface AppPermissionsResult {
-  appId?: string;
-  appName?: string;
-  defaultPermission?: string;
-  tools?: Array<{ name: string; permission: string; readOnly?: boolean; alwaysAsk?: boolean }>;
-  summary?: { allow: number; ask: number; forbid: number };
-}
-
-/** Shared body for get/set-app-permissions: default + summary + per-tool rows. */
-function appPermissionRows(data: AppPermissionsResult): KeyValueRow[] {
-  const s = data.summary;
-  return [
-    { key: 'default', value: data.defaultPermission ?? 'ask' },
-    ...(s ? [{ key: 'summary', value: `${s.allow} allow · ${s.ask} ask · ${s.forbid} forbid` }] : []),
-    ...(data.tools ?? []).slice(0, MAX_ITEMS).map((t) => ({
-      key: t.name,
-      value: [t.permission, t.readOnly ? 'read-only' : null, t.alwaysAsk ? 'always-ask' : null]
-        .filter(Boolean)
-        .join(' · '),
-    })),
-  ];
-}
-
-function GetAppPermissionsRenderer(props: ToolCallRendererProps) {
-  const { toolName, status, output, error, input } = props;
-  const parsed = output ? parseOutput<unknown>(output) : null;
-  const data = (parsed && typeof parsed === 'object' ? parsed : {}) as AppPermissionsResult;
-  const name = data.appName ?? shortId(data.appId ?? (input?.appId as string | undefined));
-
-  return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
-      <ResourceCard
-        leading={<IconTile label={name.slice(0, 2)} size={28} radius={5} />}
-        title={name}
-        subtitle={shortId(data.appId ?? (input?.appId as string | undefined))}
-      >
-        <KeyValueGrid rows={appPermissionRows(data)} />
-      </ResourceCard>
-    </ToolShell>
-  );
-}
-
-function SetAppPermissionsRenderer(props: ToolCallRendererProps) {
-  const { toolName, status, output, error, input } = props;
-  const parsed = output ? parseOutput<unknown>(output) : null;
-  const data = (parsed && typeof parsed === 'object' ? parsed : {}) as AppPermissionsResult;
-  const name = data.appName ?? shortId(data.appId ?? (input?.appId as string | undefined));
-
-  return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
-      <ResourceCard
-        leading={<IconTile label={name.slice(0, 2)} size={28} radius={5} />}
-        title={name}
-        subtitle={shortId(data.appId ?? (input?.appId as string | undefined))}
-        verb="updated"
-      >
-        <KeyValueGrid rows={appPermissionRows(data)} />
-      </ResourceCard>
-    </ToolShell>
-  );
-}
-
 interface AppAccessEntry {
   agentId: string;
+  /** Fields returned by list-app-access. */
+  name?: string;
+  fullName?: string;
   agentName?: string;
   agentFullName?: string;
   grantedAt?: string;
@@ -1419,8 +1552,16 @@ function AppAccessListRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: agents } = unwrapList<AppAccessEntry>(parsed, 'agents');
 
+  const appName = useAppName(props.input?.appId);
+  const description = useCoreDescription('listAppAccess', status, { app: appName });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {agents.length === 0 ? (
         <Empty message="No agents have access to this app" />
       ) : (
@@ -1429,14 +1570,57 @@ function AppAccessListRenderer(props: ToolCallRendererProps) {
             {agents.slice(0, MAX_ITEMS).map((a) => (
               <EntityRow
                 key={a.agentId}
-                leading={<Avatar name={a.agentFullName ?? a.agentName} size={22} />}
-                title={a.agentFullName ?? a.agentName ?? a.agentId}
-                subtitle={a.grantedBy ? `granted by ${shortId(a.grantedBy, 8)}` : shortId(a.agentId)}
+                leading={<Avatar name={a.fullName ?? a.name ?? a.agentFullName ?? a.agentName} size={22} />}
+                title={a.fullName ?? a.name ?? a.agentFullName ?? a.agentName ?? '—'}
+                subtitle={a.fullName && a.name && a.fullName !== a.name ? a.name : undefined}
                 meta={<Cell text={formatDate(a.grantedAt)} muted />}
               />
             ))}
           </YStack>
         </ScrollView>
+      )}
+    </ToolShell>
+  );
+}
+
+interface AppPermissionsOutput {
+  appId?: string;
+  appName?: string;
+  defaultPermission?: string;
+  tools?: Array<{ name: string; permission: string; readOnly?: boolean }>;
+  summary?: { allow: number; ask: number; forbid: number };
+}
+
+/** Shared by get-app-permissions and set-app-permissions (same output shape). */
+function AppPermissionsRenderer(props: ToolCallRendererProps) {
+  const { toolName, status, output, error, input } = props;
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const data = (parsed && typeof parsed === 'object' ? parsed : {}) as AppPermissionsOutput;
+  const storedName = useAppName(input?.appId);
+  const isSet = getShortToolName(toolName) === 'set-app-permissions';
+  const description = useCoreDescription(isSet ? 'setAppPermissions' : 'getAppPermissions', status, {
+    app: firstName(data.appName, storedName),
+  });
+
+  return (
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
+      {data.summary && (
+        <KeyValueGrid
+          rows={[
+            { key: 'allow', value: String(data.summary.allow) },
+            { key: 'ask', value: String(data.summary.ask) },
+            { key: 'forbid', value: String(data.summary.forbid) },
+            ...(data.defaultPermission
+              ? [{ key: 'default', value: data.defaultPermission } as KeyValueRow]
+              : []),
+          ]}
+        />
       )}
     </ToolShell>
   );
@@ -1448,6 +1632,23 @@ interface ShowAppAuthInfo {
   status?: 'ready' | 'needs_user_auth' | 'expired' | 'error' | 'needs_system_setup' | 'not_required';
   authType?: 'none' | 'agent' | 'apikey' | 'oauth2' | 'github-app';
   message?: string;
+  /**
+   * API-key auth detail. `fields` mirrors the manifest's userSecrets with
+   * `isSet` presence per variable — the value itself NEVER leaves the
+   * backend, so the widget can list set/empty state without exposing keys.
+   */
+  apikey?: {
+    configured?: boolean;
+    fields?: Array<{
+      name: string;
+      label?: string;
+      type?: 'text' | 'password';
+      required?: boolean;
+      placeholder?: string;
+      hint?: string;
+      isSet?: boolean;
+    }>;
+  };
 }
 
 interface ShowAppAuthOutput {
@@ -1483,26 +1684,22 @@ function useAppDisplayName(
   parsedName: string | undefined,
   appId: string | undefined,
 ): string | undefined {
-  const storedName = useNavbarStore((s) =>
-    appId ? s.apps.find((a) => a.appId === appId)?.name : undefined,
-  );
-  return parsedName ?? storedName;
-}
-
-/** "gmail app auth" with a known name, plain "app auth" without. */
-function appAuthLabel(appName: string | undefined): string {
-  return appName ? `${appName} app auth` : 'app auth';
+  const storedName = useAppName(appId);
+  return firstName(parsedName, storedName);
 }
 
 function AuthActionButton({
   label,
   onPress,
   disabled,
+  variant = 'default',
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  variant?: 'default' | 'danger';
 }) {
+  const isDanger = variant === 'danger';
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -1516,17 +1713,158 @@ function AuthActionButton({
         paddingVertical: 7,
         paddingHorizontal: 14,
         borderRadius: 6,
-        backgroundColor: 'rgba(94,106,210,0.14)',
+        backgroundColor: isDanger ? 'rgba(239,68,68,0.10)' : 'rgba(94,106,210,0.14)',
         borderWidth: 1,
-        borderColor: 'rgba(94,106,210,0.35)',
+        borderColor: isDanger ? 'rgba(239,68,68,0.35)' : 'rgba(94,106,210,0.35)',
         opacity: disabled ? 0.5 : 1,
         alignSelf: 'stretch',
       }}
     >
-      <Text fontSize={11} color="#a5b4fc" fontWeight="600">
+      <Text fontSize={11} color={isDanger ? colors.red : colors.indigo} fontWeight="600">
         {label}
       </Text>
     </TouchableOpacity>
+  );
+}
+
+/**
+ * One variable row of the expandable secrets section: label + set/empty
+ * chip, and a masked input that saves via `app.configure-credentials`
+ * (partial merge — only the edited key is sent, never the stored ones).
+ * The typed value lives in local state only: it is never rendered as text,
+ * never logged and never passes through the model (the widget is client UI
+ * talking straight to the backend transport).
+ */
+function SecretVariableRow({
+  field,
+  disabled,
+  onSave,
+}: {
+  field: NonNullable<ShowAppAuthInfo['apikey']>['fields'] extends (infer F)[] | undefined ? F : never;
+  disabled?: boolean;
+  onSave: (name: string, value: string) => Promise<void>;
+}) {
+  const c = useColors();
+  const [editing, setEditing] = useState(!field.isSet);
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isSet = field.isSet === true;
+
+  const save = async () => {
+    if (!value.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(field.name, value);
+      setValue('');
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <YStack gap={4}>
+      <XStack alignItems="center" gap={6} flexWrap="wrap">
+        <Text color={c.text} fontSize={11} fontFamily="$mono" numberOfLines={1} flex={1} minWidth={100}>
+          {field.label ?? field.name}
+        </Text>
+        <IconChip
+          text={isSet ? 'set' : field.required === false ? 'optional' : 'empty'}
+          accent={isSet ? colors.success : field.required === false ? c.text3 : colors.warning}
+          outline
+        />
+      </XStack>
+      {editing ? (
+        <XStack gap={6} alignItems="center">
+          <TextInput
+            value={value}
+            onChangeText={setValue}
+            editable={!saving && !disabled}
+            secureTextEntry={field.type !== 'text'}
+            placeholder={isSet ? 'Replace value…' : (field.placeholder ?? 'Paste value…')}
+            placeholderTextColor={c.text3}
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={{
+              flex: 1,
+              height: 32,
+              paddingHorizontal: 10,
+              backgroundColor: c.bgInner,
+              borderWidth: 1,
+              borderColor: c.border,
+              borderRadius: 6,
+              color: c.text,
+              fontSize: 11,
+              fontFamily: FONT_SANS,
+              ...(Platform.OS === 'web' ? { outlineColor: c.accent } : {}),
+            }}
+          />
+          <TouchableOpacity
+            onPress={save}
+            disabled={saving || disabled || !value.trim()}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`Save ${field.label ?? field.name}`}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              borderRadius: 6,
+              backgroundColor: 'rgba(94,106,210,0.14)',
+              borderWidth: 1,
+              borderColor: 'rgba(94,106,210,0.35)',
+              opacity: saving || disabled || !value.trim() ? 0.5 : 1,
+            }}
+          >
+            <Text fontSize={11} color={colors.indigo} fontWeight="600">
+              {saving ? 'Saving…' : 'Save'}
+            </Text>
+          </TouchableOpacity>
+          {isSet && (
+            <TouchableOpacity
+              onPress={() => {
+                setEditing(false);
+                setValue('');
+              }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Cancel editing ${field.label ?? field.name}`}
+              style={{ paddingHorizontal: 6, paddingVertical: 7 }}
+            >
+              <Text fontSize={11} color={c.text3}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          )}
+        </XStack>
+      ) : (
+        <TouchableOpacity
+          onPress={() => setEditing(true)}
+          disabled={disabled}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${field.label ?? field.name}`}
+          style={{ alignSelf: 'flex-start' }}
+        >
+          <Text fontSize={10} color={colors.indigo} fontWeight="600">
+            {'•'.repeat(12)}  Edit
+          </Text>
+        </TouchableOpacity>
+      )}
+      {field.hint && (
+        <Text color={c.text3} fontSize={9}>
+          {field.hint}
+        </Text>
+      )}
+      {error && (
+        <Text color={colors.red} fontSize={9}>
+          {error}
+        </Text>
+      )}
+    </YStack>
   );
 }
 
@@ -1548,15 +1886,16 @@ function ShowAppAuthRenderer(props: ToolCallRendererProps) {
   const appName = useAppDisplayName(parsed?.appName, appId);
   // Body copy (only rendered on completed, where the output carries the name).
   const appTitle = appName ?? 'app';
-  // Target app icon (convention /static/mcas/<mcaId>/icon.png); fallback:
+  // Target app icon (convention /static/mcas/<mcaId>/icon.svg); fallback:
   // the core's icon (props.appIcon, the gear) and, with no URL at all, the
   // IconTile 2-letter label.
   const targetIcon = parsed?.mcaId
-    ? `${process.env.EXPO_PUBLIC_BACKEND_URL ?? ''}/static/mcas/${parsed.mcaId}/icon.png`
+    ? `${backendUrl()}/static/mcas/${parsed.mcaId}/icon.svg`
     : props.appIcon;
 
   const [liveAuth, setLiveAuth] = useState<ShowAppAuthInfo | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const auth = liveAuth ?? parsed?.auth ?? null;
@@ -1591,25 +1930,60 @@ function ShowAppAuthRenderer(props: ToolCallRendererProps) {
     }
   };
 
+  const handleDisconnect = async () => {
+    if (!appId) return;
+    setDisconnecting(true);
+    setActionError(null);
+    try {
+      await getTerosClient().app.disconnectAuth(appId);
+      await refreshAuth();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Disconnect failed');
+      await refreshAuth();
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
   const openAppWindow = () => {
     if (appId) useTilingStore.getState().openWindow('app', { appId });
   };
 
   const chip = auth?.status ? AUTH_STATUS_CHIP[auth.status] : undefined;
   const isOAuth = auth?.authType === 'oauth2' || auth?.authType === 'github-app';
+  const isApikey = auth?.authType === 'apikey';
   const needsAction = auth?.status !== 'ready' && auth?.status !== 'not_required';
   const connectLabel = auth?.status === 'expired' || auth?.status === 'error' ? 'Reconnect' : 'Connect';
+  // Variables the manifest declares for this app (userSecrets via apikey.fields).
+  const secretFields = auth?.apikey?.fields ?? [];
+  const setCount = secretFields.filter((f) => f.isSet).length;
+  // Disconnect applies to every auth type with stored user credentials:
+  // OAuth sessions AND apikey apps with at least one saved variable.
+  const canDisconnect =
+    (isOAuth && !needsAction) || (isApikey && (auth?.apikey?.configured === true || setCount > 0));
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+  const [secretsExpanded, setSecretsExpanded] = useState(false);
+  const [savingSecret, setSavingSecret] = useState(false);
 
+  const handleSaveSecret = async (name: string, value: string) => {
+    if (!appId) return;
+    setSavingSecret(true);
+    setActionError(null);
+    try {
+      // Partial merge: only the edited key travels to the backend — stored
+      // secrets are never read back, so nothing else can be wiped or leaked.
+      await getTerosClient().app.configureCredentials(appId, { [name]: value });
+      await refreshAuth();
+    } finally {
+      setSavingSecret(false);
+    }
+  };
+
+  const description = useCoreDescription('showAppAuth', status, { app: appName });
   return (
     <ToolCallCard
       status={status}
-      description={tenseByStatus(status, {
-        future: `show ${appAuthLabel(appName)}`,
-        present: `Showing ${appAuthLabel(appName)}`,
-        // Deliberately imperative: the completed card is a call to action
-        // for the user (connect), not a record of a past action.
-        past: `Configure ${appAuthLabel(appName)}`,
-      })}
+      description={description}
       iconUri={props.appIcon}
       defaultExpanded
     >
@@ -1636,8 +2010,69 @@ function ShowAppAuthRenderer(props: ToolCallRendererProps) {
               disabled={connecting}
             />
           )}
-          {needsAction && auth?.authType === 'apikey' && (
+          {needsAction && isApikey && secretFields.length === 0 && (
             <AuthActionButton label="Open app settings" onPress={openAppWindow} />
+          )}
+          {canDisconnect && (
+            <AuthActionButton
+              label={disconnecting ? 'Disconnecting…' : `Disconnect ${appTitle}`}
+              onPress={() => setConfirmingDisconnect(true)}
+              disabled={disconnecting}
+              variant="danger"
+            />
+          )}
+          {confirmingDisconnect && (
+            <ConfirmDialog
+              visible
+              variant="deny"
+              title={`Disconnect ${appTitle}?`}
+              message={
+                isApikey
+                  ? 'All saved variables will be removed and agents will lose access until you set them again.'
+                  : 'The connected account will be revoked and agents will lose access until you reconnect.'
+              }
+              onCancel={() => setConfirmingDisconnect(false)}
+              onConfirm={() => {
+                setConfirmingDisconnect(false);
+                void handleDisconnect();
+              }}
+            />
+          )}
+          {isApikey && secretFields.length > 0 && (
+            <YStack
+              gap={8}
+              paddingTop={8}
+              borderTopWidth={1}
+              borderTopColor={c.border}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${secretsExpanded ? 'Collapse' : 'Expand'} variables of ${appTitle}`}
+                onPress={() => setSecretsExpanded(!secretsExpanded)}
+                style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}
+              >
+                <XStack alignItems="center" gap={6}>
+                  <Text color={c.text2} fontSize={10} fontWeight="600">
+                    Variables ({setCount}/{secretFields.length} set)
+                  </Text>
+                  <Text color={c.text3} fontSize={10}>
+                    {secretsExpanded ? '▾' : '▸'}
+                  </Text>
+                </XStack>
+              </Pressable>
+              {secretsExpanded && (
+                <YStack gap={10}>
+                  {secretFields.map((field) => (
+                    <SecretVariableRow
+                      key={field.name}
+                      field={field}
+                      disabled={savingSecret}
+                      onSave={handleSaveSecret}
+                    />
+                  ))}
+                </YStack>
+              )}
+            </YStack>
           )}
           {actionError && (
             <Text color={colors.red} fontSize={10}>
@@ -1667,19 +2102,16 @@ function CheckAppAuthRenderer(props: ToolCallRendererProps) {
   const appName = useAppDisplayName(parsed?.appName, appId);
   const appTitle = appName ?? 'app';
   const targetIcon = parsed?.mcaId
-    ? `${process.env.EXPO_PUBLIC_BACKEND_URL ?? ''}/static/mcas/${parsed.mcaId}/icon.png`
+    ? `${backendUrl()}/static/mcas/${parsed.mcaId}/icon.svg`
     : props.appIcon;
   const auth = parsed?.auth ?? null;
   const chip = auth?.status ? AUTH_STATUS_CHIP[auth.status] : undefined;
 
+  const description = useCoreDescription('checkAppAuth', status, { app: appName });
   return (
     <ToolCallCard
       status={status}
-      description={tenseByStatus(status, {
-        future: `check ${appAuthLabel(appName)}`,
-        present: `Checking ${appAuthLabel(appName)}`,
-        past: `Checked ${appAuthLabel(appName)}`,
-      })}
+      description={description}
       // The outcome rides the header as a right-side badge (pattern used by
       // health checks): visible with the card collapsed, no text duplication.
       badge={
@@ -1710,14 +2142,168 @@ function CheckAppAuthRenderer(props: ToolCallRendererProps) {
   );
 }
 
+// ── App secrets (set / get) and auth copy ──────────────────────────────────
+// Masked by contract: the backend never returns a secret value, only
+// `maskedValue` ('sk_live_…4f2a'). The cards show the key, its mask and, for
+// set-app-secret, how many messages the redaction sweep cleaned.
+
+interface AppSecretResult {
+  appId?: string;
+  appName?: string;
+  mcaId?: string;
+  key?: string;
+  scope?: string;
+  configured?: boolean;
+  maskedValue?: string;
+  redaction?: { swept?: boolean; redactedCount?: number; error?: string };
+}
+
+interface CopyAppAuthResult {
+  sourceAppId?: string;
+  sourceAppName?: string;
+  targetAppId?: string;
+  targetAppName?: string;
+  mcaId?: string;
+  copiedFields?: Array<{ key?: string; maskedValue?: string }>;
+  fieldCount?: number;
+}
+
+function SetAppSecretRenderer(props: ToolCallRendererProps) {
+  const c = useColors();
+  const { toolName, status, output, error, input } = props;
+  const parsed = output ? (parseOutput<AppSecretResult>(output) as AppSecretResult | null) : null;
+  const appId = parsed?.appId ?? (input?.appId as string | undefined);
+  const key = parsed?.key ?? (input?.key as string | undefined) ?? '?';
+  const appName = useAppDisplayName(parsed?.appName, appId);
+  const appTitle = appName ?? shortId(appId);
+
+  const description = useCoreDescription('setAppSecret', status, { app: appName, key });
+  const rows: KeyValueRow[] = [{ key, value: parsed?.maskedValue ?? '…', mono: true }];
+  const redaction = parsed?.redaction;
+  return (
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
+      <YStack gap={8}>
+        <EntityCard
+          leading={<IconTile label={appTitle.slice(0, 2)} size={26} radius={6} />}
+          title={appTitle}
+          subtitle={shortId(appId)}
+          meta={status === 'completed' ? <IconChip text="saved" accent={colors.success} outline /> : undefined}
+        />
+        {status === 'completed' && <KeyValueGrid rows={rows} />}
+        {status === 'completed' && redaction?.swept && (
+          <Text color={c.text2} fontSize={10}>
+            {redaction.redactedCount ?? 0} message(s) redacted
+          </Text>
+        )}
+      </YStack>
+    </ToolShell>
+  );
+}
+
+function GetAppSecretRenderer(props: ToolCallRendererProps) {
+  const { toolName, status, output, error, input } = props;
+  const parsed = output ? (parseOutput<AppSecretResult>(output) as AppSecretResult | null) : null;
+  const appId = parsed?.appId ?? (input?.appId as string | undefined);
+  const key = parsed?.key ?? (input?.key as string | undefined) ?? '?';
+  const appName = useAppDisplayName(parsed?.appName, appId);
+  const appTitle = appName ?? shortId(appId);
+
+  const description = useCoreDescription('getAppSecret', status, { app: appName, key });
+  const configured = parsed?.configured === true;
+  const rows: KeyValueRow[] = [{ key, value: configured ? (parsed?.maskedValue ?? '…') : '—', mono: true }];
+  return (
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
+      <YStack gap={8}>
+        <EntityCard
+          leading={<IconTile label={appTitle.slice(0, 2)} size={26} radius={6} />}
+          title={appTitle}
+          subtitle={shortId(appId)}
+          meta={
+            status === 'completed' ? (
+              <IconChip
+                text={configured ? 'configured' : 'not set'}
+                accent={configured ? colors.success : colors.warning}
+                outline
+              />
+            ) : undefined
+          }
+        />
+        {status === 'completed' && <KeyValueGrid rows={rows} />}
+      </YStack>
+    </ToolShell>
+  );
+}
+
+function CopyAppAuthRenderer(props: ToolCallRendererProps) {
+  const { toolName, status, output, error, input } = props;
+  const parsed = output ? (parseOutput<CopyAppAuthResult>(output) as CopyAppAuthResult | null) : null;
+  const sourceId = parsed?.sourceAppId ?? (input?.sourceAppId as string | undefined);
+  const targetId = parsed?.targetAppId ?? (input?.targetAppId as string | undefined);
+  const sourceName = useAppDisplayName(parsed?.sourceAppName, sourceId) ?? shortId(sourceId);
+  const targetName = useAppDisplayName(parsed?.targetAppName, targetId) ?? shortId(targetId);
+
+  const description = useCoreDescription('copyAppAuth', status, { source: sourceName, target: targetName });
+  const fields = parsed?.copiedFields ?? [];
+  const rows: KeyValueRow[] = fields.map((f) => ({
+    key: f.key ?? '?',
+    value: f.maskedValue ?? '…',
+    mono: true,
+  }));
+  return (
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
+      <YStack gap={8}>
+        <DualEntity
+          left={{
+            visual: <IconTile label={sourceName.slice(0, 2)} size={24} radius={5} />,
+            title: sourceName,
+            subtitle: 'source',
+          }}
+          right={{
+            visual: <IconTile label={targetName.slice(0, 2)} size={24} radius={5} />,
+            title: targetName,
+            subtitle: 'target',
+          }}
+          action="transfer"
+        />
+        {status === 'completed' && rows.length > 0 && <KeyValueGrid rows={rows} />}
+      </YStack>
+    </ToolShell>
+  );
+}
+
 function ListCatalogRenderer(props: ToolCallRendererProps) {
   const c = useColors();
   const { toolName, status, output, error, duration } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: catalog } = unwrapList<CatalogEntry>(parsed, 'catalog');
 
+  const description = useCoreDescription('listCatalog', status);
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {catalog.length === 0 ? (
         <Empty message="No catalog entries found" />
       ) : (
@@ -1753,8 +2339,15 @@ function ListProvidersRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: providers } = unwrapList<Provider>(parsed, 'providers');
 
+  const description = useCoreDescription('listProviders', status);
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <DenseTable<Provider>
         rows={providers}
         emptyText="No providers configured"
@@ -1795,6 +2388,72 @@ function ListProvidersRenderer(props: ToolCallRendererProps) {
   );
 }
 
+interface SetDefaultProviderResult {
+  success?: boolean;
+  providerId?: string;
+  providerName?: string;
+  modelId?: string;
+  previousDefaultProviderId?: string;
+  isDefault?: boolean;
+  /** Audit-only (goes to the server log) — never painted. */
+  reason?: string | null;
+}
+
+/**
+ * set-default-provider: the System Default is user-wide (every agent without
+ * an explicit pin), so the card leads with the provider + its default model
+ * chip and, when the default actually switched providers, a muted line with
+ * the previous one. The backend `message` is composed copy — never painted.
+ */
+function SetDefaultProviderRenderer(props: ToolCallRendererProps) {
+  const c = useColors();
+  const { t } = useTranslation();
+  const { toolName, status, output, error, duration, input } = props;
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const data = (parsed && typeof parsed === 'object' ? parsed : {}) as SetDefaultProviderResult;
+  const providerName =
+    data.providerName ?? shortId(data.providerId ?? (input?.providerId as string | undefined));
+  const modelId = data.modelId ?? (input?.modelId as string | undefined) ?? null;
+  const previous = data.previousDefaultProviderId;
+  const switched =
+    !!previous && previous !== (data.providerId ?? (input?.providerId as string | undefined));
+
+  const description = useCoreDescription('setDefaultProvider', status, {
+    provider: data.providerName,
+  });
+  return (
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
+      <ResourceCard
+        leading={<IconTile label={providerName.slice(0, 2)} size={28} radius={5} />}
+        title={providerName}
+        subtitle={t('mca.terosCore.systemDefault')}
+        verb="updated"
+      >
+        <YStack gap={6}>
+          {modelId ? (
+            <IconChip text={modelId} accent={colors.indigo} outline />
+          ) : (
+            <Text color={c.text3} fontSize={10} fontFamily="$mono">
+              (no model set)
+            </Text>
+          )}
+          {switched && (
+            <Text color={c.text3} fontSize={10} fontFamily="$mono">
+              {t('mca.terosCore.switchedFrom', { provider: shortId(previous) })}
+            </Text>
+          )}
+        </YStack>
+      </ResourceCard>
+    </ToolShell>
+  );
+}
+
 // ============================================================================
 // 3.D RENDERERS — SKILLS
 // ============================================================================
@@ -1813,8 +2472,22 @@ function SkillListRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: skills } = unwrapList<Skill>(parsed, 'skills');
 
+  // Also renders skill-get-agent-skills (same output shape).
+  const forAgent = getShortToolName(toolName) === 'skill-get-agent-skills';
+  const agentName = useAgentName(props.input?.agentId);
+  const description = useCoreDescription(
+    forAgent ? 'skillGetAgentSkills' : 'skillList',
+    status,
+    forAgent ? { agent: agentName } : undefined,
+  );
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {skills.length === 0 ? (
         <Empty message="No skills found" />
       ) : (
@@ -1843,8 +2516,17 @@ function SkillCreateRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const skill = unwrap<Skill>(parsed, 'skill', 'skillId');
 
+  const description = useCoreDescription('skillCreate', status, {
+    skill: firstName(skill?.name, props.input?.name),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {skill && (
         <ResourceCard
           leading={skillLeading(skill, 32)}
@@ -1883,8 +2565,17 @@ function SkillUpdateRenderer(props: ToolCallRendererProps) {
   const skill = unwrap<Skill>(parsed, 'skill', 'skillId');
   const changes = diffFields(input, ['name', 'description', 'content', 'category', 'tags']);
 
+  const description = useCoreDescription('skillUpdate', status, {
+    skill: firstName(skill?.name, input?.name),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {skill && (
         <ResourceCard
           leading={skillLeading(skill, 32)}
@@ -1926,8 +2617,17 @@ function SkillDeleteRenderer(props: ToolCallRendererProps) {
   const data = (parsed && typeof parsed === 'object' ? parsed : {}) as SkillActionResult;
   const name = data.name ?? data.skillName ?? shortId(data.skillId ?? (input?.skillId as string | undefined));
 
+  const description = useCoreDescription('skillDelete', status, {
+    skill: firstName(data.name, data.skillName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       <EntityCard
         leading={<IconTile label={name.slice(0, 2)} accent={colors.red} size={24} radius={5} />}
         title={name}
@@ -1966,8 +2666,19 @@ function SkillGrantAccessRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const data = (parsed && typeof parsed === 'object' ? parsed : {}) as SkillActionResult;
 
+  const storedAgent = useAgentName(input?.agentId);
+  const description = useCoreDescription('skillGrantAccess', status, {
+    agent: firstName(data.agentName, storedAgent),
+    skill: firstName(data.skillName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {skillAgentDual(data, input, 'grant')}
     </ToolShell>
   );
@@ -1979,8 +2690,19 @@ function SkillRevokeAccessRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<unknown>(output) : null;
   const data = (parsed && typeof parsed === 'object' ? parsed : {}) as SkillActionResult;
 
+  const storedAgent = useAgentName(input?.agentId);
+  const description = useCoreDescription('skillRevokeAccess', status, {
+    agent: firstName(data.agentName, storedAgent),
+    skill: firstName(data.skillName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {skillAgentDual(data, input, 'revoke')}
     </ToolShell>
   );
@@ -1993,8 +2715,19 @@ function SkillSetEnabledRenderer(props: ToolCallRendererProps) {
   const data = (parsed && typeof parsed === 'object' ? parsed : {}) as SkillActionResult;
   const enabled = data.enabled ?? (input?.enabled as boolean | undefined) ?? false;
 
+  const storedAgent = useAgentName(input?.agentId);
+  const description = useCoreDescription(enabled ? 'skillEnable' : 'skillDisable', status, {
+    agent: firstName(data.agentName, storedAgent),
+    skill: firstName(data.skillName),
+  });
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell
+      toolName={toolName}
+      status={status}
+      error={error}
+      appIcon={props.appIcon}
+      description={description}
+    >
       {skillAgentDual(data, input, enabled ? 'enable' : 'disable', enabled ? 'enabled' : 'disabled')}
     </ToolShell>
   );
@@ -2023,10 +2756,11 @@ function FallbackRenderer(props: ToolCallRendererProps) {
   const { toolName, status, output, error, appIcon } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
 
+  const description = useCoreDescription('fallback', status);
   return (
     <ToolCallCard
       status={status}
-      description={tenseByStatus(status, getTenseForms(toolName))}
+      description={description}
       iconUri={appIcon}
       defaultExpanded={false}
     >
@@ -2050,7 +2784,7 @@ function FallbackRenderer(props: ToolCallRendererProps) {
           {parsed !== null && parsed !== undefined && __DEV__ ? (
             <JsonPreview value={parsed} />
           ) : (
-            <SuccessBlock message={getToolLabel(toolName)} />
+            <SuccessBlock message={description} />
           )}
         </YStack>
       )}
@@ -2071,8 +2805,8 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
   'delete-agent': DeleteAgentRenderer,
   'list-agent-apps': AgentAppsRenderer,
   'get-agent-providers': AgentProvidersRenderer,
-  'set-agent-providers': SetAgentProvidersRenderer,
-  'set-agent-preferred-provider': SetAgentPreferredProviderRenderer,
+  'set-agent-model': SetAgentModelRenderer,
+  'reset-agent-model': ResetAgentModelRenderer,
   // Workspaces
   'list-workspaces': ListWorkspacesRenderer,
   'get-workspace': GetWorkspaceRenderer,
@@ -2085,21 +2819,24 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
   'workspace-agent-list': ListAgentsRenderer,
   'workspace-app-list': ListAppsRenderer,
   // Apps
-  'list-apps': ListAppsRenderer,
   'get-app': GetAppRenderer,
   'install-app': InstallAppRenderer,
   'uninstall-app': UninstallAppRenderer,
   'rename-app': RenameAppRenderer,
   'check-app-auth': CheckAppAuthRenderer,
+  'set-app-secret': SetAppSecretRenderer,
+  'get-app-secret': GetAppSecretRenderer,
+  'copy-app-auth': CopyAppAuthRenderer,
   'show-app-auth': ShowAppAuthRenderer,
   'list-app-access': AppAccessListRenderer,
   'grant-app-access': GrantAppAccessRenderer,
   'revoke-app-access': RevokeAppAccessRenderer,
-  'get-app-permissions': GetAppPermissionsRenderer,
-  'set-app-permissions': SetAppPermissionsRenderer,
+  'get-app-permissions': AppPermissionsRenderer,
+  'set-app-permissions': AppPermissionsRenderer,
   // Catalog / Providers
   'list-catalog': ListCatalogRenderer,
   'list-providers': ListProvidersRenderer,
+  'set-default-provider': SetDefaultProviderRenderer,
   // Skills
   'skill-list': SkillListRenderer,
   'skill-create': SkillCreateRenderer,

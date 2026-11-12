@@ -19,12 +19,25 @@
     "hidden": false,
     "role": "admin"
   },
-  "systemSecrets": ["ADMIN_API_URL", "ADMIN_API_KEY"],
+  "systemSecrets": [
+    "ADMIN_API_URL",
+    "ADMIN_API_KEY"
+  ],
   "runtime": {
     "transport": "http",
     "containerMode": "per-app"
   },
-  "keywords": ["admin", "infra", "restart", "status", "sync", "mca", "processes", "health", "management"],
+  "keywords": [
+    "admin",
+    "infra",
+    "restart",
+    "status",
+    "sync",
+    "mca",
+    "processes",
+    "health",
+    "management"
+  ],
   "layers": {
     "tools": true,
     "events": false,
@@ -39,5 +52,10 @@
       "date": "2026-05-19",
       "notes": "Check backend status, restart and sync the server, and monitor, kill, clean up and health-check app processes"
     }
-  ]
+  ],
+  "backend": {
+    "actions": [
+      "admin-api.*"
+    ]
+  }
 }

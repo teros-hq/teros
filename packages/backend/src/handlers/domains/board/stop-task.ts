@@ -18,6 +18,7 @@ import type { BoardSubscriptionService } from '../../../services/board-subscript
 import type { WorkspaceService } from '../../../services/workspace-service'
 import type { EventHandler } from '../../event-handler'
 import type { Db } from 'mongodb'
+import { cappedPush, TASK_ACTIVITY_CAP, TASK_PROGRESS_NOTES_CAP } from '../../../lib/task-arrays'
 
 const STOP_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -74,12 +75,12 @@ export function createStopTaskHandler(
           updatedAt: now.toISOString(),
         },
         $push: {
-          activity: {
+          activity: cappedPush({
             eventType: 'stop_requested',
             actor: requestedBy,
             timestamp: now.toISOString(),
             details: { reason: reason ?? 'No reason provided' },
-          } as any,
+          }, TASK_ACTIVITY_CAP) as any,
         },
       },
     )
@@ -116,12 +117,12 @@ export function createStopTaskHandler(
             { taskId },
             {
               $push: {
-                progressNotes: {
+                progressNotes: cappedPush({
                   noteId: `pn_timeout_${Date.now()}`,
                   text: warningNote,
                   createdBy: 'system',
                   createdAt: new Date().toISOString(),
-                } as any,
+                }, TASK_PROGRESS_NOTES_CAP) as any,
               },
             },
           )
@@ -140,6 +141,7 @@ export function createStopTaskHandler(
                 tags: task.tags,
                 previousStatus: 'working',
                 newStatus: 'working',
+                actorUserId: ctx.userId,
               },
             })
           }

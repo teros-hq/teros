@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it, mock } from 'bun:test';
-import type { WsHandlerContext } from '@teros/shared';
+import { TEROS_EDITION, type WsHandlerContext } from '@teros/shared';
 import { createGetProfileHandler } from '../../src/handlers/domains/profile/get';
 import { createUpdateProfileHandler } from '../../src/handlers/domains/profile/update';
 import { createGetProfileStatsHandler } from '../../src/handlers/domains/profile/stats';
@@ -48,6 +48,16 @@ describe('profile.get', () => {
       onboardingCompletedAt: undefined,
       accessGranted: true,
       badges: ['founding_partner'],
+      // 5191e74de: profile.get siempre devuelve el bloque de consentimiento
+      // (opt-in por defecto false) y lastChangelogSeen.
+      lastChangelogSeen: undefined,
+      consent: {
+        evaluationOptIn: false,
+        evaluationConsentAt: undefined,
+        evaluationConsentVersion: undefined,
+      },
+      // ONB-REQ-1: the backend's edition rides every profile.get.
+      edition: TEROS_EDITION,
     });
   });
 
@@ -157,7 +167,7 @@ describe('profile.onboarding-status — todos los counts scopeados a ctx.userId'
       user_providers: 1,
       user_credentials: 0,
       agent_app_access: 2,
-      messages: 0,
+      channel_messages: 0,
     };
     const db = {
       collection: (name: string) => ({
@@ -165,6 +175,11 @@ describe('profile.onboarding-status — todos los counts scopeados a ctx.userId'
           filters[name] = filter;
           return countByCollection[name] ?? 0;
         }),
+        // agents owned by the user (agent_app_access has no ownerId — MOD-1)
+        find: (filter: any) => {
+          filters[name] = filter;
+          return { project: () => ({ toArray: async () => [{ agentId: 'agent_a' }, { agentId: 'agent_b' }] }) };
+        },
       }),
     } as any;
     const userService = {
@@ -177,8 +192,10 @@ describe('profile.onboarding-status — todos los counts scopeados a ctx.userId'
     // El scoping: si alguno dejara de filtrar por el ctx.userId, este toEqual cae.
     expect(filters.user_providers).toEqual({ userId: 'u1', status: 'active' });
     expect(filters.user_credentials).toEqual({ userId: 'u1' });
-    expect(filters.agent_app_access).toEqual({ ownerId: 'u1' });
-    expect(filters.messages).toEqual({ userId: 'u1', role: 'user' });
+    expect(filters.agents).toEqual({ ownerId: 'u1' });
+    expect(filters.agent_app_access).toEqual({ agentId: { $in: ['agent_a', 'agent_b'] } });
+    // live messages, not the legacy `messages` collection (MOD-1)
+    expect(filters.channel_messages).toEqual({ userId: 'u1', role: 'user' });
     // El shape: cada flag es count > 0 (no >= 0), onboarding sale del user doc.
     expect(res).toEqual({
       hasProvider: true,
@@ -190,7 +207,12 @@ describe('profile.onboarding-status — todos los counts scopeados a ctx.userId'
   });
 
   it('hasOnboardingCompleted=false si el user no tiene onboardingCompletedAt', async () => {
-    const db = { collection: () => ({ countDocuments: mock(async () => 0) }) } as any;
+    const db = {
+      collection: () => ({
+        countDocuments: mock(async () => 0),
+        find: () => ({ project: () => ({ toArray: async () => [] }) }),
+      }),
+    } as any;
     const userService = { getByUserId: mock(async () => ({ userId: 'u1' })) } as any;
     const handler = createOnboardingStatusHandler(db, userService);
     const res: any = await handler(ctx('u1'));

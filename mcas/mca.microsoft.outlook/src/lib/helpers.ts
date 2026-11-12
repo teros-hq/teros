@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { marked } from 'marked'
+import { renderMarkdown } from '@teros/shared/markdown'
+import { looksLikeHtml } from './signature'
 
 // =============================================================================
 // MESSAGE FORMATTING
@@ -91,8 +92,8 @@ function containsMarkdown(text: string): boolean {
 }
 
 async function markdownToHtmlEmail(markdown: string): Promise<string> {
-  marked.setOptions({ gfm: true, breaks: true })
-  const htmlContent = await marked.parse(markdown)
+  // Platform markdown policy (@teros/shared/markdown): `~` literal (MD-STRIKE-1), raw HTML stripped.
+  const htmlContent = renderMarkdown(markdown)
 
   return `<!DOCTYPE html>
 <html>
@@ -129,6 +130,11 @@ export async function processEmailBody(
   explicitIsHtml?: boolean,
 ): Promise<{ body: string; isHtml: boolean }> {
   if (explicitIsHtml === true) return { body, isHtml: true }
+  // HTML sniffing: a body that looks like HTML markup (corporate signatures,
+  // logos, tables) must never be sent as text/plain — the recipient would see
+  // the raw tags. This also keeps it out of the Markdown converter, which
+  // would mangle tables and inline styles.
+  if (looksLikeHtml(body)) return { body, isHtml: true }
   if (explicitIsHtml === false && !containsMarkdown(body)) return { body, isHtml: false }
   if (containsMarkdown(body)) {
     const htmlBody = await markdownToHtmlEmail(body)

@@ -1,30 +1,23 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo } from '../lib';
+import { PAGE_PARAMS, PAGED_RESULT_NOTE, type PageArgs, arrayPayload, curateCommit, pagedRequest } from '../lib/curate';
 
 export const listPrCommits: ToolConfig = {
   annotations: { readOnlyHint: true },
-  description: 'List commits on a pull request. Each commit includes {sha, commit.message, author, html_url}.',
+  description: `List commits on a pull request. ${PAGED_RESULT_NOTE}`,
   parameters: {
     type: 'object',
     properties: {
       owner: { type: 'string', description: 'Repository owner' },
       repo: { type: 'string', description: 'Repository name' },
       pull_number: { type: 'number', description: 'Pull request number' },
-      per_page: { type: 'number', description: 'Results per page (default: 30, max: 100)' },
-      page: { type: 'number', description: 'Page index (1-based)' },
+      ...PAGE_PARAMS,
     },
     required: ['owner', 'repo', 'pull_number'],
   },
   handler: async (args, context) => {
-    const { owner, repo, pull_number, per_page, page } = args as {
-      owner: string;
-      repo: string;
-      pull_number: number;
-      per_page?: number;
-      page?: number;
-    };
-    return await githubRequest(context, `/repos/${owner}/${repo}/pulls/${pull_number}/commits`, {
-      params: { per_page, page },
-    });
+    const a = args as PageArgs & { owner: string; repo: string; pull_number: number };
+    assertOwnerRepo(a.owner, a.repo);
+    return pagedRequest(context, `/repos/${a.owner}/${a.repo}/pulls/${a.pull_number}/commits`, a, {}, arrayPayload, curateCommit);
   },
 };

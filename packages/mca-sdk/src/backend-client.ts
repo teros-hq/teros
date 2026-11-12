@@ -4,7 +4,7 @@
  * HTTP client for MCA → Backend communication.
  * Uses the callbackUrl from ExecutionContext to send requests back to the backend.
  *
- *
+ * @see docs/rfc-003-mca-endpoints.md
  */
 
 import type {
@@ -88,6 +88,14 @@ export class McaBackendClient {
     };
   }
 
+  /**
+   * The app installation ID used for AgentApps storage scoping.
+   * All storage/object operations are scoped to this installation.
+   */
+  get appId(): string | undefined {
+    return this.config.appId;
+  }
+
   // ==========================================================================
   // LAYER 2: EVENTS
   // ==========================================================================
@@ -118,13 +126,16 @@ export class McaBackendClient {
     mode: 'notify' | 'wake';
     rules?: Record<string, unknown>[];
     channelId?: string;
-  }): Promise<{ success: boolean; subscription: { id: string; topic: string; channelId: string; mode: string } }> {
+    /** Auto-delete the subscription after the first matched dispatch (voice post-call pattern). */
+    oneTime?: boolean;
+  }): Promise<{ success: boolean; subscription: { id: string; topic: string; channelId: string; mode: string; oneTime?: boolean } }> {
     return this.post('/subscriptions/channel', {
       action: 'create',
       topic: params.topic,
       mode: params.mode,
       rules: params.rules ?? [],
       ...(params.channelId ? { channelId: params.channelId } : {}),
+      ...(params.oneTime !== undefined ? { oneTime: params.oneTime } : {}),
     });
   }
 
@@ -280,6 +291,19 @@ export class McaBackendClient {
     return this.post<any>(`/resources/agents/${agentId}`, { action: 'get' });
   }
 
+  /**
+   * Lazy mailbox safety-net (tn_PcquTN30AawbK8uE): ask the backend to
+   * provision (or retry a pending) agent mailbox. Email MCA only.
+   */
+  async provisionMailbox(agentId: string): Promise<{
+    provisioned: boolean;
+    address?: string;
+    status?: string;
+    reason?: string;
+  }> {
+    return this.post('/mailbox/provision', { agentId });
+  }
+
   async agentCreate(data: {
     name: string;
     fullName: string;
@@ -321,17 +345,43 @@ export class McaBackendClient {
     return this.post<any>(`/resources/agents/${agentId}/providers`, { action: 'get' });
   }
 
-  async agentProvidersSet(agentId: string, providerIds: string[]): Promise<any> {
+  /**
+   * Legacy: set the agent's provider configuration. The availableProviders
+   * list is GONE (2026-10-21) — the backend now interprets this as a pin-only
+   * set: `providerIds` is accepted but ignored, only selectedProviderId /
+   * selectedModelId are applied. New code should use agentModelSet /
+   * agentModelReset instead.
+   */
+  async agentProvidersSet(
+    agentId: string,
+    providerIds: string[],
+    options?: { selectedProviderId?: string | null; selectedModelId?: string | null; reason?: string },
+  ): Promise<any> {
     return this.post<any>(`/resources/agents/${agentId}/providers`, {
       action: 'set',
       providerIds,
+      ...options,
     });
   }
 
-  async agentPreferredProviderSet(agentId: string, providerId: string | null): Promise<any> {
-    return this.post<any>(`/resources/agents/${agentId}/providers/preferred`, {
+  async agentModelSet(
+    agentId: string,
+    providerId: string,
+    modelId: string,
+    options?: { reason?: string; allowReserved?: boolean },
+  ): Promise<any> {
+    return this.post<any>(`/resources/agents/${agentId}/model`, {
       action: 'set',
       providerId,
+      modelId,
+      ...options,
+    });
+  }
+
+  async agentModelReset(agentId: string, options?: { reason?: string }): Promise<any> {
+    return this.post<any>(`/resources/agents/${agentId}/model`, {
+      action: 'reset',
+      ...options,
     });
   }
 
@@ -362,8 +412,11 @@ export class McaBackendClient {
     return this.post<any>(`/resources/workspaces/${workspaceId}`, { action: 'archive' });
   }
 
-  async workspaceMemberAdd(workspaceId: string, userId: string, role: string): Promise<any> {
-    return this.post<any>(`/resources/workspaces/${workspaceId}/members`, { userId, role });
+  async workspaceMemberAdd(workspaceId: string, email: string, role: string): Promise<any> {
+    // Wire: { email, role } — invitations are always by email (MUW-14).
+    // The backend handler also tolerates the legacy `userId` field name
+    // while old MCA containers are still in flight.
+    return this.post<any>(`/resources/workspaces/${workspaceId}/members`, { email, role });
   }
 
   async workspaceMemberRemove(workspaceId: string, userId: string): Promise<any> {
@@ -382,10 +435,6 @@ export class McaBackendClient {
   // ==========================================================================
   // RESOURCES: APPS
   // ==========================================================================
-
-  async appList(): Promise<{ apps: any[] }> {
-    return this.post<{ apps: any[] }>('/resources/apps', { action: 'list' });
-  }
 
   async appGet(appId: string): Promise<any> {
     return this.post<any>(`/resources/apps/${appId}`, { action: 'get' });
@@ -429,6 +478,66 @@ export class McaBackendClient {
 
   async appCheckAuth(appId: string): Promise<any> {
     return this.post<any>(`/resources/apps/${appId}/auth`, { action: 'check' });
+  }
+
+  /**
+   * Agent secret tools (docs/specs/20261031_agent-secret-tools.md).
+   * Write ONE user secret for an app. The tool is alwaysAsk — the user
+   * confirms before this runs. The backend sweeps the calling channel for
+   * the value afterwards (self-redacting).
+   */
+  async appSetSecret(
+    appId: string,
+    key: string,
+    value: string,
+    options?: { scope?: 'user' | 'app'; alsoRedact?: string[]; agentId?: string },
+  ): Promise<any> {
+    return this.post<any>(`/resources/apps/${appId}/secrets`, {
+      action: 'set',
+      key,
+      value,
+      ...(options?.scope ? { scope: options.scope } : {}),
+      ...(options?.alsoRedact ? { alsoRedact: options.alsoRedact } : {}),
+      ...(options?.agentId ? { agentId: options.agentId } : {}),
+    });
+  }
+
+  /**
+   * Agent secret tools: masked preview of a stored secret — the full value is
+   * NEVER returned to the agent.
+   */
+  async appGetSecret(
+    appId: string,
+    key: string,
+    options?: { scope?: 'user' | 'app' },
+  ): Promise<any> {
+    return this.post<any>(`/resources/apps/${appId}/secrets`, {
+      action: 'get',
+      key,
+      ...(options?.scope ? { scope: options.scope } : {}),
+    });
+  }
+
+  /**
+   * Agent secret tools: copy the COMPLETE auth of one app instance to another
+   * (tn_aGVdSrVwIJi9mfvc). `appId` is the TARGET; `sourceAppId` the origin.
+   * Workspace IDs are REQUIRED — cross-workspace tools always name their
+   * workspaces (tn_hj1s2cs1t93g91xq, infra sharded by workspaceId). The tool
+   * is alwaysAsk — the user confirms before this runs. Response is a masked
+   * summary only; values are never returned.
+   */
+  async appCopyAuth(
+    appId: string,
+    sourceAppId: string,
+    options: { sourceWorkspaceId: string; targetWorkspaceId: string; agentId?: string },
+  ): Promise<any> {
+    return this.post<any>(`/resources/apps/${appId}/secrets`, {
+      action: 'copy',
+      sourceAppId,
+      sourceWorkspaceId: options.sourceWorkspaceId,
+      targetWorkspaceId: options.targetWorkspaceId,
+      ...(options.agentId ? { agentId: options.agentId } : {}),
+    });
   }
 
   async workspaceAppList(workspaceId: string): Promise<{ apps: any[] }> {
@@ -507,6 +616,70 @@ export class McaBackendClient {
   }
 
   // ==========================================================================
+  // VOLUME STORAGE (file_volume_*)
+  // ==========================================================================
+
+  /**
+   * List entries in a directory on the workspace volume.
+   */
+  async volumeList(path: string, workspaceId: string): Promise<{ entries: Array<{ name: string; type: 'file' | 'directory'; size?: number }> }> {
+    return this.post('/agent-apps/volume/read-dir', { path, workspaceId });
+  }
+
+  /**
+   * Read a file from the workspace volume.
+   */
+  async volumeRead(path: string, workspaceId: string): Promise<{ data: string | null }> {
+    return this.post('/agent-apps/volume/read-file', { path, workspaceId });
+  }
+
+  /**
+   * Write data to a file on the workspace volume.
+   */
+  async volumeWrite(path: string, data: string, workspaceId: string): Promise<{ success: boolean }> {
+    return this.post('/agent-apps/volume/write-file', { path, data, workspaceId });
+  }
+
+  /**
+   * Delete a file or directory on the workspace volume.
+   */
+  async volumeDelete(path: string, workspaceId: string, recursive?: boolean): Promise<{ success: boolean }> {
+    return this.post('/agent-apps/volume/delete', { path, workspaceId, recursive });
+  }
+
+  /**
+   * Stat a file or directory on the workspace volume.
+   */
+  async volumeStat(path: string, workspaceId: string): Promise<{ stat: { size: number; isDirectory: boolean; modifiedAt: string } | null }> {
+    return this.post('/agent-apps/volume/stat', { path, workspaceId });
+  }
+
+  /**
+   * Create a directory on the workspace volume (recursive, idempotent).
+   */
+  async volumeMkdir(path: string, workspaceId: string): Promise<{ success: boolean }> {
+    return this.post('/agent-apps/volume/mkdir', { path, workspaceId });
+  }
+
+  // ==========================================================================
+  // SHARE (file_share, file_revoke)
+  // ==========================================================================
+
+  /**
+   * Create a public share URL for a file on the workspace volume.
+   */
+  async fileShare(path: string, workspaceId: string, options?: { mutable?: boolean; expiresIn?: number }): Promise<{ url: string; expiresAt: string; mutable: boolean }> {
+    return this.post('/files/share', { path, workspaceId, ...options });
+  }
+
+  /**
+   * Revoke a previously created share URL.
+   */
+  async fileRevoke(url: string): Promise<{ revoked: boolean }> {
+    return this.post('/files/revoke', { url });
+  }
+
+  // ==========================================================================
   // DATA STORAGE
   // ==========================================================================
 
@@ -552,6 +725,150 @@ export class McaBackendClient {
   }
 
   // ==========================================================================
+  // AGENT APPS: DOCUMENT STORAGE (MongoDB-backed document store)
+  // ==========================================================================
+
+  /**
+   * Upsert a document into a collection (scoped to this app installation).
+   */
+  async storagePut(
+    collection: string,
+    documentId: string,
+    document: Record<string, unknown>,
+  ): Promise<{ success: boolean; documentId: string; error?: string }> {
+    return this.post('/agent-apps/storage/put', {
+      installationId: this.config.appId,
+      collection,
+      documentId,
+      document,
+    });
+  }
+
+  /**
+   * Retrieve a single document by ID.
+   */
+  async storageGet(
+    collection: string,
+    documentId: string,
+  ): Promise<{ success: boolean; document: Record<string, unknown> | null; error?: string }> {
+    return this.post('/agent-apps/storage/get', {
+      installationId: this.config.appId,
+      collection,
+      documentId,
+    });
+  }
+
+  /**
+   * Query documents in a collection matching a filter.
+   */
+  async storageQuery(
+    collection: string,
+    filter?: Record<string, unknown>,
+    limit?: number,
+    cursor?: string,
+  ): Promise<{ success: boolean; documents: Record<string, unknown>[]; nextCursor?: string; error?: string }> {
+    return this.post('/agent-apps/storage/query', {
+      installationId: this.config.appId,
+      collection,
+      filter,
+      limit,
+      cursor,
+    });
+  }
+
+  /**
+   * Partially update a document (patch merge).
+   */
+  async storageUpdate(
+    collection: string,
+    documentId: string,
+    patch: Record<string, unknown>,
+  ): Promise<{ success: boolean; document: Record<string, unknown> | null; error?: string }> {
+    return this.post('/agent-apps/storage/update', {
+      installationId: this.config.appId,
+      collection,
+      documentId,
+      patch,
+    });
+  }
+
+  /**
+   * Delete a document by ID.
+   */
+  async storageDelete(
+    collection: string,
+    documentId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.post('/agent-apps/storage/delete', {
+      installationId: this.config.appId,
+      collection,
+      documentId,
+    });
+  }
+
+  // ==========================================================================
+  // AGENT APPS: OBJECT STORAGE (filesystem-backed blob store)
+  // ==========================================================================
+
+  /**
+   * Store a binary object. The system generates a random objectId and returns
+   * a permanent public URL. The Buffer is converted to base64 for transport.
+   */
+  async objectPut(
+    data: Buffer,
+    contentType: string,
+    metadata?: Record<string, string>,
+  ): Promise<{ success: boolean; objectId: string; url: string; error?: string }> {
+    return this.post('/agent-apps/objects/put', {
+      installationId: this.config.appId,
+      data: data.toString('base64'),
+      contentType,
+      metadata,
+    });
+  }
+
+  /**
+   * Retrieve a binary object by objectId. The base64 response is converted to a Buffer.
+   */
+  async objectGet(
+    objectId: string,
+  ): Promise<{ success: boolean; data: Buffer | null; contentType?: string; metadata?: Record<string, string>; error?: string }> {
+    const response = await this.post<{ success: boolean; data: string | null; contentType?: string; metadata?: Record<string, string>; error?: string }>(
+      '/agent-apps/objects/get',
+      {
+        installationId: this.config.appId,
+        objectId,
+      },
+    );
+    return {
+      ...response,
+      data: response.data ? Buffer.from(response.data, 'base64') : null,
+    };
+  }
+
+  /**
+   * Delete an object by objectId.
+   */
+  async objectDelete(
+    objectId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.post('/agent-apps/objects/delete', {
+      installationId: this.config.appId,
+      objectId,
+    });
+  }
+
+  /**
+   * List all objects in this installation.
+   */
+  async objectList(
+  ): Promise<{ success: boolean; objects: Array<{ objectId: string; size: number; contentType?: string; createdAt?: string }>; error?: string }> {
+    return this.post('/agent-apps/objects/list', {
+      installationId: this.config.appId,
+    });
+  }
+
+  // ==========================================================================
   // LEGACY (for backward compatibility)
   // ==========================================================================
 
@@ -565,9 +882,21 @@ export class McaBackendClient {
     return this.workspaceList();
   }
 
-  /** @deprecated Use appList instead */
-  async listApps(): Promise<{ apps: any[] }> {
-    return this.appList();
+  // ==========================================================================
+  // MCA ACTIONS (datastore-isolation P1b)
+  // ==========================================================================
+
+  /**
+   * Invoke a named backend action: `<capability>/<action>`.
+   *
+   * MCAs never hold a datastore connection; instead the backend exposes small,
+   * validated actions it executes on the MCA's behalf (see
+   * docs/specs/security/20261014_datastore-isolation.md). The call is sent
+   * through the authenticated callback (bearer token + X-App-Id/X-Mca-Id), so
+   * identity and scope are resolved server-side from the token.
+   */
+  async invokeAction<T = unknown>(actionPath: string, body: Record<string, unknown> = {}): Promise<T> {
+    return this.post<T>(`/actions/${actionPath}`, body);
   }
 
   // ==========================================================================

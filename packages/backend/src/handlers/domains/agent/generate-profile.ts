@@ -1,12 +1,17 @@
 /**
  * agent.generate-profile — Generate a unique agent profile using LLM
+ *
+ * Delegates all provider/model/secret resolution to InternalLLMService (the
+ * single internal LLM path: always the credential-free Teros provider,
+ * provisioned on demand for the system user). This handler only owns the
+ * prompt and the parsing.
  */
 
-import { LLMClientFactory } from '@teros/core'
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { Collection, Db } from 'mongodb'
 import type { ProviderService } from '../../../services/provider-service'
+import { InternalLLMService } from '../../../services/internal-llm-service'
 import { resolveCoreType } from '../../../services/agent-provisioning-service'
 
 interface Agent {
@@ -40,8 +45,6 @@ interface GeneratedProfile {
   responseStyle: string
 }
 
-const SYSTEM_USER_ID = 'system'
-
 function buildGenerationPrompt(core: AgentCore, excludeNames: string[]): string {
   const excludeList =
     excludeNames.length > 0
@@ -69,7 +72,7 @@ Create a persona with:
 Respond with ONLY valid JSON in this exact format:
 {
   "name": "FirstName",
-  "fullName": "FirstName LastName", 
+  "fullName": "FirstName LastName",
   "role": "Specific Role Title",
   "intro": "Full introduction text...",
   "responseStyle": "keyword"
@@ -112,6 +115,7 @@ function parseGeneratedProfile(response: string): GeneratedProfile {
 export function createGenerateProfileHandler(db: Db, providerService: ProviderService) {
   const agents: Collection<Agent> = db.collection('agents')
   const agentCores: Collection<AgentCore> = db.collection('agent_cores')
+  const internalLlm = new InternalLLMService(db, providerService)
 
   return async function generateProfile(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as GenerateProfileData
@@ -131,66 +135,18 @@ export function createGenerateProfileHandler(db: Db, providerService: ProviderSe
     const allExcludedNames = [...new Set([...excludeNames, ...existingNames])]
 
     try {
-      const providers = await providerService.listUserProviders(SYSTEM_USER_ID)
-      if (providers.length === 0) {
-        throw new Error('No provider configured for system user. Run: npm run init:system-provider')
-      }
-
-      const provider = providers.find((p) => p.status === 'active') || providers[0]
-      const preferredModel = provider.models.find((m) => m.modelId.includes('sonnet'))
-      const modelToUse = preferredModel || provider.models[0]
-
-      if (!modelToUse) {
-        throw new Error('No models available in system provider')
-      }
-
-      const secrets = await providerService.getProviderSecrets(SYSTEM_USER_ID, provider.providerId)
-      if (!secrets || !secrets.apiKey) {
-        throw new Error(`Failed to decrypt secrets for provider ${provider.providerId}`)
-      }
-
-      console.log(
-        `[agent.generate-profile] Generating profile using ${modelToUse.modelId} (${provider.providerType})`,
-      )
-
-      const llmClient = await LLMClientFactory.create({
-        provider: provider.providerType as any,
-        anthropic:
-          provider.providerType === 'anthropic'
-            ? { apiKey: secrets.apiKey, model: modelToUse.modelString, maxTokens: 1024 }
-            : undefined,
-        openai:
-          provider.providerType === 'openai'
-            ? { apiKey: secrets.apiKey, model: modelToUse.modelString, maxTokens: 1024 }
-            : undefined,
-      })
-
       const prompt = buildGenerationPrompt(core, allExcludedNames)
 
-      let fullResponse = ''
-      await llmClient.streamMessage({
-        messages: [
-          {
-            info: { id: '1', sessionID: 'gen', role: 'user', time: { created: Date.now() } },
-            parts: [
-              {
-                id: '1',
-                sessionID: 'gen',
-                messageID: '1',
-                type: 'text',
-                text: prompt,
-                time: { start: Date.now(), end: Date.now() },
-              },
-            ],
-          },
-        ],
+      // InternalLLMService owns the provider path (always credential-free
+      // Teros, self-healed for the system user) — no secrets here.
+      const fullResponse = await internalLlm.generateText(prompt, {
+        // Persona JSON with a 3-4 paragraph intro; the internal model is a
+        // thinking model with reasoning capped at 'low', so leave headroom.
+        maxTokens: 2048,
+        // TLANE-REQ-4: the user is waiting on the button.
+        lane: 'interactive',
         systemPrompt:
           'You are a creative assistant that generates unique AI assistant personas. Always respond with valid JSON only, no markdown or extra text.',
-        callbacks: {
-          onText: (chunk) => { fullResponse += chunk },
-          onTextEnd: () => {},
-          onToolCall: () => {},
-        },
       })
 
       const profile = parseGeneratedProfile(fullResponse)

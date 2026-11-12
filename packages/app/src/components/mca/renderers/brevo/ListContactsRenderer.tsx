@@ -38,7 +38,7 @@ export function ListContactsRenderer({ status, output, error, appIcon }: ToolCal
   return (
     <ToolCallCard
       status={status}
-      verb="List contacts"
+      description="List contacts"
       badge={badge}
       iconUri={appIcon}
       animateExpand

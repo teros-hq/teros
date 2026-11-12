@@ -60,13 +60,13 @@ function seed() {
     user("u_unmetered", "user", 5),
     user("u_nosub", "user", 6), // no sub → no_sub
   ])
-  db.seed("billing_plans", [plan("plan_growth", 50), plan("plan_unlimited", -1)])
+  db.seed("billing_plans", [plan("plan_growth", 50), plan("plan_enterprise", -1)])
   db.seed("billing_subscriptions", [
     sub("u_near", "plan_growth", 45), // 0.90 near
     sub("u_exhausted", "plan_growth", 50), // 1.00 exhausted
     sub("u_low", "plan_growth", 5), // 0.10 none
     sub("u_boost", "plan_growth", 60), // 60/70 = 0.857 near (post-boost)
-    sub("u_unmetered", "plan_unlimited", 500), // unmetered
+    sub("u_unmetered", "plan_enterprise", 500), // unmetered
   ])
   db.seed("billing_hour_boosts", [
     {

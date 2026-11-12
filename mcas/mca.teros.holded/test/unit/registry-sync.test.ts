@@ -25,8 +25,8 @@ const jsonByName = new Map<string, { description: string; inputSchema: unknown }
 const mod = await import("../../src/tools")
 
 describe("registry-sync — tools.json ↔ src", () => {
-  it("hay 4 tools con symbol", () => {
-    expect(registered.length).toBe(4)
+  it("hay 105 tools con symbol", () => {
+    expect(registered.length).toBe(105)
   })
 
   it("names 1:1 entre server.tool() y tools.json (incl. inline)", () => {

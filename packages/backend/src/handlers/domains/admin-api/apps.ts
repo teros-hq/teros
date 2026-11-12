@@ -17,6 +17,7 @@ import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
 import { generateAppId } from '@teros/core'
 import type { McaService } from '../../../services/mca-service'
+import type { AuthManager } from '../../../auth/auth-manager'
 
 async function requireAdmin(db: Db, userId: string): Promise<void> {
   const user = await db.collection('users').findOne({ userId })
@@ -92,6 +93,9 @@ export function createAppsCreateHandler(db: Db, mcaService: McaService) {
       mcaId: data.mcaId,
       ownerId: effectiveOwnerId,
       ownerType,
+      // MUW-REQ-10/11: admin-provisioned for a workspace → owned by the admin, shared with the workspace.
+      installedBy: ctx.userId,
+      scope: 'shared',
       name: appName,
       status: 'active',
     })
@@ -200,5 +204,96 @@ export function createAppsSetPermissionsHandler(db: Db, mcaService: McaService) 
     const app = await mcaService.setAllToolPermissions(data.appId, data.permission as any)
     if (!app) throw new HandlerError('NOT_FOUND', 'App not found')
     return { app }
+  }
+}
+
+/**
+ * admin-api.apps-copy-auth ← copy-app-auth (tn_aGVdSrVwIJi9mfvc, admin replica).
+ *
+ * Copies the COMPLETE auth (user secrets + OAuth tokens) of one app instance
+ * to another of the same mcaId — cross-workspace. The copy itself is the
+ * shared service services/app-auth-copy.ts (AuthManager.get → set: decrypt
+ * with the source scope, re-encrypt with the target scope — never a Mongo
+ * clone). Whose credential: the explicit userId when given, else the owner of
+ * the source app's workspace. Response: masked summary only — never a value.
+ */
+export function createAppsCopyAuthHandler(db: Db, authManager?: AuthManager | null) {
+  return async function appsCopyAuth(ctx: WsHandlerContext, rawData: unknown) {
+    await requireAdmin(db, ctx.userId)
+    const data = (rawData ?? {}) as {
+      sourceAppId?: string
+      targetAppId?: string
+      userId?: string
+      sourceWorkspaceId?: string
+      targetWorkspaceId?: string
+    }
+
+    if (!data.sourceAppId || !data.targetAppId) {
+      throw new HandlerError('VALIDATION_ERROR', 'Missing required fields: sourceAppId, targetAppId')
+    }
+    // Cross-workspace tools ALWAYS name their workspaces (tn_hj1s2cs1t93g91xq,
+    // Pablo 2-nov: infra sharded by workspaceId).
+    if (!data.sourceWorkspaceId || !data.targetWorkspaceId) {
+      throw new HandlerError(
+        'VALIDATION_ERROR',
+        'Missing required fields: sourceWorkspaceId, targetWorkspaceId — cross-workspace tools always name their workspaces',
+      )
+    }
+    if (!authManager) {
+      throw new HandlerError('SERVICE_UNAVAILABLE', 'Auth copy unavailable: AuthManager not configured')
+    }
+
+    // Whose credential gets copied. Default: the owner of the source app's
+    // workspace (the user who typically connected it).
+    let userId = data.userId
+    if (!userId) {
+      const sourceApp = await db.collection('apps').findOne({ appId: data.sourceAppId })
+      if (!sourceApp) throw new HandlerError('NOT_FOUND', `Source app '${data.sourceAppId}' not found`)
+      const workspace = await db
+        .collection('workspaces')
+        .findOne({ workspaceId: sourceApp.ownerId as string })
+      if (workspace?.ownerId) {
+        userId = workspace.ownerId as string
+      } else {
+        throw new HandlerError(
+          'VALIDATION_ERROR',
+          `Cannot resolve whose credential to copy: pass an explicit userId (source app '${data.sourceAppId}' has no resolvable workspace owner)`,
+        )
+      }
+    }
+
+    const { copyAppAuth } = await import('../../../services/app-auth-copy')
+    const outcome = await copyAppAuth(db, authManager, {
+      userId,
+      sourceAppId: data.sourceAppId,
+      targetAppId: data.targetAppId,
+      sourceWorkspaceId: data.sourceWorkspaceId,
+      targetWorkspaceId: data.targetWorkspaceId,
+      actorId: ctx.userId,
+    })
+
+    if (!outcome.ok) {
+      throw new HandlerError(outcome.code, outcome.message)
+    }
+
+    const s = outcome.summary
+    return {
+      success: true,
+      sourceAppId: s.sourceAppId,
+      sourceAppName: s.sourceAppName,
+      targetAppId: s.targetAppId,
+      targetAppName: s.targetAppName,
+      mcaId: s.mcaId,
+      userId,
+      copiedFields: s.copiedFields,
+      fieldCount: s.fieldCount,
+      note:
+        `Auth copied (${s.fieldCount} field(s): ${s.copiedFields.map((f) => `${f.key}=${f.maskedValue}`).join(', ')}). ` +
+        'Full replace on the target; it reads the new credentials live (no restart). ' +
+        (s.hasOAuthTokens
+          ? 'Both instances now share the same OAuth tokens — if the provider rotates refresh tokens, one can invalidate the other. '
+          : '') +
+        'Values are never exposed.',
+    }
   }
 }

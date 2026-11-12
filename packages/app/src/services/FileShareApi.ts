@@ -1,16 +1,20 @@
 /**
- * FileShareApi — REST client for the file-share endpoints
+ * FileShareApi — client for the share domain over the app WebSocket
  *
- * Uses fetch() with Bearer token auth (no WebSocket needed).
+ * Uses the WsFramework request/response protocol via WsTransport — same
+ * transport every other domain API uses. Replaces the old REST client
+ * (fetch to /api/share) per the platform's WS-first architecture rule.
  *
- * Endpoints (backend):
- *   POST   /api/share          — Publish a file → { shareId, filePath, createdAt }
- *   GET    /api/share?filePath= — Get existing share for a file → { shareId, ... } | 404
- *   DELETE /api/share/:shareId — Unpublish a file
+ * Backend actions (WS domain `share`):
+ *   share.create — Publish a file → { shareId, url }
+ *   share.get    — Get existing share for a file → { shared, shareId?, url? }
+ *   share.revoke — Unpublish a file → { ok, shareId }
  *
- * Public URL for a share:
+ * Public URL for a share (the ONLY remaining HTTP surface — it IS the link):
  *   <backendBaseUrl>/share/<shareId>
  */
+
+import type { Transport } from './transport/types'
 
 // ============================================================================
 // Types
@@ -18,8 +22,24 @@
 
 export interface ShareInfo {
   shareId: string
-  filePath: string
-  createdAt: string
+  filePath?: string
+  createdAt?: string
+}
+
+interface ShareCreateResult {
+  shareId: string
+  url: string
+}
+
+interface ShareGetResult {
+  shared: boolean
+  shareId?: string
+  url?: string
+}
+
+interface ShareRevokeResult {
+  ok: boolean
+  shareId: string
 }
 
 // ============================================================================
@@ -28,33 +48,26 @@ export interface ShareInfo {
 
 export class FileShareApi {
   constructor(
+    private readonly transport: Transport,
     private readonly getBaseUrl: () => string,
-    private readonly getToken: () => string | null,
   ) {}
-
-  private headers(): Record<string, string> {
-    const token = this.getToken()
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-  }
 
   /**
    * Publish a file and return its share info.
-   * If already shared, returns the existing share.
+   * If already shared, the backend creates a new share (idempotency is left
+   * to the caller — use getShare first when reuse matters).
    */
-  async share(filePath: string, channelId: string, fileType: 'html' | 'markdown'): Promise<ShareInfo> {
-    const res = await fetch(`${this.getBaseUrl()}/api/share`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify({ filePath, channelId, fileType }),
+  async share(
+    filePath: string,
+    channelId: string,
+    fileType: 'html' | 'markdown' | 'file',
+  ): Promise<ShareInfo> {
+    const result = await this.transport.request<ShareCreateResult>('share.create', {
+      filePath,
+      channelId,
+      fileType,
     })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Unknown error' }))
-      throw new Error((err as any).error ?? `HTTP ${res.status}`)
-    }
-    return res.json() as Promise<ShareInfo>
+    return { shareId: result.shareId }
   }
 
   /**
@@ -65,31 +78,24 @@ export class FileShareApi {
    * exists in multiple workspaces owned by the user.
    */
   async getShare(filePath: string, workspaceId?: string): Promise<ShareInfo | null> {
-    const params = new URLSearchParams({ filePath })
-    if (workspaceId) params.set('workspaceId', workspaceId)
-    const url = `${this.getBaseUrl()}/api/share?${params.toString()}`
-    const res = await fetch(url, { headers: this.headers() })
-    if (res.status === 404) return null
-    if (!res.ok) return null
-    return res.json() as Promise<ShareInfo>
+    const result = await this.transport.request<ShareGetResult>('share.get', {
+      filePath,
+      ...(workspaceId ? { workspaceId } : {}),
+    })
+    if (!result.shared || !result.shareId) return null
+    return { shareId: result.shareId }
   }
 
   /**
    * Unpublish a file by shareId.
    */
   async unshare(shareId: string): Promise<void> {
-    const res = await fetch(`${this.getBaseUrl()}/api/share/${shareId}`, {
-      method: 'DELETE',
-      headers: this.headers(),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Unknown error' }))
-      throw new Error((err as any).error ?? `HTTP ${res.status}`)
-    }
+    await this.transport.request<ShareRevokeResult>('share.revoke', { shareId })
   }
 
   /**
    * Build the public URL for a shareId.
+   * This is the public HTTP link itself (GET /share/:shareId) — not an API call.
    */
   publicUrl(shareId: string): string {
     return `${this.getBaseUrl()}/share/${shareId}`

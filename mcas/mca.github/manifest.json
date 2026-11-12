@@ -2,8 +2,9 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.github",
   "name": "GitHub",
-  "version": "5.1.0",
-  "description": "GitHub repository management + local git development environment - repos, issues, pull requests, actions, commits, branches, releases, plus local git operations on cloned repos (status/add/commit/push/checkout). Auth via the Teros GitHub App with user-to-server OAuth (each user actúa con su propia identidad de GitHub).",
+  "version": "5.5.0",
+  "description": "GitHub repository management + local git development environment - repos, issues, pull requests, actions, commits, branches, releases, plus local git operations on cloned repos (status/add/commit/push/checkout). Auth via the Teros GitHub App with user-to-server OAuth (each user acts with their own GitHub identity).",
+  "agentInstructions": "- Anything about a repository (files, README, issues, pull requests, branches, runs) comes from a GitHub tool result: call a GitHub tool first, and if it fails say so. Never reconstruct or invent repository content from memory.\n- Errors come as [CODE] + What to do: follow that step and tell the user in one line; do not retry a permission or connection error.\n- Connection problems are fixed by the user in Teros: Apps → GitHub → Connect (or Reconnect). Never tell them to Disconnect.\n- If you have no GitHub tools, the app is not granted to you: tell the user to turn GitHub on for this agent (agent editor → Apps), not to install or connect it again.\n- Each agent works in its own clone (clone-repo gives you yours). Ask the user before git-reset, force pushes or rewriting commits.\n- Workflow files (.github/workflows/) need the installation to accept the Teros App's Workflows permission once; if a call says it is pending, give the user the link it returns.\n- Unused clones are removed automatically; work that was not on GitHub is first pushed to a teros/saved/<agent>/<branch>-<date> branch of the same repository. If a result says your work was saved there, look at that branch before redoing work. Use git-cleanup to free a clone you are done with.\n- More: guide topic `github`.",
   "type": "integration",
   "icon": "icon.svg",
   "category": "development",
@@ -28,7 +29,6 @@
       "type": "github-app",
       "provider": "github",
       "appSlug": "teros-ai-prod",
-      "setupUrl": "https://be.teros.ai/auth/mca/callback?provider=github-app",
       "userOAuth": true,
       "tokenUrl": "https://github.com/login/oauth/access_token",
       "permissions": {
@@ -36,13 +36,14 @@
         "issues": "write",
         "pull_requests": "write",
         "metadata": "read",
-        "workflows": "write",
         "actions": "write",
-        "checks": "write",
-        "members": "read",
-        "administration": "read"
+        "administration": "write",
+        "workflows": "write"
       },
-      "events": ["installation", "installation_repositories"],
+      "events": [
+        "installation",
+        "installation_repositories"
+      ],
       "systemSecrets": [
         "GITHUB_APP_ID",
         "GITHUB_APP_CLIENT_ID",
@@ -52,7 +53,6 @@
         "GITHUB_APP_SLUG"
       ],
       "userSecrets": [
-        "INSTALLATION_ID",
         "USER_ACCESS_TOKEN",
         "USER_REFRESH_TOKEN",
         "USER_TOKEN_EXPIRES_AT",
@@ -65,14 +65,49 @@
     "transport": "http",
     "containerMode": "per-app",
     "port": 3000,
-    "healthCheck": "/health"
+    "healthCheck": "/health",
+    "workspaceMount": true
   },
-  "keywords": ["github", "git", "repositories", "issues", "pull-requests", "ci-cd", "actions", "github-app", "local-development"],
+  "keywords": [
+    "github",
+    "git",
+    "repositories",
+    "issues",
+    "pull-requests",
+    "ci-cd",
+    "actions",
+    "github-app",
+    "local-development"
+  ],
   "changelog": [
+    {
+      "version": "5.5.0",
+      "date": "2026-11-06",
+      "notes": "Context prehook (Fase 2): static contribution (cacheable) announcing the authenticated GitHub context in the prompt."
+    },
+    {
+      "version": "5.4.0",
+      "date": "2026-10-28",
+      "notes": "Smooth GitHub release (QA 2026-10-28 + user reports). Each user's own GitHub token per call (never the workspace owner's); each agent works in its own clone; commits signed as the connected user (noreply address); every REST error carries a code and what to do; list and search tools return trimmed pages with has_next_page; get-file-content handles files over 1 MB and binaries; diverged pulls and conflicts give the right next step; files over 100 MB are named before pushing and long bodies are refused with what to do. The App now requests the Workflows permission; until an installation accepts it, workflow changes explain where to accept it. Agent instructions added."
+    },
+    {
+      "version": "5.3.0",
+      "date": "2026-10-24",
+      "notes": "Git reliability release (Discord bugs: GIT_TIMEOUT on most git ops, broken/shared clones, workflow pushes). git runs asynchronously (one slow command no longer freezes the container for every agent) and spawn failures are classified (missing git, oversized output, resource exhaustion, OOM kill) instead of all reading GIT_TIMEOUT; per-operation timeouts (90 s local, 110 s network); errors now carry the action and git's stderr. Mutating git tools take a per-repo lock shared across containers and git lockfile contention is retried. clone-repo clones to <workspace>/<owner>/<repo>, reuses an existing working clone, replaces clones broken by an interrupted clone (moved aside), never leaves partial clones, and gains depth. Pushes rejected for the missing Workflows permission, 403s and inaccessible repos get their own explained errors. App permissions unchanged."
+    },
+    {
+      "version": "5.2.0",
+      "date": "2026-10-02",
+      "notes": "Hardening + correctness release: get-user now returns the real token identity (GET /user) instead of the installation context; get-installation-context returns an org-scoped manage_url for org installations; create-repo works via administration:write (App permission aligned). Security: clones no longer persist the user token in .git/config (http.extraheader) and legacy remotes are sanitized, git-remote only accepts clean github.com HTTPS URLs, REST tool URLs validate owner/repo/org path segments, agent-supplied refs are validated against git-option injection, and clone destinations are sandboxed to the workspace volume. Reliability: githubRequest gains timeout + retry/backoff (AbortController, 429 Retry-After, 5xx). Least-privilege App permissions (members/workflows dropped) and dead create-check-run/update-check-run tools removed (the App never had the checks permission — they always 403'd)."
+    },
     {
       "version": "5.1.0",
       "date": "2026-05-13",
       "notes": "Manage repos, issues, pull requests and reviews, run Actions and releases, plus full local git on cloned repos"
     }
-  ]
+  ],
+  "contextPrehook": {
+    "label": "Account",
+    "text": "GitHub app connected: repo, issue and PR tools operate on the authenticated account. Use list-repos to discover accessible repositories."
+  }
 }

@@ -18,6 +18,8 @@ import { createGetSubscriptionHandler } from './get-subscription'
 import { createGetInvoicesHandler } from './get-invoices'
 import { createChangePlanHandler } from './change-plan'
 import { createPreviewPlanChangeHandler } from './preview-plan-change'
+import { createCompleteSetupIntentHandler } from './complete-setup-intent'
+import { createSetBillingDetailsHandler } from './set-billing-details'
 import { createPurchaseBoostHandler } from './purchase-boost'
 import { config } from '../../../config'
 
@@ -36,7 +38,11 @@ export function register(router: WsRouter, deps: BillingDomainDeps): void {
     'billing.create-setup-intent',
     createCreateSetupIntentHandler(userService, stripePaymentService),
   )
-  router.register('billing.set-payment-method', createSetPaymentMethodHandler(stripePaymentService))
+  router.register('billing.set-payment-method', createSetPaymentMethodHandler(stripePaymentService, db))
+  // Redirect (3DS / SCA) return of the SetupIntent flow — same effect as set-payment-method.
+  router.register('billing.complete-setup-intent', createCompleteSetupIntentHandler(stripePaymentService, db))
+  // Tax location + tax id → Stripe Tax and the legal invoice header.
+  router.register('billing.set-billing-details', createSetBillingDetailsHandler(stripePaymentService))
   // Request-access flow (FASE 6): user asks for a boost / upgrade when blocked.
   router.register(
     'billing.request-access',

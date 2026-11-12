@@ -4,7 +4,7 @@
  * Communication protocol between Teros Backend and MCAs (Model Context Apps).
  * Transport-agnostic: works over WebSocket, HTTP, stdio, or any future transport.
  *
- *
+ * @see docs/RFC-001-mca-protocol.md
  */
 
 import { z } from 'zod';
@@ -89,6 +89,25 @@ export const McaToolAnnotationsSchema = z.object({
    * Same `optional()`-without-default rationale as `irreversible` above.
    */
   alwaysAsk: z.boolean().optional(),
+  /**
+   * Teros policy hint — the tool MUTATES state, but the write is safe to
+   * auto-allow at install time. `createInstallPermissions` seeds a
+   * `safeWriteHint: true` tool as 'allow' (same as read-only), instead of the
+   * mutation default 'ask'.
+   *
+   * Bar is high and deliberate: the write must be (a) reversible by the user
+   * without side effects elsewhere (deleting the record undoes it), (b) scoped
+   * to the user's own data (no cross-user exposure, no external side effects),
+   * and (c) non-notifying (nothing is sent to third parties on the user's
+   * behalf). Saving knowledge/memory entries qualifies — they are deletable,
+   * private, and go nowhere else. Creating projects/tasks does NOT (it changes
+   * shared board state other members see), and anything that sends, spends,
+   * or deletes never will. `alwaysAsk` still wins over this hint when both
+   * are set.
+   *
+   * Same `optional()`-without-default rationale as `irreversible` above.
+   */
+  safeWriteHint: z.boolean().optional(),
 
   // MCP canonical annotations (Phase 2.7 — TER-348). Aligned with MCP spec
   // and with the `ToolAnnotations` interface in `@teros/mca-sdk`'s
@@ -112,6 +131,26 @@ export const McaToolAnnotationsSchema = z.object({
   summary: z.string().optional(),
   /** Domain group label for the catalog Actions list (e.g. 'Pages', 'Drafts'). */
   group: z.string().optional(),
+  /**
+   * Plain-text template for the approval card's intent line, with `{param}`
+   * placeholders filled from the call's own arguments — e.g.
+   * `'Delete the file at {path}'`.
+   *
+   * This is how an MCA supplies consequence prose without the frontend
+   * shipping a module for it. The three `*-permission-description.ts` modules
+   * (bash, filesystem, netlify) predate this field and still take precedence;
+   * they are the only per-MCA prose the host compiles, and they exist because
+   * shell commands need pattern matching a template cannot express.
+   *
+   * Rendered as TEXT, never as markup — `permission-intent.ts` documents why
+   * (the widget it replaced used `dangerouslySetInnerHTML`). Declined when a
+   * referenced param is absent or is not a primitive, since the arguments are
+   * model-generated and unvalidated at approval time.
+   *
+   * Name matches `ToolAnnotationsSchema.intentTemplate` in
+   * `@agentapps/protocol` deliberately, so the two cannot drift.
+   */
+  intentTemplate: z.string().optional(),
 });
 
 export type McaToolAnnotations = z.infer<typeof McaToolAnnotationsSchema>;
@@ -170,6 +209,35 @@ export const McaExecutionContextSchema = z.object({
   userDisplayName: z.string().optional(),
   /** Avatar URL of the initiating user (sent by mca-manager.tools; optional) */
   userAvatarUrl: z.string().optional(),
+  /**
+   * Unique identifier for this specific tool call (incident-2026-08-14, Layer B).
+   * Included in the HMAC signature so a signed request cannot be replayed
+   * against a different tool call. Optional for backward compatibility during
+   * rollout — the MCA HTTP server rejects unsigned requests once enforcement
+   * is enabled.
+   */
+  toolCallId: z.string().optional(),
+  /**
+   * HMAC-SHA256 signature over `userId:workspaceId:appId:toolCallId`
+   * using the per-container callback token as the secret
+   * (incident-2026-08-14, Layer B). Optional during rollout — the MCA HTTP
+   * server will reject requests missing a valid signature once enforcement
+   * is enabled.
+   */
+  signature: z.string().optional(),
+  /**
+   * Per-execution credentials for personal apps (MUW-F3).
+   *
+   * When the backend resolves per-user OAuth credentials for a personal app,
+   * it passes them here — scoped to THIS specific tool call only. The MCA SDK
+   * makes them available via `context.getUserSecrets()` for this execution,
+   * bypassing the global WS `credentials_updated` push that was race-prone
+   * when multiple users share the same MCA process.
+   *
+   * Optional: only set for personal apps with per-user credentials.
+   * When absent, `getUserSecrets()` falls back to the WS roundtrip as before.
+   */
+  credentials: z.record(z.string()).optional(),
 });
 
 export type McaExecutionContext = z.infer<typeof McaExecutionContextSchema>;
@@ -321,6 +389,32 @@ export const McaToolResultResponseSchema = McaMessageBaseSchema.extend({
         filename: z.string().optional(),
       }),
     )
+    .optional(),
+  /**
+   * Rendered output produced by a UI resource bound to the tool.
+   *
+   * When a tool has a bound UI resource (registered via `server.ui()` in
+   * the SDK), the app-instance dispatches the resource handler with the
+   * tool result after the tool returns, then renders the structured
+   * `UiResourceData` into the requested format (markdown/text/html).
+   *
+   * This field carries the rendered string so the host can embed it in
+   * the chat alongside the structured `result`. Optional — omitted when
+   * the tool has no bound UI resource or the handler declines to render.
+   *
+   * See `@teros/mca-sdk` renderer module and `RenderedOutput` type.
+   */
+  rendered: z
+    .object({
+      /** Output format: 'markdown' | 'text' | 'html' */
+      format: z.enum(['markdown', 'text', 'html']),
+      /** The rendered string content */
+      content: z.string(),
+      /** Name of the UI resource that produced this output */
+      resource: z.string(),
+      /** Resource type: 'tree' | 'detail' | 'form' */
+      resourceType: z.string(),
+    })
     .optional(),
   /** Error details (if !success) */
   error: McaErrorSchema.optional(),
@@ -752,7 +846,7 @@ export type McaSecretResponse = z.infer<typeof McaSecretResponseSchema>;
 
 /**
  * Names of the tool-execution proxy meta-tools injected by the backend's
- * McaToolExecutor. Shared so
+ * McaToolExecutor (docs/specs/20260704_tool-execution-proxy.md). Shared so
  * the frontend can special-case them (the two list tools render as nothing;
  * execute-tool calls are tunneled to the target tool's renderer backend-side).
  * Invariant: these names contain NO underscore, so they can never collide
@@ -764,11 +858,200 @@ export const PROXY_TOOL_NAMES = {
   execute: 'execute-tool',
 } as const;
 
-/** Meta-tools that the chat UI hides entirely (discovery is invisible). */
+/**
+ * Meta-tools that the chat UI hides entirely (discovery is invisible).
+ * execute-tool is included: resolvable calls arrive already tunneled to the
+ * target tool's name backend-side, so any execute-tool block that reaches the
+ * UI is by definition an unresolvable call (model typo / bad ref). The agent
+ * still sees the error and self-corrects; the user only sees the final,
+ * correctly-named call. Hiding here also covers the DB history path.
+ */
 export const UI_HIDDEN_PROXY_TOOLS: readonly string[] = [
   PROXY_TOOL_NAMES.listInstalledApps,
   PROXY_TOOL_NAMES.listAppTools,
+  PROXY_TOOL_NAMES.execute,
 ];
+
+/**
+ * Discovery meta-tools: `list-installed-apps` and `list-app-tools`.
+ * These are local, free, read-only reads — they should never be blocked by
+ * the maxSteps safety valve, and round-trips whose ONLY tool calls are these
+ * should not consume the step budget.
+ */
+export const DISCOVERY_META_TOOLS: readonly string[] = [
+  PROXY_TOOL_NAMES.listInstalledApps,
+  PROXY_TOOL_NAMES.listAppTools,
+];
+
+const DISCOVERY_META_TOOL_SET: ReadonlySet<string> = new Set(DISCOVERY_META_TOOLS);
+
+/** True for the two discovery meta-tools (list-installed-apps, list-app-tools). */
+export function isDiscoveryMetaTool(toolName: string): boolean {
+  return DISCOVERY_META_TOOL_SET.has(toolName);
+}
+
+/**
+ * Progress-report tools, by their bare (un-namespaced) name: the board's
+ * `add-progress-note`, and the To Do app's `add-log-entry` and `set-progress`.
+ *
+ * These pass the maxSteps block and reset the step counter on success — the
+ * runner's "report and keep working" valve (TODOAP-REQ-19).
+ *
+ * Matching is separator-agnostic: under the flat tool-call format
+ * (tools.flat-toolcalls) tool names are sanitized with `-` → `_`
+ * (agent-proxy-flat-tools.ts), so at runtime the same tool is
+ * `todo_list_add_log_entry`. A hyphen-only match missed it — the exact bug
+ * reported 2026-10-30 (an agent at the step limit could not leave its
+ * progress note). Both separators are therefore treated as equivalent.
+ *
+ * `set-progress` is included: same functional genre (reporting progress,
+ * paired with add-log-entry in the todo runner protocol), zero new abuse
+ * surface — the reset only fires when the limit is already active and the
+ * tool succeeds, and each reset costs a full note round-trip.
+ * @spec TODOAP-REQ-19
+ */
+export const PROGRESS_NOTE_TOOL_NAMES = ['add-progress-note', 'add-log-entry', 'set-progress'] as const;
+
+/**
+ * Normalizes separators in a tool name: underscores become hyphens, so the
+ * flat-format `todo_list_add_log_entry` compares equal to the canonical
+ * `add-log-entry`. Flat tools are generated per-turn and never contain
+ * characters other than `[A-Za-z0-9_]`, so this is a total normalization.
+ */
+function normalizeToolNameSeparators(toolName: string): string {
+  return toolName.replace(/_/g, '-');
+}
+
+/** The progress-note tool name contained in `toolName`, or null. */
+function progressNoteToolName(toolName: string): (typeof PROGRESS_NOTE_TOOL_NAMES)[number] | null {
+  const normalized = normalizeToolNameSeparators(toolName);
+  return PROGRESS_NOTE_TOOL_NAMES.find((name) => normalized.includes(name)) ?? null;
+}
+
+/**
+ * The canonical progress-note tool name present among the agent's tool names,
+ * or null. Separator-agnostic for the same reason as `isProgressNoteTool`:
+ * the agent's toolset may carry the flat-format `todo_list_add_log_entry`
+ * instead of the namespaced `todo-list_add-log-entry`. Returns the bare
+ * canonical name (e.g. `add-log-entry`) so block messages stay stable
+ * across both formats.
+ */
+export function findProgressNoteToolName(
+  toolNames: readonly string[],
+): (typeof PROGRESS_NOTE_TOOL_NAMES)[number] | null {
+  for (const name of PROGRESS_NOTE_TOOL_NAMES) {
+    if (toolNames.some((t) => normalizeToolNameSeparators(t).includes(name))) return name;
+  }
+  return null;
+}
+
+/**
+ * True when the tool name (or the proxied target inside an `execute-tool`
+ * call's `input.tool`) is a progress-note tool (`PROGRESS_NOTE_TOOL_NAMES`).
+ *
+ * Progress-note tools are exempt from the maxSteps block and reset the step
+ * counter on success. Under the tool-execution proxy they are called as
+ * `execute-tool { app, tool: 'add-progress-note' | 'add-log-entry' | 'set-progress', input }`,
+ * so the caller must resolve the proxied target first — this helper accepts
+ * both the direct tool name and the `input` object of an `execute-tool` call.
+ * Matching is separator-agnostic (hyphen/underscore) — see
+ * `PROGRESS_NOTE_TOOL_NAMES`.
+ *
+ * @param toolName - The tool name as seen by TurnDriver: the namespaced name
+ *   (`board-runner_add-progress-note`, `todo-list_add-log-entry`), the
+ *   flat-format name (`todo_list_add_log_entry`), or the proxy meta-tool
+ *   name `execute-tool`.
+ * @param input - The tool call's input. When `toolName` is `execute-tool`,
+ *   `input.tool` is checked for a progress-note tool name.
+ * @spec TODOAP-REQ-19
+ */
+export function isProgressNoteTool(
+  toolName: string,
+  input?: Record<string, any> | null,
+): boolean {
+  if (progressNoteToolName(toolName)) return true;
+  // Proxy resolution: execute-tool { tool: 'add-progress-note' | 'add-log-entry' }
+  if (toolName === PROXY_TOOL_NAMES.execute) {
+    const targetTool = input?.tool;
+    if (typeof targetTool === 'string' && progressNoteToolName(targetTool)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Task-completion tools, by their bare (un-namespaced) name: the To Do app's
+ * `set-output` and `set-state`, and the board runner's `complete-my-task` and
+ * `block-my-task`.
+ *
+ * These pass the maxSteps block WITHOUT resetting the step counter — the
+ * runner at the execution limit can still deliver its result and move the
+ * task to review/blocked, so the report is PERSISTED on the task instead of
+ * dying as unpersisted chat text (bug reported by Pablo, 2026-11-02: the
+ * block message told the agent to "give the user a status update" without
+ * naming HOW to report, and the reporting tools themselves were blocked).
+ * The counter reset stays exclusive to the progress-note tools
+ * (`PROGRESS_NOTE_TOOL_NAMES`) — reporting completion closes the work, it
+ * does not buy another batch of steps.
+ *
+ * Matching is separator-agnostic (hyphen/underscore) and proxy-aware — same
+ * contract as `PROGRESS_NOTE_TOOL_NAMES`. No other tool in the catalog
+ * contains these names as substrings (verified against every tools.json).
+ */
+export const TASK_COMPLETION_TOOL_NAMES = [
+  'set-output',
+  'set-state',
+  'complete-my-task',
+  'block-my-task',
+] as const;
+
+/** The task-completion tool name contained in `toolName`, or null. */
+function taskCompletionToolName(toolName: string): (typeof TASK_COMPLETION_TOOL_NAMES)[number] | null {
+  const normalized = normalizeToolNameSeparators(toolName);
+  return TASK_COMPLETION_TOOL_NAMES.find((name) => normalized.includes(name)) ?? null;
+}
+
+/**
+ * The canonical task-completion tool names present among the agent's tool
+ * names, in `TASK_COMPLETION_TOOL_NAMES` order (so a To Do runner renders as
+ * `set-output + set-state`), empty when none. Used to build the maxSteps
+ * block message that names the reporting tools the agent actually has.
+ */
+export function findTaskCompletionToolNames(
+  toolNames: readonly string[],
+): (typeof TASK_COMPLETION_TOOL_NAMES)[number][] {
+  return TASK_COMPLETION_TOOL_NAMES.filter((name) =>
+    toolNames.some((t) => normalizeToolNameSeparators(t).includes(name)),
+  );
+}
+
+/**
+ * True when the tool name (or the proxied target inside an `execute-tool`
+ * call's `input.tool`) is a task-completion tool (`TASK_COMPLETION_TOOL_NAMES`).
+ *
+ * Task-completion tools are exempt from the maxSteps block but do NOT reset
+ * the step counter (only progress-note tools do). Under the tool-execution
+ * proxy they are called as
+ * `execute-tool { app, tool: 'set-output' | 'set-state' | 'complete-my-task' | 'block-my-task', input }`,
+ * so the caller must resolve the proxied target first — this helper accepts
+ * both the direct tool name and the `input` object of an `execute-tool` call.
+ * Matching is separator-agnostic (hyphen/underscore).
+ */
+export function isTaskCompletionTool(
+  toolName: string,
+  input?: Record<string, any> | null,
+): boolean {
+  if (taskCompletionToolName(toolName)) return true;
+  // Proxy resolution: execute-tool { tool: 'set-output' | 'set-state' | ... }
+  if (toolName === PROXY_TOOL_NAMES.execute) {
+    const targetTool = input?.tool;
+    if (typeof targetTool === 'string' && taskCompletionToolName(targetTool)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // ============================================================================
 // ERROR CODES

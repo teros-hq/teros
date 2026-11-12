@@ -12,17 +12,40 @@
  * Search/filter + the update payload builder live in teams.ts so they are
  * unit-testable (the harness stubs this *WindowContent module). Each card owns
  * its own state + mutation so no single function grows past the lint limit.
+ *
+ * Presentation follows the OS prototype (design-testing): Page + PageHead, Stats,
+ * LGroup/LRow lists, Card forms with FieldLabel/Field, pill buttons.
  */
 
-import { ChevronLeft, Crown, ScrollText, X } from "@tamagui/lucide-icons"
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ScrollView } from "react-native"
-import { Input, Text, XStack, YStack } from "tamagui"
+import { Platform, View } from "react-native"
 import { useToast } from "../../components/Toast"
 import { AppSpinner } from "../../components/ui"
+import { Avatar } from "../../components/Avatar"
+import {
+  Badge,
+  type BadgeTone,
+  Btn,
+  Card,
+  ChipBtn,
+  EmptyState,
+  Field,
+  FieldGroup,
+  FieldHelp,
+  FieldLabel,
+  IconBtn,
+  LGroup,
+  LRow,
+  Page,
+  PageHead,
+  Ph,
+  SectionLabel,
+  Stat,
+  Stats,
+  T,
+} from "../../components/ui/ds"
 import { useColors } from "../../components/mca/primitives/useColors"
-import { colors as semanticColors, surface } from "../../components/mca/primitives/colors"
 import type { BillingTeam, TeamMember, TeamMembersView } from "../../services/AdminApi"
 import type { BillingPlanView } from "../../services/BillingApi"
 import { getTerosClient } from "../../services/terosClientSingleton"
@@ -34,10 +57,17 @@ import {
   type TeamSettingsForm,
   teamToForm,
   teamToOriginal,
-  usageColor,
 } from "./teams"
 
 const STATUSES: TeamSettingsForm["status"][] = ["active", "paused", "cancelled"]
+
+/** Team status → badge tone. */
+function statusTone(status: string): BadgeTone {
+  if (status === "active") return "g"
+  if (status === "paused") return "a"
+  if (status === "cancelled") return "r"
+  return "i"
+}
 
 export interface BillingTeamsWindowProps {
   windowId?: string
@@ -97,69 +127,102 @@ function TeamListView({
   onOpen: (teamId: string) => void
 }) {
   const { t } = useTranslation()
-  const c = useColors()
+  const eyebrow = t("billing.eyebrow", { defaultValue: "Facturación" })
+  const title = t("windows.billingTeams")
+
   if (teams === null) return <Loading />
   if (error) {
     return (
-      <Centered testID="billing-teams-error" color={c.badges.err.text}>
-        {t("billing.teams.loadError")}
-      </Centered>
+      <Page>
+        <PageHead eyebrow={eyebrow} title={title} />
+        <ErrorStrip testID="billing-teams-error" text={t("billing.teams.loadError")} />
+      </Page>
     )
   }
   if (teams.length === 0) {
     return (
-      <Centered testID="billing-teams-empty" color={c.text2}>
-        {t("billing.teams.empty")}
-      </Centered>
+      <Page>
+        <PageHead eyebrow={eyebrow} title={title} />
+        <View testID="billing-teams-empty">
+          <EmptyState icon="users-three" title={t("billing.teams.empty")} />
+        </View>
+      </Page>
     )
   }
+
+  const seats = teams.reduce((n, tm) => n + tm.seatCount, 0)
+  const maxSeats = teams.reduce((n, tm) => n + tm.maxSeats, 0)
+  const active = teams.filter((tm) => tm.status === "active").length
+
   return (
-    <YStack testID="billing-teams-list" flex={1} backgroundColor={c.bgPage}>
-      <Header title={t("windows.billingTeams")} />
-      <ScrollView style={{ flex: 1 }}>
-        <YStack padding={12} gap={8}>
-          {teams.map((team) => (
-            <TeamRow key={team._id} team={team} onOpen={() => onOpen(team._id)} />
-          ))}
-        </YStack>
-      </ScrollView>
-    </YStack>
+    <Page testID="billing-teams-list">
+      <PageHead
+        eyebrow={eyebrow}
+        title={title}
+        lead={t("billing.teams.lead", {
+          defaultValue: "Equipos con facturación compartida: plan, asientos y miembros.",
+        })}
+      />
+      <Stats cols={3} style={{ marginBottom: 20 }}>
+        <Stat
+          label={t("billing.teams.statTeams", { defaultValue: "Equipos" })}
+          v={teams.length}
+          sub={t("billing.teams.statActive", { defaultValue: "{{n}} activos", n: active })}
+        />
+        <Stat
+          label={t("billing.teams.statSeats", { defaultValue: "Asientos" })}
+          v={`${seats} / ${maxSeats}`}
+          sub={t("billing.teams.statSeatsSub", { defaultValue: "ocupados / máximo" })}
+        />
+        <Stat
+          label={t("billing.teams.statOverrides", { defaultValue: "Precios negociados" })}
+          v={teams.filter((tm) => tm.customSeatPrice != null).length}
+          sub={t("billing.teams.statOverridesSub", { defaultValue: "equipos con override" })}
+        />
+      </Stats>
+      <SectionLabel label={t("windows.billingTeams")} count={teams.length} />
+      <LGroup>
+        {teams.map((team) => (
+          <TeamRow key={team._id} team={team} onOpen={() => onOpen(team._id)} />
+        ))}
+      </LGroup>
+    </Page>
   )
 }
 
 function TeamRow({ team, onOpen }: { team: BillingTeam; onOpen: () => void }) {
   const c = useColors()
+  const pct =
+    team.maxSeats > 0 ? Math.min(100, Math.round((team.seatCount / team.maxSeats) * 100)) : 0
   return (
-    <XStack
-      testID={`team-row-${team._id}`}
-      onPress={onOpen}
-      cursor="pointer"
-      hoverStyle={{ borderColor: semanticColors.indigo }}
-      borderRadius={10}
-      borderWidth={1}
-      borderColor={c.border}
-      backgroundColor={c.bgCard}
-      padding={12}
-      alignItems="center"
-      gap={10}
-    >
-      <YStack flex={1} gap={2}>
-        <Text fontSize={14} fontWeight="700" color={c.text}>
+    <LRow testID={`team-row-${team._id}`} onPress={onOpen}>
+      <Avatar name={team.name} size={36} />
+      <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+        <T step="base" ellipsis>
           {team.name}
-        </Text>
-        <Text fontSize={11} color={c.text3}>
+        </T>
+        <T step="12" tone="text3" ellipsis>
           {team.slug}
-        </Text>
-      </YStack>
-      <Text fontSize={12} color={semanticColors.indigo}>
-        {team.planName}
-      </Text>
-      <Text fontSize={12} color={c.text2}>
-        {team.seatCount}/{team.maxSeats} · {team.customSeatPrice ?? team.seatPrice}
-        {team.customSeatPrice != null ? " *" : ""}
-      </Text>
-      <StatusPill status={team.status} />
-    </XStack>
+        </T>
+      </View>
+      <Badge tone="i">{team.planName}</Badge>
+      {/* Seats bar: thin violet fill + mono counter */}
+      <View style={{ width: 120, gap: 5 }}>
+        <View style={{ height: 6, borderRadius: 3, backgroundColor: c.wash2, overflow: "hidden" }}>
+          <View
+            style={{ width: `${pct}%`, height: 6, borderRadius: 3, backgroundColor: c.accent }}
+          />
+        </View>
+        <T step="codenote" tone="text3">
+          {team.seatCount}/{team.maxSeats} · {team.customSeatPrice ?? team.seatPrice}
+          {team.customSeatPrice != null ? " *" : ""}
+        </T>
+      </View>
+      <Badge tone={statusTone(team.status)} dot>
+        {team.status}
+      </Badge>
+      <Ph name="caret-right" size={14} color={c.text3} />
+    </LRow>
   )
 }
 
@@ -177,7 +240,6 @@ function TeamDetailContainer({
   onBack: () => void
 }) {
   const { t } = useTranslation()
-  const c = useColors()
   const client = getTerosClient()
   const [detail, setDetail] = useState<TeamMembersView | null>(null)
   const [loading, setLoading] = useState(true)
@@ -200,20 +262,41 @@ function TeamDetailContainer({
   }, [reload])
 
   return (
-    <YStack testID="billing-team-detail" flex={1} backgroundColor={c.bgPage}>
-      <DetailHeader name={detail?.team.name ?? ""} onBack={onBack} />
+    <Page testID="billing-team-detail">
+      <PageHead
+        eyebrow={t("billing.eyebrow", { defaultValue: "Facturación" })}
+        title={detail?.team.name ?? t("windows.billingTeams")}
+        lead={
+          detail ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <T step="sm" tone="text2">
+                {detail.team.slug}
+              </T>
+              <Badge tone="i">{detail.team.planName}</Badge>
+              <Badge tone={statusTone(detail.team.status)} dot>
+                {detail.team.status}
+              </Badge>
+            </View>
+          ) : undefined
+        }
+        actions={
+          <Btn testID="team-back-btn" variant="sec" size="sm" icon="arrow-left" onPress={onBack}>
+            {t("common.back")}
+          </Btn>
+        }
+      />
       {loading || !detail ? (
         error ? (
-          <Centered testID="billing-team-detail-error" color={c.badges.err.text}>
-            {t("billing.teams.loadError")}
-          </Centered>
+          <ErrorStrip testID="billing-team-detail-error" text={t("billing.teams.loadError")} />
         ) : (
-          <Loading />
+          <View style={{ paddingVertical: 48, alignItems: "center" }}>
+            <AppSpinner variant="brand" />
+          </View>
         )
       ) : (
         <DetailBody detail={detail} plans={plans} reload={reload} />
       )}
-    </YStack>
+    </Page>
   )
 }
 
@@ -228,18 +311,16 @@ function DetailBody({
 }) {
   const team = detail.team
   return (
-    <ScrollView style={{ flex: 1 }}>
-      <YStack padding={12} gap={12}>
-        <SettingsCard
-          key={`${team.planId}-${team.seatPrice}-${team.status}-${team.maxSeats}`}
-          team={team}
-          plans={plans}
-          onSaved={reload}
-        />
-        <MembersCard teamId={team._id} members={detail.members} onChanged={reload} />
-        <CompanySettingsPlaceholder owner={detail.owner} />
-      </YStack>
-    </ScrollView>
+    <View style={{ gap: 24 }}>
+      <SettingsCard
+        key={`${team.planId}-${team.seatPrice}-${team.status}-${team.maxSeats}`}
+        team={team}
+        plans={plans}
+        onSaved={reload}
+      />
+      <MembersCard teamId={team._id} members={detail.members} onChanged={reload} />
+      <CompanySettingsPlaceholder owner={detail.owner} />
+    </View>
   )
 }
 
@@ -257,7 +338,6 @@ function SettingsCard({
   onSaved: () => Promise<void>
 }) {
   const { t } = useTranslation()
-  const c = useColors()
   const client = getTerosClient()
   const toast = useToast()
   const [form, setForm] = useState<TeamSettingsForm>(() => teamToForm(team))
@@ -282,15 +362,24 @@ function SettingsCard({
   }, [client, form, team, onSaved, t, toast])
 
   return (
-    <YStack testID="team-settings-card" gap={10} {...cardStyle(c)}>
-      <SectionTitle title={t("billing.teams.planPricing")} />
-      <SettingsFields form={form} setForm={setForm} plans={plans} />
-      <XStack justifyContent="flex-end">
-        <PrimaryButton testID="team-save-btn" disabled={saving} onPress={save}>
-          {t("billing.teams.save")}
-        </PrimaryButton>
-      </XStack>
-    </YStack>
+    <View testID="team-settings-card">
+      <Card pad={20}>
+        <T step="base">{t("billing.teams.planPricing")}</T>
+        <SettingsFields form={form} setForm={setForm} plans={plans} />
+        <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 20 }}>
+          <Btn
+            testID="team-save-btn"
+            variant="primary"
+            icon="floppy-disk"
+            disabled={saving}
+            loading={saving}
+            onPress={save}
+          >
+            {t("billing.teams.save")}
+          </Btn>
+        </View>
+      </Card>
+    </View>
   )
 }
 
@@ -306,55 +395,66 @@ function SettingsFields({
   const { t } = useTranslation()
   return (
     <>
-      <Field label={t("billing.teams.plan")}>
-        <XStack gap={6} flexWrap="wrap">
+      <FieldGroup>
+        <FieldLabel>{t("billing.teams.plan")}</FieldLabel>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
           {plans.map((p) => (
-            <ChoicePill
+            <ChipBtn
               key={p.planId}
               testID={`team-plan-${p.planId}`}
-              label={p.displayName}
-              active={form.planId === p.planId}
+              on={form.planId === p.planId}
               onPress={() => setForm({ ...form, planId: p.planId })}
-            />
+            >
+              {p.displayName}
+            </ChipBtn>
           ))}
-        </XStack>
-      </Field>
-      <XStack gap={10} flexWrap="wrap">
-        <Field label={t("billing.teams.seatPriceOverride")}>
-          <Input
+        </View>
+      </FieldGroup>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>
+        <FieldGroup style={{ width: 180 }}>
+          <FieldLabel>{t("billing.teams.seatPriceOverride")}</FieldLabel>
+          <Field
             testID="team-seat-price-input"
+            mono
+            icon="currency-eur"
             value={form.customSeatPrice}
             onChangeText={(v) => setForm({ ...form, customSeatPrice: v })}
             placeholder={t("billing.teams.seatPricePlaceholder")}
             keyboardType="numeric"
-            width={140}
-            {...inputStyle()}
           />
-        </Field>
-        <Field label={t("billing.teams.maxSeats")}>
-          <Input
+          <FieldHelp>
+            {t("billing.teams.seatPriceHelp", {
+              defaultValue: "Vacío = precio del plan.",
+            })}
+          </FieldHelp>
+        </FieldGroup>
+        <FieldGroup style={{ width: 140 }}>
+          <FieldLabel>{t("billing.teams.maxSeats")}</FieldLabel>
+          <Field
             testID="team-max-seats-input"
+            mono
+            icon="users-three"
             value={form.maxSeats}
             onChangeText={(v) => setForm({ ...form, maxSeats: v })}
             keyboardType="numeric"
-            width={100}
-            {...inputStyle()}
           />
-        </Field>
-      </XStack>
-      <Field label={t("billing.teams.status")}>
-        <XStack gap={6}>
+        </FieldGroup>
+      </View>
+      <FieldGroup>
+        <FieldLabel>{t("billing.teams.status")}</FieldLabel>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
           {STATUSES.map((s) => (
-            <ChoicePill
+            <ChipBtn
               key={s}
               testID={`team-status-${s}`}
-              label={s}
-              active={form.status === s}
+              on={form.status === s}
               onPress={() => setForm({ ...form, status: s })}
-            />
+            >
+              {s}
+            </ChipBtn>
           ))}
-        </XStack>
-      </Field>
+        </View>
+      </FieldGroup>
     </>
   )
 }
@@ -373,7 +473,6 @@ function MembersCard({
   onChanged: () => Promise<void>
 }) {
   const { t } = useTranslation()
-  const c = useColors()
   const client = getTerosClient()
   const toast = useToast()
   const openWindow = useTilingStore((s) => s.openWindow)
@@ -405,14 +504,21 @@ function MembersCard({
 
   const filtered = filterMembers(members, query)
   return (
-    <YStack testID="team-members-card" gap={10} {...cardStyle(c)}>
-      <SectionTitle title={t("billing.teams.members")} count={members.length} />
-      <Input
-        testID="team-member-search"
-        value={query}
-        onChangeText={setQuery}
-        placeholder={t("billing.teams.searchPlaceholder")}
-        {...inputStyle()}
+    <View testID="team-members-card">
+      <SectionLabel
+        label={t("billing.teams.members")}
+        count={members.length}
+        right={
+          <Field
+            testID="team-member-search"
+            icon="magnifying-glass"
+            value={query}
+            onChangeText={setQuery}
+            placeholder={t("billing.teams.searchPlaceholder")}
+            containerStyle={{ width: 220, height: 30 }}
+            style={{ height: 28 }}
+          />
+        }
       />
       <MemberList
         members={filtered}
@@ -442,7 +548,7 @@ function MembersCard({
           )
         }
       />
-    </YStack>
+    </View>
   )
 }
 
@@ -458,16 +564,17 @@ function MemberList({
   onAudit: (m: TeamMember) => void
 }) {
   const { t } = useTranslation()
-  const c = useColors()
   if (members.length === 0) {
     return (
-      <Text fontSize={12} color={c.text2}>
-        {t("billing.teams.noMembers")}
-      </Text>
+      <Card pad>
+        <T step="sm" tone="text3">
+          {t("billing.teams.noMembers")}
+        </T>
+      </Card>
     )
   }
   return (
-    <>
+    <LGroup>
       {members.map((m) => (
         <MemberRow
           key={m.userId}
@@ -477,7 +584,7 @@ function MemberList({
           onAudit={() => onAudit(m)}
         />
       ))}
-    </>
+    </LGroup>
   )
 }
 
@@ -494,19 +601,26 @@ function AddMemberRow({
 }) {
   const { t } = useTranslation()
   return (
-    <XStack gap={6} marginTop={4}>
-      <Input
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 }}>
+      <Field
         testID="team-add-member-input"
-        flex={1}
+        icon="user-plus"
+        mono
         value={value}
         onChangeText={onChange}
         placeholder={t("billing.teams.addPlaceholder")}
-        {...inputStyle()}
+        containerStyle={{ flex: 1 }}
       />
-      <PrimaryButton testID="team-add-member-btn" disabled={disabled} onPress={onAdd}>
+      <Btn
+        testID="team-add-member-btn"
+        variant="primary"
+        icon="plus"
+        disabled={disabled}
+        onPress={onAdd}
+      >
         {t("billing.teams.addMember")}
-      </PrimaryButton>
-    </XStack>
+      </Btn>
+    </View>
   )
 }
 
@@ -521,40 +635,55 @@ function MemberRow({
   onRemove: () => void
   onAudit: () => void
 }) {
+  const { t } = useTranslation()
   const c = useColors()
+  const pct = member.usagePct
+  // Usage colour by threshold (mirrors teams.usageColor, on theme tokens).
+  const usageTone =
+    pct === null ? c.text3 : pct >= 100 ? c.tint.r.tx : pct >= 80 ? c.tint.a.tx : c.accent
   return (
-    <XStack testID={`member-row-${member.userId}`} alignItems="center" gap={8}>
-      {member.isOwner && <Crown size={13} color={semanticColors.indigo} />}
-      <YStack flex={1} gap={1}>
-        <Text fontSize={13} color={c.text} numberOfLines={1}>
-          {member.userName ?? member.userId}
-        </Text>
-        <Text fontSize={10} color={c.text3} numberOfLines={1}>
-          {member.userEmail ?? member.userId} · {member.role ?? "—"}
-        </Text>
-      </YStack>
-      <Text fontSize={11} color={c.text2}>
-        {member.planName ?? "—"}
-      </Text>
-      <Text fontSize={11} color={usageColor(member.usagePct)} minWidth={68} textAlign="right">
-        {memberHoursLabel(member.agentHoursUsed, member.agentHoursLimit)}
-        {member.usagePct !== null ? ` · ${member.usagePct}%` : ""}
-      </Text>
-      <ScrollText
-        size={14}
-        color={c.text3}
-        cursor="pointer"
-        onPress={onAudit}
-        testID={`member-audit-${member.userId}`}
-      />
-      <X
-        size={14}
-        color={saving ? c.text3 : c.badges.err.text}
-        cursor="pointer"
-        onPress={() => !saving && onRemove()}
-        testID={`member-remove-${member.userId}`}
-      />
-    </XStack>
+    <View testID={`member-row-${member.userId}`}>
+      <LRow padV={10}>
+        <Avatar name={member.userName ?? member.userId} size={32} />
+        <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <T step="sm" ellipsis style={{ flexShrink: 1 }}>
+              {member.userName ?? member.userId}
+            </T>
+            {member.isOwner ? (
+              <Badge tone="m" sm icon="crown">
+                {t("billing.teams.owner")}
+              </Badge>
+            ) : null}
+          </View>
+          <T step="12" tone="text3" ellipsis>
+            {member.userEmail ?? member.userId} · {member.role ?? "—"}
+          </T>
+        </View>
+        <Badge tone="i">{member.planName ?? "—"}</Badge>
+        <T step="code" color={usageTone} style={{ minWidth: 92, textAlign: "right" }}>
+          {memberHoursLabel(member.agentHoursUsed, member.agentHoursLimit)}
+          {pct !== null ? ` · ${pct}%` : ""}
+        </T>
+        <IconBtn
+          testID={`member-audit-${member.userId}`}
+          icon="receipt"
+          plain
+          sm
+          title={t("windows.billingAudit")}
+          onPress={onAudit}
+        />
+        <IconBtn
+          testID={`member-remove-${member.userId}`}
+          icon="x"
+          plain
+          sm
+          danger={!saving}
+          disabled={saving}
+          onPress={() => !saving && onRemove()}
+        />
+      </LRow>
+    </View>
   )
 }
 
@@ -562,23 +691,33 @@ function CompanySettingsPlaceholder({ owner }: { owner: TeamMembersView["owner"]
   const { t } = useTranslation()
   const c = useColors()
   return (
-    <YStack
+    <View
       testID="company-settings-placeholder"
-      gap={6}
-      opacity={0.6}
-      {...cardStyle(c)}
-      borderStyle="dashed"
+      style={{
+        borderRadius: 16,
+        borderWidth: 1,
+        borderStyle: "dashed",
+        borderColor: c.borderStrong,
+        padding: 16,
+        gap: 6,
+        opacity: 0.7,
+      }}
     >
-      <SectionTitle title={t("billing.teams.companySettings")} />
-      <Text fontSize={12} color={c.text2}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <T step="base">{t("billing.teams.companySettings")}</T>
+        <Badge dashed cap>
+          {t("common.soon")}
+        </Badge>
+      </View>
+      <T step="sm" tone="text2">
         {t("billing.teams.companySettingsSoon")}
-      </Text>
-      {owner && (
-        <Text fontSize={11} color={c.text3}>
+      </T>
+      {owner ? (
+        <T step="12" tone="text3">
           {t("billing.teams.owner")}: {owner.userName ?? owner.userId}
-        </Text>
-      )}
-    </YStack>
+        </T>
+      ) : null}
+    </View>
   )
 }
 
@@ -586,218 +725,40 @@ function CompanySettingsPlaceholder({ owner }: { owner: TeamMembersView["owner"]
 // PRIMITIVES (local presentational — colors only, no logic)
 // ============================================================================
 
-function cardStyle(c: ReturnType<typeof useColors>) {
-  return {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: c.border,
-    backgroundColor: c.bgCard,
-    padding: 12,
-  } as const
-}
-
-function inputStyle() {
-  const c = useColors()
-  const isDark = c.bgPage === surface.dark.bgPage
-  return {
-    backgroundColor: isDark ? "rgba(39,39,42,0.6)" : c.bgInner,
-    borderColor: c.borderStrong,
-    color: c.text,
-    fontSize: 13,
-    height: 34,
-  } as const
-}
-
 function Loading() {
-  const c = useColors()
   return (
-    <YStack flex={1} backgroundColor={c.bgPage} justifyContent="center" alignItems="center">
-      <AppSpinner variant="brand" />
-    </YStack>
+    <Page noScroll>
+      <View style={{ paddingVertical: 64, alignItems: "center", justifyContent: "center" }}>
+        <AppSpinner variant="brand" />
+      </View>
+    </Page>
   )
 }
 
-function Header({ title }: { title: string }) {
-  const c = useColors()
-  const isDark = c.bgPage === surface.dark.bgPage
-  return (
-    <XStack
-      height={44}
-      paddingHorizontal={12}
-      alignItems="center"
-      borderBottomWidth={1}
-      borderBottomColor={isDark ? "rgba(39,39,42,0.6)" : c.bgInner}
-    >
-      <Text fontSize={13} fontWeight="700" color={c.text}>
-        {title}
-      </Text>
-    </XStack>
-  )
-}
-
-function DetailHeader({ name, onBack }: { name: string; onBack: () => void }) {
-  const c = useColors()
-  const isDark = c.bgPage === surface.dark.bgPage
-  return (
-    <XStack
-      height={44}
-      paddingHorizontal={10}
-      alignItems="center"
-      gap={6}
-      borderBottomWidth={1}
-      borderBottomColor={isDark ? "rgba(39,39,42,0.6)" : c.bgInner}
-    >
-      <ChevronLeft
-        size={18}
-        color={semanticColors.indigo}
-        cursor="pointer"
-        onPress={onBack}
-        testID="team-back-btn"
-      />
-      <Text fontSize={13} fontWeight="700" color={c.text} numberOfLines={1}>
-        {name}
-      </Text>
-    </XStack>
-  )
-}
-
-function Centered({
-  children,
-  color,
-  testID,
-}: {
-  children: React.ReactNode
-  color: string
-  testID?: string
-}) {
+/** Tinted red strip for a failed load. */
+function ErrorStrip({ text, testID }: { text: string; testID?: string }) {
   const c = useColors()
   return (
-    <YStack
+    <View
       testID={testID}
-      flex={1}
-      backgroundColor={c.bgPage}
-      justifyContent="center"
-      alignItems="center"
-      padding={20}
+      style={[
+        {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          padding: 14,
+          borderRadius: 12,
+          backgroundColor: c.tint.r.bg,
+          borderWidth: 1,
+          borderColor: c.tint.r.bd,
+        },
+        Platform.OS === "web" ? ({ boxShadow: "none" } as any) : null,
+      ]}
     >
-      <Text fontSize={13} color={color}>
-        {children}
-      </Text>
-    </YStack>
-  )
-}
-
-function StatusPill({ status }: { status: string }) {
-  const c = useColors()
-  return (
-    <XStack
-      paddingHorizontal={8}
-      paddingVertical={2}
-      borderRadius={9999}
-      backgroundColor={c.badges.info.bg}
-    >
-      <Text fontSize={10} fontWeight="600" color={c.badges.info.text} textTransform="capitalize">
-        {status}
-      </Text>
-    </XStack>
-  )
-}
-
-function ChoicePill({
-  label,
-  active,
-  onPress,
-  testID,
-}: {
-  label: string
-  active: boolean
-  onPress: () => void
-  testID?: string
-}) {
-  const c = useColors()
-  return (
-    <XStack
-      testID={testID}
-      onPress={onPress}
-      cursor="pointer"
-      paddingHorizontal={10}
-      paddingVertical={5}
-      borderRadius={9999}
-      borderWidth={1}
-      borderColor={active ? semanticColors.indigo : c.border}
-      backgroundColor={active ? c.badges.info.bg : "transparent"}
-    >
-      <Text
-        fontSize={11}
-        fontWeight="600"
-        color={active ? semanticColors.indigo : c.text2}
-        textTransform="capitalize"
-      >
-        {label}
-      </Text>
-    </XStack>
-  )
-}
-
-function PrimaryButton({
-  children,
-  onPress,
-  disabled,
-  testID,
-}: {
-  children: React.ReactNode
-  onPress: () => void
-  disabled?: boolean
-  testID?: string
-}) {
-  return (
-    <XStack
-      testID={testID}
-      onPress={disabled ? undefined : onPress}
-      cursor={disabled ? "default" : "pointer"}
-      opacity={disabled ? 0.5 : 1}
-      paddingHorizontal={14}
-      paddingVertical={7}
-      borderRadius={8}
-      backgroundColor={semanticColors.indigo}
-    >
-      <Text fontSize={12} fontWeight="700" color="#fff">
-        {children}
-      </Text>
-    </XStack>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  const c = useColors()
-  return (
-    <YStack gap={4}>
-      <Text fontSize={10} color={c.text3} textTransform="uppercase" letterSpacing={0.5}>
-        {label}
-      </Text>
-      {children}
-    </YStack>
-  )
-}
-
-function SectionTitle({ title, count }: { title: string; count?: number }) {
-  const c = useColors()
-  return (
-    <XStack gap={6} alignItems="center">
-      <Text
-        fontSize={11}
-        fontWeight="700"
-        color={c.text}
-        textTransform="uppercase"
-        letterSpacing={0.5}
-      >
-        {title}
-      </Text>
-      {count !== undefined && (
-        <Text fontSize={11} color={c.text2}>
-          {count}
-        </Text>
-      )}
-    </XStack>
+      <Ph name="warning" size={16} color={c.tint.r.tx} />
+      <T step="sm" color={c.tint.r.tx} style={{ flex: 1 }}>
+        {text}
+      </T>
+    </View>
   )
 }

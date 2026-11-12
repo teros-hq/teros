@@ -4,23 +4,28 @@
  * List of installed applications and catalog to install new ones.
  */
 
-import { Package } from '@tamagui/lucide-icons';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { AppsWindowContent } from './AppsWindowContent';
-import i18n from '../../i18n';
+import { Package } from "@tamagui/lucide-icons"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const AppsWindowContent = lazyWithRetry(() =>
+  import("./AppsWindowContent").then((m) => ({ default: m.AppsWindowContent })),
+)
+import i18n from "../../i18n"
 
 export interface AppsWindowProps {
   /** Workspace context */
-  workspaceId?: string;
+  workspaceId?: string
   /** Initial search query */
-  search?: string;
+  search?: string
 }
 
 export const appsWindowDefinition: WindowTypeDefinition<AppsWindowProps> = {
-  type: 'apps',
-  displayName: 'Mis Apps',
+  type: "apps",
+  audience: "user",
+  displayName: "Mis Apps",
   icon: Package,
-  color: '#7A54A6',
+  phIcon: "cube",
+  color: "#7A54A6",
   component: AppsWindowContent,
 
   defaultSize: { width: 800, height: 600 },
@@ -38,4 +43,6 @@ export const appsWindowDefinition: WindowTypeDefinition<AppsWindowProps> = {
     workspaceId: data.workspaceId,
     search: data.search,
   }),
-};
+  /** @spec NAV-REQ-21 */
+  portable: (props) => ({ search: props.search }),
+}

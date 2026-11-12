@@ -1,43 +1,37 @@
 /**
  * Visual mapping for the data-retention tiers.
  *
- * Colours are kept local here (consistent with the surrounding onboarding /
- * agent-core UI, which uses hardcoded hex). The MCA primitive token system
- * (components/mca/primitives/colors.ts) is scoped to MCA renderers, not this
- * general settings UI.
+ * Each tier maps onto one of the design system's status tints (green = zero
+ * retention, amber = retains, red = trains) and a Phosphor shield glyph. The
+ * concrete colours come from the active theme via `useRetentionVisual()`, so the
+ * badge/notice/modal follow light and dark mode.
  */
 
-import { Shield, ShieldAlert, ShieldCheck } from '@tamagui/lucide-icons'
-import type { RetentionTier } from '@teros/shared'
+import type { RetentionTier } from "@teros/shared"
+import type { TintKey } from "../mca/primitives/colors"
+import { useColors } from "../mca/primitives/useColors"
 
 export interface RetentionVisual {
-  /** Foreground (icon + text) colour. */
-  fg: string
-  /** Pill / banner background. */
-  bg: string
-  /** Border colour. */
-  border: string
-  /** Lucide icon component for the tier. */
-  Icon: typeof Shield
+  /** Status tint key of the theme (`c.tint[tint]`) — also the Badge tone. */
+  tint: TintKey
+  /** Phosphor icon name (kebab-case) for the tier. */
+  icon: string
+  /** Tile tone for the modal header. */
+  tile: "mint" | "amber" | "pink"
 }
 
 export const RETENTION_VISUALS: Record<RetentionTier, RetentionVisual> = {
-  zdr: {
-    fg: '#34D399',
-    bg: 'rgba(16, 185, 129, 0.12)',
-    border: 'rgba(16, 185, 129, 0.35)',
-    Icon: ShieldCheck,
-  },
-  retains: {
-    fg: '#F59E0B',
-    bg: 'rgba(245, 158, 11, 0.12)',
-    border: 'rgba(245, 158, 11, 0.35)',
-    Icon: Shield,
-  },
-  trains: {
-    fg: '#F87171',
-    bg: 'rgba(239, 68, 68, 0.12)',
-    border: 'rgba(239, 68, 68, 0.35)',
-    Icon: ShieldAlert,
-  },
+  zdr: { tint: "g", icon: "shield-check", tile: "mint" },
+  retains: { tint: "a", icon: "shield", tile: "amber" },
+  trains: { tint: "r", icon: "shield-warning", tile: "pink" },
+}
+
+/** Theme colours for a tier: foreground (icon + text), background and border. */
+export function useRetentionVisual(
+  tier: RetentionTier,
+): RetentionVisual & { fg: string; bg: string; border: string } {
+  const c = useColors()
+  const visual = RETENTION_VISUALS[tier]
+  const t = c.tint[visual.tint]
+  return { ...visual, fg: t.tx, bg: t.bg, border: t.bd }
 }

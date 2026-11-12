@@ -46,7 +46,7 @@ export function createDeleteTaskHandler(
       throw new HandlerError('NOT_FOUND', 'Task not found')
     }
 
-    pubSubService.broadcastToTopic(`board:${existing.boardId}`, { type: 'board_task_deleted', taskId })
+    pubSubService.broadcastToTopic(`board:${existing.boardId}`, { type: 'board_task_deleted', taskId, boardId: existing.boardId })
 
     return { taskId }
   }

@@ -137,7 +137,7 @@ describe('complete-my-task handler', () => {
 
     await handler(baseCtx, { taskId: TASK_ID, agentId: AGENT_ID });
 
-    expect(boardService.setRunning).toHaveBeenCalledWith(TASK_ID, false);
+    expect(boardService.setRunning).toHaveBeenCalledWith(TASK_ID, false, AGENT_ID);
   });
 
   it('triggers autoplay scheduling after completing', async () => {
@@ -265,7 +265,7 @@ describe('block-my-task handler', () => {
 
     await handler(baseCtx, { taskId: TASK_ID, reason: 'Blocked', agentId: AGENT_ID });
 
-    expect(boardService.setRunning).toHaveBeenCalledWith(TASK_ID, false);
+    expect(boardService.setRunning).toHaveBeenCalledWith(TASK_ID, false, AGENT_ID);
   });
 
   it('throws FORBIDDEN when task is not assigned to calling agent', async () => {
@@ -372,7 +372,7 @@ describe('cancel-my-task handler', () => {
 
     await handler(baseCtx, { taskId: TASK_ID, reason: 'cancelled', agentId: AGENT_ID });
 
-    expect(boardService.setRunning).toHaveBeenCalledWith(TASK_ID, false);
+    expect(boardService.setRunning).toHaveBeenCalledWith(TASK_ID, false, AGENT_ID);
     expect(callOrder).toEqual(['setRunning', 'archive']);
   });
 

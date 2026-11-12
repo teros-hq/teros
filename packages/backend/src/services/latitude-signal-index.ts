@@ -17,6 +17,7 @@
  */
 
 import type { Collection, Db } from "mongodb"
+import { COLLECTIONS, ensureCollectionIndexes } from "../db"
 
 /** Structural, content-free signal fields — the exact badge payload. */
 export interface LatitudeSignalBadge {
@@ -40,11 +41,9 @@ interface DeliveryDoc {
   createdAt: Date
 }
 
-/** 30 days — long enough that a recent session still shows its badge, short
- * enough to stay a disposable projection. Expiry just drops the badge. */
-const SIGNAL_TTL_SECONDS = 30 * 24 * 60 * 60
-/** Dedupe window for webhook redeliveries. */
-const DELIVERY_TTL_SECONDS = 24 * 60 * 60
+// TTLs (src/db/indexes.ts): signals 30 days — long enough that a recent
+// session still shows its badge, short enough to stay a disposable projection;
+// webhook deliveries 24 h, the dedupe window for redeliveries.
 const MONGO_DUPLICATE_KEY = 11000
 
 export class LatitudeSignalIndex {
@@ -57,16 +56,10 @@ export class LatitudeSignalIndex {
   }
 
   async ensureIndexes(): Promise<void> {
-    await this.signals.createIndex({ traceId: 1 }, { unique: true, name: "trace_unique" })
-    await this.signals.createIndex(
-      { updatedAt: 1 },
-      { expireAfterSeconds: SIGNAL_TTL_SECONDS, name: "signal_ttl" },
-    )
-    await this.deliveries.createIndex({ deliveryId: 1 }, { unique: true, name: "delivery_unique" })
-    await this.deliveries.createIndex(
-      { createdAt: 1 },
-      { expireAfterSeconds: DELIVERY_TTL_SECONDS, name: "delivery_ttl" },
-    )
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.signals, COLLECTIONS.latitudeSignalIndex)
+    await ensureCollectionIndexes(this.deliveries, COLLECTIONS.latitudeWebhookDeliveries)
   }
 
   /**

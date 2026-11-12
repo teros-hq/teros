@@ -29,6 +29,89 @@
         "status": "Filtrar por estado de la factura (ej. borrador, enviada, pagada)",
         "contactId": "Filtrar facturas por ID de contacto"
       }
+    },
+    "list-purchases": {
+      "name": "list-purchases",
+      "description": "Lista compras de Holded. Devuelve registros de compra con id, número, fecha, proveedor, total y estado. Soporta paginación.",
+      "params": {
+        "page": "Número de página para la paginación (por defecto: 1)",
+        "limit": "Número de resultados por página (por defecto: 25, máximo: 100)",
+        "contactId": "Filtrar compras por ID de contacto del proveedor",
+        "status": "Filtrar por estado de la compra (ej. borrador, enviada, pagada)"
+      }
+    },
+    "get-purchase": {
+      "name": "get-purchase",
+      "description": "Obtiene una compra de Holded por su ID, incluyendo las líneas de detalle y toda la información.",
+      "params": {
+        "id": "El ID de la compra en Holded"
+      }
+    },
+    "create-purchase": {
+      "name": "create-purchase",
+      "description": "Crea una nueva compra (factura de proveedor) en Holded. Requiere un contactId de proveedor existente y al menos una línea. Devuelve la compra creada con su id.",
+      "params": {
+        "contactId": "ID de contacto del proveedor (requerido — debe ser un contacto existente)",
+        "contactName": "Nombre del contacto proveedor (opcional)",
+        "items": "Líneas de la compra (requerido)",
+        "date": "Fecha de la compra (ISO 8601, ej. 2026-01-15)",
+        "dueDate": "Fecha de vencimiento del pago (ISO 8601)",
+        "description": "Descripción o título de la compra",
+        "notes": "Notas internas",
+        "currency": "Código de moneda (ej. EUR, USD)",
+        "language": "Código de idioma del documento (ej. es, en)",
+        "tags": "Etiquetas para asignar a la compra",
+        "customFields": "Campos personalizados como pares {field, value}",
+        "number": "Número de documento personalizado (opcional)",
+        "warehouseId": "ID de almacén para movimientos de stock",
+        "discount": "Descuento global en porcentaje (0-100)"
+      }
+    },
+    "update-purchase": {
+      "name": "update-purchase",
+      "description": "Actualiza una compra existente en Holded por su ID. Todos los campos son opcionales.",
+      "params": {
+        "id": "El ID de la compra en Holded",
+        "contactId": "ID de contacto del proveedor",
+        "contactName": "Nombre del contacto proveedor",
+        "items": "Líneas actualizadas de la compra (reemplazan las existentes)",
+        "date": "Fecha de la compra (ISO 8601)",
+        "dueDate": "Fecha de vencimiento del pago (ISO 8601)",
+        "description": "Descripción o título de la compra",
+        "notes": "Notas internas",
+        "currency": "Código de moneda (ej. EUR, USD)",
+        "language": "Código de idioma del documento (ej. es, en)",
+        "tags": "Etiquetas para asignar a la compra",
+        "customFields": "Campos personalizados como pares {field, value}",
+        "number": "Número de documento personalizado",
+        "warehouseId": "ID de almacén para movimientos de stock",
+        "discount": "Descuento global en porcentaje (0-100)"
+      }
+    },
+    "delete-purchase": {
+      "name": "delete-purchase",
+      "description": "Elimina una compra de Holded por su ID.",
+      "params": {
+        "id": "El ID de la compra en Holded"
+      }
+    },
+    "attach-purchase-file": {
+      "name": "attach-purchase-file",
+      "description": "Adjunta un archivo (p. ej. el PDF de la factura del proveedor) a una compra de Holded. Sube multipart/form-data real con el archivo en el campo `file` — máximo 10 MB. Acepta dataUrl (data:<mime>;base64,<payload>) o un string base64, más un filename. Devuelve la información del adjunto.",
+      "params": {
+        "purchaseId": "El ID de la compra en Holded",
+        "filename": "Nombre del archivo con extensión (ej. factura-proveedor.pdf)",
+        "contentType": "Tipo MIME (ej. application/pdf). Por defecto del dataUrl u octet-stream.",
+        "dataUrl": "Esquema data URI — formato exacto data:<mime>;base64,<base64Payload>. Requerido esto o base64.",
+        "base64": "Contenido del archivo en base64. Requerido esto o dataUrl."
+      }
+    },
+    "list-purchase-attachments": {
+      "name": "list-purchase-attachments",
+      "description": "Lista los archivos adjuntos de una compra de Holded por su ID.",
+      "params": {
+        "id": "El ID de la compra en Holded"
+      }
     }
   },
   "name": "Holded",

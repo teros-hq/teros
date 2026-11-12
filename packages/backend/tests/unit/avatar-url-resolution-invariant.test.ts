@@ -48,8 +48,12 @@ const RESOLVED_OUTPUT_SITES: Array<[string, RegExp]> = [
   // buildAgentCreatedPayload (lo consumen agent/create.ts y mca-resources-handlers.ts);
   // ése es ahora el punto canónico de resolución para AMBOS paths de creación (TER-611).
   ['lib/agent-payload.ts', /avatarUrl:\s*buildAvatarUrl\(agent\.avatarUrl\)/],
+  // El payload de `agent.updated` resuelve en buildAgentUpdatedPayload (lo consumen
+  // agent/update.ts y el upload REST http-upload-handler.ts); punto canónico para
+  // AMBOS paths de mutación de avatar (TER-644). Por eso update.ts ya NO resuelve
+  // inline (hereda del helper).
+  ['lib/agent-payload.ts', /avatarUrl:\s*buildAvatarUrl\(agent\.avatarUrl \|\| coreAvatarUrl\)/],
   ['handlers/domains/agent/list.ts', /avatarUrl:\s*buildAvatarUrl\(/],
-  ['handlers/domains/agent/update.ts', /avatarUrl:\s*buildAvatarUrl\(/],
   ['handlers/domains/agent/list-cores.ts', /avatarUrl:\s*buildAvatarUrl\(/],
   ['handlers/domains/agent/update-core.ts', /avatarUrl:\s*buildAvatarUrl\(/],
   ['handlers/domains/agent/create-core.ts', /avatarUrl:\s*buildAvatarUrl\(/],

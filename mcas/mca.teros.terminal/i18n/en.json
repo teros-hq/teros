@@ -1,0 +1,138 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to the backend terminal API."
+    },
+    "terminal-create": {
+      "name": "terminal-create",
+      "description": "Open a terminal session in the workspace's Linux machine (shared with the Bash app: same files, home and tools). The user watches and can type in the same session from their Terminal window (show, default true, brings it up there). With agent=\"claude\" (or \"codex\", \"opencode\") the session starts that coding agent with the user's own sign-in (installing it on first use) and waits until it is ready for a prompt — then use terminal-prompt. Without agent you get a bash shell — use terminal-run for commands. Each call opens a NEW session: check terminal-list first and reuse yours. Sessions are kept until terminal-destroy: idle ones sleep and wake (same directory, Claude Code on its conversation) the next time a tool uses them.",
+      "params": {
+        "agent": "Start a coding agent in the session: \"claude\" (Claude Code), \"codex\" or \"opencode\". The call returns once it is ready for a prompt (or says what it waits for).",
+        "cwd": "Working directory (default /workspace). For a shell, verified: cwdApplied tells whether the cd worked and cwdError carries the shell error (e.g. \"No such file or directory\").",
+        "title": "Short label the user sees in their session list — set one (e.g. \"deploy logs\", \"fix login bug\")",
+        "show": "Bring the session up in the user's Terminal window so they can watch (default: true)",
+        "cols": "Terminal width in columns (default: 120)",
+        "rows": "Terminal height in rows (default: 40)"
+      }
+    },
+    "terminal-prompt": {
+      "name": "terminal-prompt",
+      "description": "Send a prompt to the coding agent running in a session (Claude Code, Codex, opencode) and wait until its turn ends: it finished (done), asks something / wants a permission (blocked), needs a sign-in, or left. Returns what happened and the screen with its answer. Multi-line prompts are pasted as one message. If it is still working when the wait runs out, call terminal-wait until=\"turn\" — never send the prompt again. Also use it for slash commands (\"/clear\", \"/exit\") and to answer a free-text question.",
+      "params": {
+        "terminalId": "Session from terminal-create agent=…",
+        "text": "The prompt (any length, newlines allowed)",
+        "timeoutMs": "How long to wait for the turn to end (default 90000, max 100000)"
+      }
+    },
+    "terminal-wait": {
+      "name": "terminal-wait",
+      "description": "Wait for something to happen in a session instead of sleeping or polling, then get the screen. until: \"turn\" — the coding agent finished its turn, asks something, needs a sign-in or left (after terminal-prompt / terminal-send-key); \"ready\" — a coding agent started and waits for a prompt; \"exit\" — the running shell command finished; \"quiet\" — no output for quietMs (any program settled); \"text\" — the screen shows `text` (case-insensitive) or matches the regex `pattern`. Only what happens after your last write/prompt/key counts. A timeout is not an error: it says what is going on, and you can call it again. If a person takes the wheel in their Terminal window, the wait stops early (reason \"driver\"): don't type until they give it back — the next wait/read then carries their note (handedBack).",
+      "params": {
+        "terminalId": "Session id",
+        "until": "What to wait for (see the tool description)",
+        "text": "until=\"text\": text the screen must show",
+        "pattern": "until=\"text\": JavaScript regex matched against the whole screen",
+        "quietMs": "until=\"quiet\": how long without output counts as settled (default 1500)",
+        "timeoutMs": "Give up after this many ms (default 30000, max 100000)"
+      }
+    },
+    "terminal-run": {
+      "name": "terminal-run",
+      "description": "Run a command line in a shell session, wait for it to finish (up to timeoutMs) and return its output. The user sees it run in their Terminal window. For long or interactive programs it returns what they printed so far and that they are still running: then use terminal-wait until=\"exit\", terminal-screen, terminal-send-key (ctrl-c to stop). For a coding agent use terminal-prompt instead.",
+      "params": {
+        "terminalId": "Shell session from terminal-create",
+        "command": "The command line (newlines run several lines)",
+        "timeoutMs": "How long to wait for it to finish (default 30000, max 100000)"
+      }
+    },
+    "terminal-screen": {
+      "name": "terminal-screen",
+      "description": "The rendered screen of a session as plain text, as a person looking at it sees it, plus what runs in it and the coding agent's state. Use it for full-screen programs (Claude Code, vim, htop, menus, installers). onlyChanges returns just the rows that changed since your last look (row numbers from 0).",
+      "params": {
+        "terminalId": "Session id",
+        "onlyChanges": "Only the rows that changed since the last screen you got (default false)"
+      }
+    },
+    "terminal-read": {
+      "name": "terminal-read",
+      "description": "Read the output log of a session (escape codes removed): the last `lines` lines (default 200) or, with `since`, only what came after that cursor — every answer ends with the cursor to pass next time. Good for logs and command output; for full-screen programs (Claude Code, vim) use terminal-screen instead, the log of a TUI is redraw fragments.",
+      "params": {
+        "terminalId": "Session id",
+        "lines": "Return at most this many trailing lines (default: 200)",
+        "since": "Cursor from a previous read/run/wait-for: only output after it"
+      }
+    },
+    "terminal-write": {
+      "name": "terminal-write",
+      "description": "Type text into a session, then press Enter (sendEnter, default true). Low-level: prefer terminal-run for shell commands and terminal-prompt for coding agents, which also wait for the result. Multi-line text goes in as one paste when the program supports it. Use sendEnter false to fill an input without submitting it.",
+      "params": {
+        "terminalId": "Session id",
+        "text": "Text to type",
+        "sendEnter": "Press Enter after the text (default: true)"
+      }
+    },
+    "terminal-send-key": {
+      "name": "terminal-send-key",
+      "description": "Press one key or a sequence of keys in a session: pick menu options (keys [\"down\",\"enter\"]), answer a permission prompt (\"1\", \"enter\"), interrupt (ctrl-c), leave (ctrl-d), cancel (escape), cycle modes (shift-tab). Keys: enter, tab, shift-tab, escape, backspace, delete, space, up, down, left, right, home, end, pageup, pagedown, insert, f1–f12, ctrl-<letter> (ctrl-c, ctrl-d, ctrl-r…), alt-<key> (alt-b, alt-enter…), or a single character. Then terminal-wait to see the effect.",
+      "params": {
+        "terminalId": "Session id",
+        "key": "One key (see the description)",
+        "keys": "Several keys pressed in order, e.g. [\"down\",\"down\",\"enter\"]"
+      }
+    },
+    "terminal-wait-for": {
+      "name": "terminal-wait-for",
+      "description": "Wait until a line of the session's output log matches a JavaScript regex (checked against what is buffered, then every new line). By default only output after your last terminal-write counts, so the echo of the command itself never matches. For screens of full-screen programs and coding agents use terminal-wait (until=\"text\" / \"turn\").",
+      "params": {
+        "terminalId": "Session id",
+        "pattern": "JavaScript regex to match against output lines (e.g. \"\\$ $\", \"password:\", \"done\")",
+        "timeoutMs": "Give up after this many ms (default: 10000, max: 100000)",
+        "since": "Only consider output at or after this cursor (from read/run/wait-for)"
+      }
+    },
+    "terminal-list": {
+      "name": "terminal-list",
+      "description": "List the terminal sessions of this workspace (yours and the user's): id, title, what runs in it, the coding agent's state (working / blocked = waiting for someone / done), who is watching, and whether it is asleep (idle sessions freeze, then sleep; any tool that uses one wakes it). Reuse a session instead of opening a new one."
+    },
+    "terminal-show": {
+      "name": "terminal-show",
+      "description": "Show a session in the user's Terminal window (opens it as a tab there, or focuses it), so they can watch what happens in it. terminal-create already does this unless show=false.",
+      "params": {
+        "terminalId": "Session id"
+      }
+    },
+    "terminal-destroy": {
+      "name": "terminal-destroy",
+      "description": "Close a session and kill whatever runs in it. Only close sessions you opened, or that the user asked you to close.",
+      "params": {
+        "terminalId": "Session id"
+      }
+    }
+  },
+  "name": "Terminal",
+  "description": "Drive terminals the user watches: open Claude Code (or Codex/opencode) and give it tasks, or run shell commands. terminal-create agent=\"claude\" starts Claude Code with the user's sign-in; terminal-prompt sends a task and waits for its turn to end; terminal-run runs a command and returns its output; terminal-wait waits for a state; terminal-screen shows the screen. The user can take the wheel and give it back. Requires the Bash app (mca.teros.bash).",
+  "changelog": [
+    {
+      "notes": "terminal-create (with agent=…) and terminal-list say whether the user's coding-agent sign-in reaches the agent's sessions: signed in and shared with this workspace's agents, signed in but not shared, or not signed in, with the next step to ask the user for (never the credential itself). Same data as structuredContent.agentAuth."
+    },
+    {
+      "notes": "Sessions never expire any more, and pin is gone: idle sessions sleep instead. After 15 min with no input, output or viewer the workspace's terminal machine is frozen (no CPU, nothing lost); after 2 h frozen each session is saved and the machine stops. Every tool that uses a session (terminal-prompt, -run, -write, -send-key, -screen, -read, -wait, -wait-for) wakes it first and says so: a sleeping session comes back in the same directory with its old output shown dimmed, Claude Code resumes its conversation, and a program that was running (e.g. a dev server) is reported as not restarted. terminal-list shows frozen and sleeping sessions. terminal-create no longer takes pinned (still accepted, ignored)."
+    },
+    {
+      "notes": "Agent-first tools. New terminal-prompt (send a task to Claude Code/Codex/opencode and wait for its turn to end), terminal-wait (wait for a coding agent's turn, a ready agent, a finished command, quiet output or screen text — no sleeping or polling), terminal-run (run a shell command, get its output) and terminal-show (bring a session up in the user's Terminal window). terminal-create takes agent=claude|codex|opencode and returns once the agent is ready, shows the session in the user's window by default and gives every session a real title. Answers are plain text for the model (what happened, the screen, the next step) with the same data as structuredContent. terminal-send-key knows shift-tab, backspace, delete, home/end, page keys, F-keys, ctrl-<letter>, alt-<key> and key sequences. Multi-line text is pasted as one block into programs that support it."
+    },
+    {
+      "notes": "Sessions live in the workspace's terminal host (tmux): they survive backend restarts and the user watches/types in the same session from the Terminal window. New terminal-screen tool (rendered screen: rows, cursor, title, foreground command). terminal-create takes title and pinned; terminal-list reports title, command, agent state, pinned and watchers."
+    },
+    {
+      "notes": "The bridge only allows terminal.* backend actions (admin-api.* was declared but never used). Host shells were removed with mca.teros.admin.bash (2026-10-19): terminal sessions run in the workspace bash container."
+    },
+    {
+      "notes": "terminal-wait-for now matches interactive prompts (\"&#8250;&#8250;&#8250; \", \"$ \") that never end in newline: PtyManager evaluates the pending partial line as a virtual buffer line. E2E validated: integration suite (6 tests, scripted PTYs) + real-PTY smoke (scripts/smoke-terminal-mca.mts under node/tsx — bun+node-pty is unstable)."
+    },
+    {
+      "notes": "Initial release — create, write, read, wait-for, list and destroy interactive PTY sessions hosted in the workspace bash container"
+    }
+  ]
+}

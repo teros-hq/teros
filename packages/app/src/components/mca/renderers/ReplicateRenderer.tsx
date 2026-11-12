@@ -62,7 +62,7 @@ function FallbackRenderer({ toolName, input, status, output, error }: ToolCallRe
   return (
     <ToolCallCard
       status={status}
-      verb={shortName.replace(/-/g, ' ')}
+      description={shortName.replace(/-/g, ' ')}
       iconUri={REPLICATE_ICON}
       badge={badge}
       animateExpand

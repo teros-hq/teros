@@ -9,9 +9,7 @@
     "start": "bun src/index.ts"
   },
   "dependencies": {
-    "@teros/mca-sdk": "file:../../packages/mca-sdk",
-    "@qdrant/js-client-rest": "^1.12.0",
-    "openai": "^4.0.0"
+    "@teros/mca-sdk": "file:../../packages/mca-sdk"
   },
   "devDependencies": {
     "@types/bun": "latest"

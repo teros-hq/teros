@@ -3,6 +3,7 @@ import { getLinearClient } from '../lib';
 import { validateUuid } from './_linear-helpers';
 
 export const deleteProject: ToolConfig = {
+  annotations: { readOnlyHint: false, version: '1.1.0', stability: 'experimental' },
   description:
     'Permanently delete a Linear project. Irreversible. Issues in the project become detached (not deleted). Returns { success, projectId }.',
   parameters: {
@@ -12,7 +13,6 @@ export const deleteProject: ToolConfig = {
     },
     required: ['projectId'],
   },
-  annotations: { version: '1.1.0', stability: 'experimental' },
   handler: async (args, context) => {
     const client = await getLinearClient(context);
     const { projectId } = args as { projectId: string };

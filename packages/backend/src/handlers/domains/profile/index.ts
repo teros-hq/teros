@@ -9,6 +9,8 @@
  *   profile.complete-onboarding  → Mark onboarding wizard as completed
  *   profile.onboarding-status    → Get real-time onboarding checklist status
  *   profile.mark-changelog-seen  → Mark the last changelog entry the user has seen
+ *   profile.set-evaluation-consent → Opt-in toggle for anonymized conversation evaluation
+ *   profile.delete-account       → Erase the account (GDPR), re-authenticated
  */
 
 import { UserService } from '../../../auth/user-service'
@@ -21,6 +23,8 @@ import { createGetProfileStatsHandler } from './stats'
 import { createCompleteOnboardingHandler } from './complete-onboarding'
 import { createOnboardingStatusHandler } from './onboarding-status'
 import { createMarkChangelogSeenHandler } from './mark-changelog-seen'
+import { createSetEvaluationConsentHandler } from './consent'
+import { createDeleteAccountHandler } from './delete-account'
 
 interface ProfileDeps {
   db: Db
@@ -37,4 +41,6 @@ export function register(router: WsRouter, deps: ProfileDeps): void {
   router.register('profile.complete-onboarding', createCompleteOnboardingHandler(userService))
   router.register('profile.onboarding-status', createOnboardingStatusHandler(deps.db, userService))
   router.register('profile.mark-changelog-seen', createMarkChangelogSeenHandler(userService))
+  router.register('profile.set-evaluation-consent', createSetEvaluationConsentHandler(userService))
+  router.register('profile.delete-account', createDeleteAccountHandler(deps.db, userService))
 }

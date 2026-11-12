@@ -24,6 +24,7 @@ import {
   type GitHubRunConclusion,
   type GitHubRunStatus,
   GitHubToolShell,
+  actionLabel,
   relativeTime,
   runStatusChipProps,
   scrollStyle,
@@ -95,7 +96,7 @@ export function CreateCheckRunRenderer({ toolName, status, output, error, durati
       ? (parsed as CheckRunResult)
       : null;
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={check ? actionLabel(toolName, status, check.name) : actionLabel(toolName, status, 'check run')}>
       {error && <ErrorBlock error={error} />}
       {!error && check && <CheckRunBody check={check} />}
     </GitHubToolShell>
@@ -109,7 +110,7 @@ export function UpdateCheckRunRenderer({ toolName, status, output, error, durati
       ? (parsed as CheckRunResult)
       : null;
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={check ? actionLabel(toolName, status, check.name) : actionLabel(toolName, status, 'check run')}>
       {error && <ErrorBlock error={error} />}
       {!error && check && <CheckRunBody check={check} />}
     </GitHubToolShell>

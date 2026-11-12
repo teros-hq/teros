@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 export const addLabelsToIssue: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -26,6 +26,7 @@ export const addLabelsToIssue: ToolConfig = {
       issue_number: number;
       labels: string[];
     };
+    assertOwnerRepo(owner, repo);
     if (!Array.isArray(labels) || labels.length === 0) {
       throw new Error('`labels` must be a non-empty array of label names.');
     }

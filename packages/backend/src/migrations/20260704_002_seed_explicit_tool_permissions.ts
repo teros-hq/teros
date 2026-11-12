@@ -44,8 +44,13 @@ const migration: Migration = {
           const parsed = t.annotations ? McaToolAnnotationsSchema.safeParse(t.annotations) : null;
           return { name: t.name, annotations: parsed?.success ? parsed.data : undefined };
         });
-      } catch {
-        // No tools.json (external/retired MCA) — nothing to seed.
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException)?.code;
+        if (code === 'ENOENT') {
+          // Expected: external/retired MCAs have no tools.json — nothing to seed.
+        } else {
+          console.error(`[Migration 20260704_002] failed to load tools.json for ${mcaId}:`, err);
+        }
       }
       toolsCache.set(mcaId, defs);
       return defs;

@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -732,9 +735,9 @@
       },
       "annotations": {
         "readOnlyHint": false,
+        "irreversible": true,
         "version": "1.0.0",
-        "stability": "experimental",
-        "irreversible": true
+        "stability": "experimental"
       }
     },
     {
@@ -924,9 +927,9 @@
       },
       "annotations": {
         "readOnlyHint": false,
+        "irreversible": true,
         "version": "1.0.0",
-        "stability": "stable",
-        "irreversible": true
+        "stability": "stable"
       }
     },
     {

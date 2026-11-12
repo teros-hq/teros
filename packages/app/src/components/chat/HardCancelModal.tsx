@@ -1,15 +1,19 @@
-import React from 'react';
-import { Button, Dialog, Paragraph, XStack, YStack } from 'tamagui';
-import { t } from '../../lib/i18n';
+import React from "react"
+import { View } from "react-native"
+import { Dialog } from "tamagui"
+import { useColors } from "../mca/primitives/useColors"
+import { Btn, T } from "../ui/ds"
+import { t } from "../../lib/i18n"
 
 interface HardCancelModalProps {
-  open: boolean;
-  hasIrreversibleToolInFlight?: boolean;
-  irreversibleToolName?: string;
-  onConfirm: () => void | Promise<void>;
-  onCancel: () => void;
+  open: boolean
+  hasIrreversibleToolInFlight?: boolean
+  irreversibleToolName?: string
+  onConfirm: () => void | Promise<void>
+  onCancel: () => void
 }
 
+/** The hard-cancel confirmation — a card (one step off the sheet) with serif title, sans body and pill actions. */
 export function HardCancelModal({
   open,
   hasIrreversibleToolInFlight = false,
@@ -17,15 +21,16 @@ export function HardCancelModal({
   onConfirm,
   onCancel,
 }: HardCancelModalProps): React.ReactElement {
+  const c = useColors()
   const body = hasIrreversibleToolInFlight
-    ? t('chat.stop.hardConfirm.bodyWithIrreversible', {
-        toolName: irreversibleToolName ?? 'tool',
+    ? t("chat.stop.hardConfirm.bodyWithIrreversible", {
+        toolName: irreversibleToolName ?? "tool",
       })
-    : t('chat.stop.hardConfirm.bodyNoIrreversible');
+    : t("chat.stop.hardConfirm.bodyNoIrreversible")
 
   const confirmLabel = hasIrreversibleToolInFlight
-    ? t('chat.stop.hardConfirm.confirmWait')
-    : t('chat.stop.hardConfirm.confirm');
+    ? t("chat.stop.hardConfirm.confirmWait")
+    : t("chat.stop.hardConfirm.confirm")
 
   return (
     <Dialog modal open={open} onOpenChange={(o) => (!o ? onCancel() : null)}>
@@ -33,46 +38,44 @@ export function HardCancelModal({
         <Dialog.Overlay
           key="overlay"
           animation="card"
-          opacity={0.5}
+          backgroundColor="rgba(32,28,39,0.45)"
           enterStyle={{ opacity: 0 }}
           exitStyle={{ opacity: 0 }}
         />
         <Dialog.Content
           key="content"
-          bordered
-          elevate
           animation="card"
           enterStyle={{ opacity: 0, scale: 0.96 }}
           exitStyle={{ opacity: 0, scale: 0.96 }}
           transformOrigin="top"
           width={460}
-          padding="$5"
-          gap="$4"
+          maxWidth="92%"
+          padding={24}
+          gap={16}
+          borderWidth={0}
+          borderRadius={16}
+          backgroundColor={c.bgStep}
+          // @ts-ignore web-only lift
+          style={{ boxShadow: c.elevRaised }}
         >
-          <Dialog.Title fontWeight="600" fontSize="$6">
-            {t('chat.stop.hardConfirm.title')}
+          <Dialog.Title asChild>
+            <T step="hsm">{t("chat.stop.hardConfirm.title")}</T>
           </Dialog.Title>
-          <YStack gap="$3">
-            <Paragraph fontSize="$3" lineHeight="$2">
+          <Dialog.Description asChild>
+            <T step="sm" tone="text2">
               {body}
-            </Paragraph>
-          </YStack>
-          <XStack gap="$3" justifyContent="flex-end">
-            <Dialog.Close asChild>
-              <Button size="$3" onPress={onCancel}>
-                {t('chat.stop.hardConfirm.deny')}
-              </Button>
-            </Dialog.Close>
-            <Button
-              size="$3"
-              theme="red"
-              onPress={onConfirm}
-            >
+            </T>
+          </Dialog.Description>
+          <View style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end" }}>
+            <Btn variant="ghost" onPress={onCancel}>
+              {t("chat.stop.hardConfirm.deny")}
+            </Btn>
+            <Btn variant="danger" icon="stop" onPress={onConfirm}>
               {confirmLabel}
-            </Button>
-          </XStack>
+            </Btn>
+          </View>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog>
-  );
+  )
 }

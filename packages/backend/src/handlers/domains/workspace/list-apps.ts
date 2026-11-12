@@ -26,7 +26,10 @@ export function createListWorkspaceAppsHandler(
       throw new HandlerError('ACCESS_DENIED', 'You do not have access to this workspace')
     }
 
-    const apps = await mcaService.listWorkspaceApps(data.workspaceId)
+    // MUW-REQ-13: shared apps plus the caller's own personal apps.
+    const apps = (await mcaService.listWorkspaceApps(data.workspaceId)).filter((app) =>
+      mcaService.isAppVisibleTo(app, ctx.userId),
+    )
 
     const appsWithInfo = await Promise.all(
       apps.map(async (app) => {
@@ -43,6 +46,9 @@ export function createListWorkspaceAppsHandler(
           accentColors: mca?.accentColors ?? [],
           category: mca?.category || 'other',
           status: app.status,
+          // MUW-REQ-10/11: scope and owner — both required since migration 20261102_002.
+          scope: app.scope,
+          installedBy: app.installedBy,
           volumes: app.volumes,
           // App.context — the per-app instructions. Without it the AppWindow
           // can't show or edit saved instructions (it reads app.context), so

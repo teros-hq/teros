@@ -5,15 +5,18 @@
  * (both stdio and HTTP transports).
  */
 
-import { McaToolAnnotationsSchema } from '@teros/shared';
+import { McaToolAnnotationsSchema, REMOTE_MCA_ID, type RemoteToolResultPayload } from '@teros/shared';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import type { Db } from 'mongodb';
 import { captureException } from '../lib/sentry';
 import { createLogger } from '../lib/logger';
 import type { McaConnectionManager } from './mca-connection-manager';
 import type { McaContainerManager } from './mca-container-manager';
 import type { McaHttpClient } from './mca-http-client';
 import type { McaService } from './mca-service';
+import { MACHINE_UNREACHABLE_HINT, type RemoteDeviceGateway } from './remote-device-gateway';
+import type { RemoteOfflineNotifier } from './remote-offline-notifier';
 import type {
   HealthCheckResult,
   ManagedMca,
@@ -24,6 +27,7 @@ import type {
 } from './mca-manager.types';
 import { isHealthReady, truncateToolOutput } from './mca-manager.types';
 import { normalizeToolName } from '../types/permissions';
+import { issueMcaCallGrant } from './mca-call-grants';
 
 const log = createLogger('McaManager');
 
@@ -36,6 +40,12 @@ export interface ToolsContext {
   containerManager: McaContainerManager;
   httpClients: Map<string, McaHttpClient>;
   connectionManager?: McaConnectionManager;
+  /** Teros Remote tunnel gateway — routes mca.teros.remote app instances (no container). */
+  remoteGateway?: RemoteDeviceGateway;
+  /** Transfer plane (v0.7.0, REQ-14): bridges pull-file/push-file to the tunnel transfer messages. */
+  transferService?: import('./remote-transfer-service').RemoteTransferService;
+  /** T-REM-7: posts "device offline / back online" system events to the channel. */
+  remoteOfflineNotifier?: RemoteOfflineNotifier;
   staticToolsCache: Map<string, StaticToolDefinition[]>;
   containerBackendHost: string;
   config: Required<Omit<McaManagerConfig, 'secretsManager' | 'authManager' | 'volumeService'>> &
@@ -215,6 +225,8 @@ export async function executeTool(
     userDisplayName?: string;
     userAvatarUrl?: string;
     signal?: AbortSignal;
+    /** UI path (app.execute-tool): skip the 200K LLM-context truncation. */
+    skipTruncation?: boolean;
   },
 ): Promise<{ output: string; isError: boolean; mcaId: string; attachments?: Array<{ url: string; mime: string; filename?: string }> }> {
   let managed: ManagedMca | undefined;
@@ -245,21 +257,18 @@ export async function executeTool(
   }
 
   if (!managed) {
-    log.warn({ toolName }, 'executeTool called without appId - using fallback lookup');
-    for (const mca of ctx.mcas.values()) {
-      if (mca.toolNameMapping.has(toolName)) { managed = mca; break; }
-    }
-    if (!managed) {
-      const appName = toolName.split('_')[0];
-      for (const mca of ctx.mcas.values()) {
-        if (mca.appName === appName) { managed = mca; break; }
-      }
-    }
-  }
-
-  if (!managed) {
+    // Fail-closed: appId is mandatory. The old fallback searched the global
+    // ctx.mcas map by tool name / app-name prefix, which could resolve to
+    // another tenant's app instance — a cross-tenant access bug.
+    // @fixme nira - 2026.08.14 : removed cross-tenant fallback (incident-2026-08-14)
+    const err = new Error(
+      `[McaManager] executeTool called without appId for tool '${toolName}'. ` +
+        'appId is mandatory — refusing to resolve via global fallback (cross-tenant security).',
+    );
+    log.error({ toolName }, err.message);
+    captureException(err, { context: 'executeTool.missingAppId', toolName });
     return {
-      output: `Error: Tool '${toolName}' not found. The MCA may not be installed or configured.`,
+      output: `Error: Tool '${toolName}' cannot be executed without an appId. This is a security requirement.`,
       isError: true,
       mcaId: 'unknown',
     };
@@ -273,19 +282,57 @@ export async function executeTool(
     };
   }
 
-  const cachedHealth = getCachedHealthIfNotReady(ctx, managed.appId);
-  if (cachedHealth) {
-    log.debug({ appId: managed.appId }, 'MCA not ready, returning cached health error');
-    return {
-      output: JSON.stringify({
-        error: 'MCA_NOT_READY',
-        message: cachedHealth.message || 'MCA is not ready',
-        status: cachedHealth.status,
-        issues: cachedHealth.issues,
-      }),
-      isError: true,
-      mcaId: managed.mcaId,
-    };
+  // MUW-REQ-12b — the critical rule on the agent path: a personal app never
+  // runs inside a shared conversation. Same gate as app.execute-tool (UI path);
+  // covers HTTP and stdio MCAs alike because every call goes through here.
+  if (context?.channelId) {
+    const app = await ctx.mcaService.getApp(managed.appId);
+    if (app && (await ctx.mcaService.isAppBlockedInChannel(app, context.channelId))) {
+      log.info({ appId: managed.appId, channelId: context.channelId, toolName }, 'PERSONAL_APP_BLOCKED');
+      return {
+        output:
+          `Error: PERSONAL_APP_BLOCKED — the app '${app.name}' is personal and cannot be used in a shared conversation. ` +
+          'Ask the member who installed it to make it shared, or continue in a personal conversation.',
+        isError: true,
+        mcaId: managed.mcaId,
+      };
+    }
+  }
+
+  // Teros Remote: app instances of mca.teros.remote never spawn a container.
+  // The call is tunneled to the paired machine through RemoteDeviceGateway
+  // (docs/specs/remote/teros-remote.md § MCA Routing). Same chokepoint as the
+  // container path, so the executor's permission gate, ask flow and
+  // instrumentation above are untouched; the app stays in 'standby' here.
+  if (managed.mcaId === REMOTE_MCA_ID) {
+    return executeToolViaRemote(ctx, managed, toolName, input, context);
+  }
+
+  // Cached not-ready health only blocks execution when the MCA is actually
+  // running (status 'ready') — i.e. the process is up but reports itself sick
+  // (expired OAuth, broken credentials…). When the MCA is NOT running
+  // (standby/error/stopping), the cached health is a snapshot of a *dormant*
+  // process, not a diagnosis: a health check without forceSpawn caches
+  // `unknown`/`not_ready` for MCAs that were never started. Returning that as
+  // a terminal error here would deadlock wake-on-demand — the only path that
+  // can start the MCA is this very tool call (getOrSpawn below). Regression:
+  // after a backend restart, every container MCA (containerMode per-app) sat
+  // blocked on `MCA_NOT_READY (status: standby)` until another restart.
+  if (managed.status === 'ready') {
+    const cachedHealth = getCachedHealthIfNotReady(ctx, managed.appId);
+    if (cachedHealth) {
+      log.debug({ appId: managed.appId }, 'MCA running but not ready, returning cached health error');
+      return {
+        output: JSON.stringify({
+          error: 'MCA_NOT_READY',
+          message: cachedHealth.message || 'MCA is not ready',
+          status: cachedHealth.status,
+          issues: cachedHealth.issues,
+        }),
+        isError: true,
+        mcaId: managed.mcaId,
+      };
+    }
   }
 
   if (managed.status !== 'ready') {
@@ -322,6 +369,12 @@ export async function executeTool(
     };
   }
 
+  // Scope is a visibility flag only — it controls which channels can use
+  // an app (personal apps are blocked in public channels). It does NOT affect
+  // credential resolution. All apps use app-level credentials (secrets, env
+  // vars). Per-user credential storage (app_user_auth) was removed to simplify
+  // the system — one app, one set of credentials.
+
   log.debug({ appId: managed.appId }, 'Executing tool');
 
   const httpClient = ctx.httpClients.get(managed.appId);
@@ -334,7 +387,7 @@ export async function executeTool(
   }
 
   if (httpClient) {
-    return executeToolViaHttp(ctx, managed, originalToolName, input, httpClient, context);
+    return executeToolViaHttp(ctx, managed, originalToolName, input, httpClient, context, false);
   }
 
   if (!managed.client) {
@@ -347,7 +400,11 @@ export async function executeTool(
 
   try {
     managed.lastUsed = new Date();
-    const result = await managed.client.callTool({ name: originalToolName, arguments: input });
+    // For stdio transport, inject per-user credentials into tool arguments
+    // under a reserved key. The MCA SDK stdio server extracts and applies
+    // them per-call via context.getUserSecrets() (MUW-F3).
+    const stdioArgs = input;
+    const result = await managed.client.callTool({ name: originalToolName, arguments: stdioArgs });
 
     let output = '';
     const attachments: Array<{ url: string; mime: string; filename?: string }> = [];
@@ -374,7 +431,7 @@ export async function executeTool(
         });
       }
     }
-    output = truncateToolOutput(output, toolName, managed.appId);
+    output = truncateToolOutput(output, toolName, managed.appId, context?.skipTruncation === true);
     const isError = result.isError === true;
     log.debug({ appId: managed.appId, attachmentCount: attachments.length }, 'Tool execution succeeded');
     return { output, isError, mcaId: managed.mcaId, ...(attachments.length > 0 ? { attachments } : {}) };
@@ -387,6 +444,208 @@ export async function executeTool(
       mcaId: managed.mcaId,
     };
   }
+}
+
+/**
+ * Tunnel a tool call to the paired machine of an `mca.teros.remote` app
+ * instance. Output shaping mirrors `executeToolViaHttp` so filesystem/bash
+ * results render identically whatever the target (spec § Unified machine tool
+ * surface); structured errors keep their code + hint so agents self-correct
+ * (FORBIDDEN lists the roots, MACHINE_UNREACHABLE says how to reconnect).
+ *
+ * T-REM-7: when the gateway reports MACHINE_UNREACHABLE with a diagnostic in
+ * `error.details`, and the call carries a `channelId`, we also post a system
+ * event into the channel so the *user* sees "midgar is offline — run
+ * `teros-remote start`" without depending on the agent relaying it. The
+ * notifier rate-limits per device (5 min) so retry loops don't spam.
+ */
+export async function executeToolViaRemote(
+  ctx: ToolsContext,
+  managed: ManagedMca,
+  toolName: string,
+  input: Record<string, any>,
+  context?: {
+    agentId?: string;
+    channelId?: string;
+    appId?: string;
+    userId?: string;
+    workspaceId?: string;
+    signal?: AbortSignal;
+    /** UI path (app.execute-tool): skip the 200K LLM-context truncation. */
+    skipTruncation?: boolean;
+  },
+): Promise<{ output: string; isError: boolean; mcaId: string }> {
+  const originalToolName = managed.toolNameMapping.get(toolName);
+  if (!originalToolName) {
+    return {
+      output: `Error: Tool mapping not found for '${toolName}'. This may be a configuration issue.`,
+      isError: true,
+      mcaId: managed.mcaId,
+    };
+  }
+  managed.lastUsed = new Date();
+
+  // @todo alice - 2026.10.18 : REQ-10 asks the bash permission prompt to state
+  // the real scope («full access as user <name> — NOT limited to <roots>») from
+  // the device's hello; today the ask renders tools.json's placeholder text.
+  // Needs a hook in the executor's permission prose (permission-manager) that
+  // can read ctx.remoteGateway.getConnectedDevice({ appId }).hello.
+  let result: RemoteToolResultPayload;
+  if (!ctx.remoteGateway) {
+    result = {
+      success: false,
+      duration: 0,
+      error: {
+        code: 'MACHINE_UNREACHABLE',
+        message: 'Teros Remote gateway is not available on this backend.',
+        hint: MACHINE_UNREACHABLE_HINT,
+      },
+    };
+  } else if (
+    (originalToolName === 'pull-file' || originalToolName === 'push-file') &&
+    ctx.transferService
+  ) {
+    // (handled below — single-file transfer plane)
+    // Transfer plane (v0.7.0, REQ-14): pull-file/push-file run over the
+    // dedicated transfer messages — bytes never transit a tool result.
+    const wsId = context?.workspaceId;
+    if (!wsId) {
+      result = {
+        success: false,
+        duration: 0,
+        error: {
+          code: 'INVALID_ARGUMENTS',
+          message: `${originalToolName} needs a workspace context to resolve the /workspace path.`,
+        },
+      };
+    } else {
+      const transferArgs = {
+        appId: managed.appId,
+        workspaceId: wsId,
+        filePath: String(input.filePath ?? ''),
+        ...(input.destinationPath ? { destinationPath: String(input.destinationPath) } : {}),
+        ...(input.sourcePath ? { sourcePath: String(input.sourcePath) } : {}),
+        ...(input.mode ? { mode: input.mode as 'create' | 'overwrite' | 'resume' } : {}),
+        ...(input.resumeToken ? { resumeToken: String(input.resumeToken) } : {}),
+        ...(context?.signal ? { signal: context.signal } : {}),
+      };
+      const tr =
+        originalToolName === 'pull-file'
+          ? await ctx.transferService.pullFile(transferArgs)
+          : await ctx.transferService.pushFile({
+              ...transferArgs,
+              sourcePath: String(input.sourcePath ?? ''),
+            });
+      if ('error' in tr && tr.error) {
+        result = { success: false, duration: 0, error: tr.error };
+      } else {
+        result = { success: true, duration: (tr as { durationMs?: number }).durationMs ?? 0, result: tr };
+      }
+    }
+  } else {
+    // Directory plane (v0.8.0): pull/push/sync-directory orchestrate per-file
+    // transfers on the daemon and can run for minutes — give them a budget
+    // well beyond the default tool-call timeout.
+    const isDirectoryTool =
+      originalToolName === 'pull-directory' ||
+      originalToolName === 'push-directory' ||
+      originalToolName === 'sync-directory';
+    result = await ctx.remoteGateway.dispatch(
+      { appId: managed.appId },
+      {
+        tool: originalToolName,
+        arguments: input,
+        signal: context?.signal,
+        ...(isDirectoryTool ? { timeoutMs: 30 * 60_000 } : {}),
+      },
+    );
+  }
+
+  // T-REM-7: surface the failure to the *user* as a channel system event, not
+  // just to the LLM. The notifier is wired from bootstrap and rate-limits per
+  // device; we fire-and-forget so a slow channel write never delays the tool
+  // response back to the agent.
+  if (
+    !result.success &&
+    result.error?.code === 'MACHINE_UNREACHABLE' &&
+    context?.channelId &&
+    ctx.remoteOfflineNotifier
+  ) {
+    const details = (result.error.details ?? {}) as Record<string, unknown>;
+    const diagnostic = details.diagnostic as
+      | 'device_offline'
+      | 'device_unknown'
+      | 'device_revoked'
+      | 'session_dead'
+      | undefined;
+    if (diagnostic) {
+      const lastSeenAt =
+        typeof details.lastSeenAt === 'string' ? new Date(details.lastSeenAt) : undefined;
+      const lastSeenAgeMs =
+        lastSeenAt instanceof Date && !Number.isNaN(lastSeenAt.getTime())
+          ? Math.max(0, Date.now() - lastSeenAt.getTime())
+          : null;
+      const device =
+        typeof details.deviceId === 'string'
+          ? ({
+              deviceId: details.deviceId,
+              name: (details.deviceName as string | undefined) ?? 'remote machine',
+              hostname: (details.hostname as string | undefined) ?? '',
+              lastSeenAt,
+            } as any)
+          : null;
+      void ctx.remoteOfflineNotifier
+        .notifyOffline(
+          context.channelId,
+          { diagnostic, device, lastSeenAgeMs },
+          { appId: managed.appId, deviceId: (details.deviceId as string | undefined) ?? undefined },
+        )
+        .catch((err) =>
+          log.warn({ err, appId: managed.appId }, 'remote offline notification failed'),
+        );
+    }
+  }
+
+  let output = '';
+  if (result.success && result.result !== undefined) {
+    const r: any = result.result;
+    if (typeof r === 'string') {
+      output = r;
+    } else if (typeof r?.output === 'string') {
+      output = r.output;
+    } else if (r?.content && Array.isArray(r.content)) {
+      output = r.content
+        .filter((c: any) => c?.type === 'text' && typeof c.text === 'string')
+        .map((c: any) => c.text)
+        .join('\n');
+    } else {
+      output = JSON.stringify(r, null, 2);
+    }
+  } else if (result.error) {
+    // Keep the structured shape: the LLM reads code + hint, renderers can parse it.
+    output = JSON.stringify(
+      {
+        error: result.error.code,
+        message: result.error.message,
+        ...(result.error.hint ? { hint: result.error.hint } : {}),
+        ...(result.error.details ? { details: result.error.details } : {}),
+        // TIMEOUT / CANCELLED on bash carry partial stdout/stderr as the result.
+        ...(result.result !== undefined ? { partialResult: result.result } : {}),
+      },
+      null,
+      2,
+    );
+  } else {
+    output = result.success ? '' : 'Error: remote call failed without details';
+  }
+
+  output = truncateToolOutput(output, toolName, managed.appId, context?.skipTruncation === true);
+  if (!result.success) {
+    log.warn({ appId: managed.appId, tool: originalToolName, code: result.error?.code }, 'Remote tool call failed');
+  } else {
+    log.debug({ appId: managed.appId, tool: originalToolName, duration: result.duration }, 'Remote tool call succeeded');
+  }
+  return { output, isError: !result.success, mcaId: managed.mcaId };
 }
 
 export async function executeToolViaHttp(
@@ -404,6 +663,8 @@ export async function executeToolViaHttp(
     userDisplayName?: string;
     userAvatarUrl?: string;
     signal?: AbortSignal;
+    /** UI path (app.execute-tool): skip the 200K LLM-context truncation. */
+    skipTruncation?: boolean;
   },
   isRetryAfterRespawn = false,
 ): Promise<{ output: string; isError: boolean; mcaId: string; attachments?: Array<{ url: string; mime: string; filename?: string }> }> {
@@ -412,6 +673,15 @@ export async function executeToolViaHttp(
     ctx.containerManager.touch(managed.containerKey || managed.mcaId);
 
     const callbackHost = managed.containerKey ? ctx.containerBackendHost : 'localhost';
+    const callbackSegment = context?.userId
+      ? issueMcaCallGrant({
+          appId: managed.appId,
+          userId: context.userId,
+          channelId: context.channelId,
+          workspaceId: context.workspaceId,
+          agentId: context.agentId,
+        })
+      : managed.appId;
     const executionContext = {
       userId: context?.userId || 'system',
       workspaceId: context?.workspaceId,
@@ -421,7 +691,9 @@ export async function executeToolViaHttp(
       channelId: context?.channelId,
       appId: managed.appId,
       requestId: `req-${Date.now()}`,
-      callbackUrl: `http://${callbackHost}:${ctx.config.serverPort}/mca/callback/${managed.appId}`,
+      callbackUrl: `http://${callbackHost}:${ctx.config.serverPort}/mca/callback/${callbackSegment}`,
+      // MUW-F3: per-execution credentials for personal apps — scoped to
+      // this call only, no global WS push, no race between concurrent users.
     };
 
     const result = await httpClient.callTool(toolName, input, executionContext, {
@@ -451,7 +723,8 @@ export async function executeToolViaHttp(
         output = JSON.stringify(r, null, 2);
       }
     } else if (result.error) {
-      output = `Error: ${result.error.message || result.error.code}`;
+      const message = result.error.message || result.error.code;
+      output = /^\[[A-Z][A-Z0-9_]*\] /.test(message) ? message : `Error: ${message}`;
     }
 
     // Extract attachments from explicit attachments field on the result wrapper
@@ -467,8 +740,42 @@ export async function executeToolViaHttp(
       }
     }
 
-    output = truncateToolOutput(output, toolName, managed.appId);
+    output = truncateToolOutput(output, toolName, managed.appId, context?.skipTruncation === true);
     const isError = !result.success;
+
+    // Self-healing: if the container rejected the request with a signature
+    // error ("missing signature or toolCallId"), the HTTP client's signing
+    // secret may be stale or missing. This happens when the container was
+    // started by a previous backend session and the in-memory callbackTokens
+    // map was cleared on restart. Drop the stale HTTP client, respawn the
+    // container (which generates a fresh token), and retry once.
+    if (isError && !isRetryAfterRespawn && result.error?.code === 'UNAUTHORIZED'
+        && /missing signature or toolCallId/i.test(result.error.message || '')) {
+      log.warn(
+        { toolName, appId: managed.appId, mcaId: managed.mcaId },
+        'Container rejected unsigned request — dropping stale HTTP client, respawning and retrying',
+      );
+      try {
+        ctx.mcas.delete(managed.appId);
+        ctx.httpClients.delete(managed.appId);
+        await ctx.containerManager.stop(managed.containerKey || managed.mcaId);
+        const fresh = await ctx.getOrSpawn(managed.appId);
+        const freshClient = ctx.httpClients.get(managed.appId);
+        if (fresh?.status === 'ready' && freshClient) {
+          return executeToolViaHttp(ctx, fresh, toolName, input, freshClient, context, true);
+        }
+        log.error(
+          { appId: managed.appId, status: fresh?.status },
+          'Respawn after signature rejection did not reach ready state',
+        );
+      } catch (respawnError: any) {
+        log.error(
+          { err: respawnError, appId: managed.appId },
+          'Respawn after signature rejection failed',
+        );
+      }
+    }
+
     log.debug({ appId: managed.appId, attachmentCount: attachments.length }, 'HTTP tool execution succeeded');
     return { output, isError, mcaId: managed.mcaId, ...(attachments.length > 0 ? { attachments } : {}) };
   } catch (error: any) {

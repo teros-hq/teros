@@ -109,7 +109,7 @@ export function assertSafeSkillText(text: string, field: string): void {
  * `&lt;` como `<`, así que el texto se lee igual; solo pierde la capacidad de
  * romper la estructura.
  */
-const PROMPT_BLOCK_TAG = /<(\/?)(available_skills|skill|project|context|file)\b/gi
+const PROMPT_BLOCK_TAG = /<(\/?)(available_skills|skill|loaded_skill|project|context|file)\b/gi
 
 export function neutralizePromptTags(text: string): string {
   return text.replace(PROMPT_BLOCK_TAG, "&lt;$1$2")

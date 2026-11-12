@@ -68,7 +68,11 @@ describe('ToolCallBlock — dispatcher', () => {
       duration: 42,
       attachments: [{ url: 'http://a/1', mime: 'image/png' }],
       appId: 'app_1',
-      appIcon: 'http://be.test/static/mcas/mca.x/icon.png',
+      // Forwarded as well as being used to derive appIcon: `mcaId` keys layer 1
+      // of the approval intent ladder (the per-MCA permission descriptions).
+      // Omitting it left that layer permanently dead in production.
+      mcaId: 'mca.x',
+      appIcon: 'http://be.test/static/mcas/mca.x/icon.svg',
       permissionRequestId: 'pr_1',
       irreversible: true,
     })
@@ -92,10 +96,15 @@ describe('ToolCallBlock — dispatcher', () => {
     expect(h.captured.props).toBeUndefined()
   })
 
-  it('execute-tool sin tunelar (resolución fallida) sí renderiza — bloque de error genérico', () => {
+  it('execute-tool sin tunelar (resolución fallida) también se oculta — es ruido interno del agente', () => {
+    // Las llamadas resolubles llegan tuneladas al nombre de la tool objetivo
+    // backend-side, así que todo bloque execute-tool que llega a la UI es una
+    // llamada unresolvable (typo del modelo). El agente se autocorrige con el
+    // error; el usuario solo debe ver la llamada final correcta.
     const tool: ToolCall = { toolCallId: 'tc_e', toolName: 'execute-tool', status: 'failed', error: 'boom' }
     renderWithTamagui(<ToolCallBlock tool={tool} />)
 
-    expect(h.getRenderer).toHaveBeenCalledWith(undefined, 'execute-tool')
+    expect(h.getRenderer).not.toHaveBeenCalled()
+    expect(h.captured.props).toBeUndefined()
   })
 })

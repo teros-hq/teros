@@ -12,7 +12,22 @@
 import { generateSkillId } from '@teros/core';
 import type { Db, WithId } from 'mongodb';
 import type { AgentSkillAccess, Skill } from '../types/database';
-import { assertSafeSkillText, MAX_SKILL_CONTENT_CHARS, SkillSanitizationError } from './prompt-safety';
+import { assertSafeSkillText, MAX_SKILL_CONTENT_CHARS, neutralizePromptTags, SkillSanitizationError } from './prompt-safety';
+
+/** Progressive-disclosure loading mode for a skill. */
+export type SkillLoadMode = 'always' | 'on-demand';
+
+/** An on-demand skill as advertised in the <available_skills> index (no content). */
+export interface OnDemandSkillIndexEntry {
+  skillId: string;
+  name: string;
+  description?: string;
+}
+
+/** Runtime guard for a client-supplied loadMode value (no shared Zod schema exists). */
+export function isValidLoadMode(value: unknown): value is SkillLoadMode {
+  return value === 'always' || value === 'on-demand';
+}
 
 /**
  * Write-time guard (TER-379 / SEC-002/013): rechaza Unicode invisible/bidi y
@@ -116,9 +131,12 @@ export class SkillService {
    *
    * @param workspaceId - Workspace the skill belongs to
    * @param userId      - User creating the skill
-   * @param data        - Skill fields (name required; description, content, category, tags optional)
+   * @param data        - Skill fields (name required; description, content, category, tags, loadMode optional)
    * @returns The created skill document
-   * @throws If name is already taken within the workspace (MongoDB unique index)
+   *
+   * NOTE: skill names are NOT enforced unique within a workspace (no unique index,
+   * no collision check). Name-based resolution (loadSkillForInjection) must therefore
+   * disambiguate via agent assignment rather than assuming a single match.
    */
   async createSkill(
     workspaceId: string,
@@ -129,6 +147,7 @@ export class SkillService {
       content: string;
       category?: Skill['category'];
       tags?: string[];
+      loadMode?: 'always' | 'on-demand';
     },
   ): Promise<Skill> {
     if (!data.name || data.name.trim() === '') {
@@ -148,6 +167,7 @@ export class SkillService {
       content: data.content,
       category: data.category,
       tags: data.tags ?? [],
+      loadMode: data.loadMode ?? 'on-demand',
       createdBy: userId,
       createdAt: now,
       updatedAt: now,
@@ -180,13 +200,14 @@ export class SkillService {
 
   /**
    * Update a skill's mutable fields.
-   * Only name, description, content, category, and tags can be updated.
+   * Only name, description, content, category, tags, and loadMode can be updated.
    * updatedAt is always refreshed.
    *
    * @param skillId - Skill to update
    * @param data    - Fields to update (all optional)
    * @returns The updated skill document, or null if not found
-   * @throws If name is already taken within the workspace (MongoDB unique index)
+   *
+   * NOTE: skill names are NOT enforced unique within a workspace (no unique index).
    */
   async updateSkill(
     skillId: string,
@@ -196,6 +217,7 @@ export class SkillService {
       content?: string;
       category?: Skill['category'];
       tags?: string[];
+      loadMode?: 'always' | 'on-demand';
     },
   ): Promise<Skill | null> {
     const updates: Partial<Skill> & { updatedAt: string } = {
@@ -213,6 +235,7 @@ export class SkillService {
     if (data.content !== undefined) updates.content = data.content;
     if (data.category !== undefined) updates.category = data.category;
     if (data.tags !== undefined) updates.tags = data.tags;
+    if (data.loadMode !== undefined) updates.loadMode = data.loadMode;
 
     const result = await this.skillsCollection.findOneAndUpdate(
       { skillId },
@@ -363,6 +386,10 @@ export class SkillService {
    * @param agentId     - Agent to get skills for
    * @param workspaceId - Optional workspace filter (recommended — omit only for admin/debug use)
    * @returns Array of skill documents in injection order
+   *
+   * TODO(TER-618-followup): getAgentSkills should require workspaceId to prevent
+   * cross-workspace skill leakage. Currently optional for backward compatibility
+   * but all production callers should pass it. Consider making it required in v2.
    */
   async getAgentSkills(agentId: string, workspaceId?: string): Promise<Skill[]> {
     // Single efficient query: get enabled access entries sorted by order
@@ -390,6 +417,58 @@ export class SkillService {
     return accessEntries
       .map((a) => skillMap.get(a.skillId))
       .filter((s): s is WithId<Skill> => s !== undefined);
+  }
+
+  /**
+   * Get all enabled skills with loadMode='always' for an agent, ordered by `order`.
+   * A skill with no loadMode is treated as 'always' (pre-migration legacy). "No
+   * loadMode" means either the field is absent (reads as `undefined`) or was
+   * persisted as `null` — Mongo stores an explicit `loadMode: undefined` insert as
+   * `null`, so `== null` covers both; a `=== undefined`-only check silently drops
+   * the null case out of BOTH buckets.
+   */
+  async getAlwaysOnSkills(agentId: string, workspaceId?: string): Promise<Skill[]> {
+    const all = await this.getAgentSkills(agentId, workspaceId);
+    return all.filter((s) => s.loadMode == null || s.loadMode === 'always');
+  }
+
+  /**
+   * Get an index of on-demand skills (name + description only, no content).
+   */
+  async getOnDemandSkillIndex(
+    agentId: string,
+    workspaceId?: string,
+  ): Promise<OnDemandSkillIndexEntry[]> {
+    const all = await this.getAgentSkills(agentId, workspaceId);
+    return all
+      .filter((s) => s.loadMode === 'on-demand')
+      .map((s) => ({
+        skillId: s.skillId,
+        name: s.name,
+        description: s.description,
+      }));
+  }
+
+  /**
+   * Partition an agent's enabled skills into always-on (full content) and an
+   * on-demand index (name + description only) using a SINGLE getAgentSkills query.
+   * Prefer this over calling getAlwaysOnSkills + getOnDemandSkillIndex separately on
+   * a hot path — each of those issues its own getAgentSkills round-trip (2 DB reads
+   * apiece), so calling both duplicated the full skill fetch every turn.
+   */
+  async getPartitionedAgentSkills(
+    agentId: string,
+    workspaceId?: string,
+  ): Promise<{ alwaysOn: Skill[]; onDemandIndex: OnDemandSkillIndexEntry[] }> {
+    const all = await this.getAgentSkills(agentId, workspaceId);
+    // `== null` treats both absent and null loadMode as always-on (see
+    // getAlwaysOnSkills); on-demand requires the explicit string, so a nullish
+    // value can never land in both or neither bucket.
+    const alwaysOn = all.filter((s) => s.loadMode == null || s.loadMode === 'always');
+    const onDemandIndex = all
+      .filter((s) => s.loadMode === 'on-demand')
+      .map((s) => ({ skillId: s.skillId, name: s.name, description: s.description }));
+    return { alwaysOn, onDemandIndex };
   }
 
   /**
@@ -427,4 +506,66 @@ export class SkillService {
   async getAgentSkillAccess(agentId: string): Promise<AgentSkillAccess[]> {
     return this.accessCollection.find({ agentId }).sort({ order: 1 }).toArray();
   }
+
+  /**
+   * Load a skill's content for injection into the current turn.
+   *
+   * Validates:
+   *   - Skill is assigned to the agent (access entry exists)
+   *   - Skill is enabled for the agent
+   *   - Skill belongs to the same workspace (IDOR prevention)
+   *
+   * Interpolates {{variables}} and neutralizes prompt tags.
+   *
+   * @param agentId - Agent requesting the skill
+   * @param workspaceId - Workspace context (for scoping)
+   * @param ref - Either skillId or name to resolve
+   * @param interpolationCtx - Context for {{variable}} substitution
+   * @returns Loaded skill with interpolated content, or null if not found/unauthorized
+   */
+  async loadSkillForInjection(
+    agentId: string,
+    workspaceId: string,
+    ref: { skillId?: string; name?: string },
+    interpolationCtx: SkillInterpolationContext,
+  ): Promise<LoadedSkillResult | null> {
+    // 1. Resolve skill by skillId or name.
+    let skill: Skill | null = null;
+    if (ref.skillId) {
+      // getSkill() is an unscoped global lookup — guard the skill's own workspace
+      // below so this path enforces the same IDOR boundary as the name path.
+      skill = await this.getSkill(ref.skillId);
+    } else if (ref.name) {
+      // Skill names are NOT unique per workspace, so a bare findOne({name}) could
+      // return an unassigned homonym. Resolve against the agent's own assigned +
+      // enabled skills instead (order-sorted → deterministic first match).
+      const agentSkills = await this.getAgentSkills(agentId, workspaceId);
+      const target = ref.name.trim();
+      skill = agentSkills.find((s) => s.name === target) ?? null;
+    }
+    if (!skill) return null;
+
+    // 2. Scope the skill itself to the request workspace (IDOR guard). The name
+    // path already scopes via getAgentSkills; this also covers the skillId path.
+    if (skill.workspaceId !== workspaceId) return null;
+
+    // 3. Verify access: agent has skill assigned and enabled.
+    const access = await this.getAccessEntry(agentId, skill.skillId);
+    if (!access || !access.enabled) return null;
+    if (access.workspaceId !== workspaceId) return null; // IDOR guard (access entry)
+
+    // 4. Interpolate and sanitize
+    const interpolated = interpolateSkill(skill.content, interpolationCtx);
+    const sanitized = neutralizePromptTags(interpolated);
+
+    return {
+      name: skill.name,
+      content: sanitized,
+    };
+  }
+}
+
+export interface LoadedSkillResult {
+  name: string;
+  content: string;
 }

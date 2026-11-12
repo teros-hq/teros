@@ -23,30 +23,40 @@ export function createAppCommands(deps: AppCommandsDeps) {
           mcaService.listAppsByOwner('system'),
         ]);
 
-        // Combine both, user apps first
-        const allApps = [...userApps, ...systemApps];
+        // v1.4.4 — system capabilities are a separate concept from user apps:
+        // return them in SEPARATE lists so consumers can render/permission them
+        // differently (user apps installable, system capabilities ambient).
+        // Previously both were merged into one `apps` array.
 
         // Get MCP info for each app
-        const appsWithInfo = await Promise.all(
-          allApps.map(async (app) => {
-            const mcp = await mcaService.getMcaFromCatalog(app.mcaId);
-            return {
-              appId: app.appId,
-              name: app.name,
-              mcaId: app.mcaId,
-              mcpName: mcp?.name || app.mcaId,
-              description: mcp?.description || '',
-              icon: mcp?.icon,
-              color: mcp?.color,
-              category: mcp?.category || 'integration',
-              status: app.status,
-            };
-          }),
-        );
+        const withInfo = async (app: (typeof userApps)[number]) => {
+          const mcp = await mcaService.getMcaFromCatalog(app.mcaId);
+          return {
+            appId: app.appId,
+            name: app.name,
+            mcaId: app.mcaId,
+            mcpName: mcp?.name || app.mcaId,
+            description: mcp?.description || '',
+            icon: mcp?.icon,
+            color: mcp?.color,
+            category: mcp?.category || 'integration',
+            status: app.status,
+            // Class flag so clients can tell them apart without a catalog lookup.
+            isSystem: mcp?.availability?.system === true,
+          };
+        };
+
+        const [userAppsWithInfo, systemAppsWithInfo] = await Promise.all([
+          Promise.all(userApps.map(withInfo)),
+          Promise.all(systemApps.map(withInfo)),
+        ]);
 
         sendMessage(ws, {
           type: 'apps_list',
-          apps: appsWithInfo,
+          // Kept for backwards compatibility (older clients read `apps`).
+          apps: [...userAppsWithInfo, ...systemAppsWithInfo],
+          userApps: userAppsWithInfo,
+          systemApps: systemAppsWithInfo,
         } as any);
       } catch (error) {
         console.error('❌ Error listing apps:', error);
@@ -126,6 +136,9 @@ export function createAppCommands(deps: AppCommandsDeps) {
           appId,
           mcaId,
           ownerId: userId,
+          // MUW-REQ-10/11: the installer owns it; member-installed apps are personal.
+          installedBy: userId,
+          scope: 'personal',
           name: appName,
           status: 'active',
         });

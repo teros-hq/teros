@@ -2,7 +2,7 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.teros.bash",
   "name": "Bash",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Execute bash commands on the system. Provides shell access for automation and system tasks.",
   "type": "utility",
   "icon": "icon.svg",
@@ -15,9 +15,10 @@
   "availability": {
     "enabled": true,
     "multi": false,
-    "system": false,
-    "hidden": false,
-    "role": "user"
+    "system": true,
+    "hidden": true,
+    "role": "user",
+    "defaultEnabled": false
   },
   "layers": {
     "tools": true,
@@ -37,15 +38,35 @@
     "workspaceMount": true,
     "resources": {
       "cpus": 2,
-      "memoryMb": 2048
+      "memoryMb": 4096
     }
   },
-  "keywords": ["bash", "shell", "command", "terminal", "system"],
+  "keywords": [
+    "bash",
+    "shell",
+    "command",
+    "terminal",
+    "system"
+  ],
   "changelog": [
+    {
+      "version": "1.1.0",
+      "date": "2026-11-06",
+      "notes": "Context prehook (Fase 2): declares a bash prehook (cwd/platform/git snapshot) injected in the <environment> prompt block of agents with this app installed (flag prompt.environment-context)."
+    },
     {
       "version": "1.0.0",
       "date": "2026-01-23",
       "notes": "Initial release — run shell commands on the system, set a working directory and timeout, and capture the output"
     }
-  ]
+  ],
+  "contextPrehook": {
+    "label": "Shell environment",
+    "tool": "bash",
+    "args": {
+      "command": "echo \"cwd: $(pwd)\"; echo \"platform: $(uname -s)\"; git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo \"git repo: yes ($(git branch --show-current 2>/dev/null))\" || echo \"git repo: no\"",
+      "description": "Environment snapshot for the context prehook"
+    },
+    "maxTokens": 300
+  }
 }

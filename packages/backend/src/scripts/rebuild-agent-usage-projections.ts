@@ -13,7 +13,7 @@
  *   bun packages/backend/src/scripts/rebuild-agent-usage-projections.ts --shadow
  *   bun packages/backend/src/scripts/rebuild-agent-usage-projections.ts --confirm
  *
- *
+ * Design doc: docs/usage-instrumentation.md §6 — Event sourcing
  */
 
 import { MongoClient } from "mongodb"

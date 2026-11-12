@@ -24,13 +24,14 @@ import { ImagePipeline, type ProcessedImage } from './ImagePipeline';
 /**
  * Sanitize a tool call ID so it matches Anthropic's required pattern: ^[a-zA-Z0-9_-]+$
  * IDs stored in DB may come from other providers (e.g. OpenAI legacy format uses dots
- * and colons like "functions.bash-admin_bash:37"). We translate at the adapter boundary
+ * and colons like "functions.some-app_bash:37"). We translate at the adapter boundary
  * so the DB remains provider-agnostic.
  */
 function sanitizeToolId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 import type { ILLMClient, LLMResponse, StreamMessageOptions, ToolCall } from './ILLMClient';
+import { splitSystemPromptForCache } from './ILLMClient';
 
 export interface AnthropicConfig {
   apiKey: string;
@@ -86,6 +87,7 @@ export class AnthropicLLMAdapter implements ILLMClient {
       messages,
       tools,
       systemPrompt,
+      systemPromptVolatile,
       model,
       temperature,
       maxTokens,
@@ -114,17 +116,19 @@ export class AnthropicLLMAdapter implements ILLMClient {
     });
 
     try {
-      // Build system prompt with cache control for prompt caching
-      // This caches the system prompt to reduce token usage on subsequent requests
-      const systemWithCache = systemPrompt
-        ? [
-            {
-              type: 'text' as const,
-              text: systemPrompt,
-              cache_control: { type: 'ephemeral' as const },
-            },
-          ]
-        : undefined;
+      // Build system prompt with cache control for prompt caching. Split off the
+      // per-request volatile suffix (loaded skills + <context> timestamp) so only
+      // the stable prefix carries cache_control — the volatile tail no longer
+      // invalidates the cached prefix each turn (TER-618).
+      const { stable, volatile } = splitSystemPromptForCache(systemPrompt ?? '', systemPromptVolatile);
+      const systemBlocks: Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> = [];
+      if (stable) {
+        systemBlocks.push({ type: 'text', text: stable, cache_control: { type: 'ephemeral' as const } });
+      }
+      if (volatile) {
+        systemBlocks.push({ type: 'text', text: volatile });
+      }
+      const systemWithCache = systemBlocks.length > 0 ? systemBlocks : undefined;
 
       // Build tools with cache control on the last tool
       // This caches the entire tool definitions block
@@ -250,7 +254,7 @@ export class AnthropicLLMAdapter implements ILLMClient {
           }
         : undefined;
 
-      log.info('AnthropicLLM', 'Response complete', {
+      log.debug('AnthropicLLM', 'Response complete', {
         stopReason,
         inputTokens: usage?.inputTokens,
         outputTokens: usage?.outputTokens,

@@ -14,7 +14,7 @@
  *
  * Runs as a background job gated by leader election.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §12 — Reset mensual de horas
  */
 
 import type { Collection, Db } from "mongodb"
@@ -22,6 +22,7 @@ import type { Logger } from "pino"
 import { isMongoDuplicateKey } from "../lib/mongo-errors.js"
 import { captureException } from "../lib/sentry.js"
 import { waitUntilIdle } from "../lib/drain.js"
+import { withTransaction } from "../lib/mongo-transaction.js"
 import { LEADER_LOCKS, type LeaderElectionService } from "./leader-election.js"
 import {
   addDaysUTC,
@@ -33,7 +34,7 @@ import {
   getBillingInvoicesCollection,
   getBillingPeriodSnapshotsCollection,
   getBillingPlansCollection,
-  STARTER_PLAN_ID,
+  DEFAULT_PLAN_ID,
   type BillingInvoice,
   type BillingPeriodSnapshot,
 } from "../models/billing.js"
@@ -41,14 +42,20 @@ import {
 export interface BillingResetCronOptions {
   /** How often to check for expired billing periods (default: 5 min). */
   intervalMs: number
+  /** Delay of the first pass after start() (default: 30s). 0 runs on the next tick. */
+  initialDelayMs?: number
   /** Leader lock TTL (default: 60s). */
   leaderLockTtlMs: number
+  /** Refresh the leader lock at most this often during a long run (GOV-8). Default 20s. */
+  heartbeatEveryMs?: number
 }
 
 export const DEFAULT_RESET_OPTS: BillingResetCronOptions = {
   intervalMs: 5 * 60 * 1000,
   leaderLockTtlMs: 60_000,
 }
+
+const DEFAULT_INITIAL_DELAY_MS = 30_000
 
 /**
  * A subscription claimed for reset (`resetting: true`) older than this is
@@ -68,6 +75,7 @@ export interface BillingResetCronMetrics {
 
 export class BillingResetCron {
   private timer: NodeJS.Timeout | null = null
+  private initialTimer: NodeJS.Timeout | null = null
   private running = false
 
   // Metrics
@@ -95,15 +103,27 @@ export class BillingResetCron {
 
   start(): void {
     if (this.timer !== null) return
-    this.timer = setInterval(() => {
+    const run = () => {
       this.tick().catch((err) => {
         this.log.error({ err }, "billing-reset-cron: tick failed")
       })
-    }, this.opts.intervalMs)
+    }
+    // First pass shortly after boot (not only after a full interval): a backend
+    // that restarts more often than the interval would otherwise never run it.
+    this.initialTimer = setTimeout(() => {
+      this.initialTimer = null
+      run()
+    }, this.opts.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS)
+    if (typeof this.initialTimer.unref === "function") this.initialTimer.unref()
+    this.timer = setInterval(run, this.opts.intervalMs)
     if (typeof this.timer.unref === "function") this.timer.unref()
   }
 
   stop(): void {
+    if (this.initialTimer) {
+      clearTimeout(this.initialTimer)
+      this.initialTimer = null
+    }
     if (this.timer) {
       clearInterval(this.timer)
       this.timer = null
@@ -132,12 +152,15 @@ export class BillingResetCron {
     }
   }
 
-  /** Public entry point for tests and manual triggers. */
-  async runOnce(): Promise<{ subscriptionsReset: number }> {
+  /**
+   * Public entry point for tests and manual triggers. Under leader election,
+   * tick() injects `heartbeat` so a long run keeps (and checks) its lease.
+   */
+  async runOnce(opts?: { heartbeat?: () => Promise<boolean> }): Promise<{ subscriptionsReset: number }> {
     if (this.running) return { subscriptionsReset: 0 }
     this.running = true
     try {
-      const result = await this.processExpiredSubscriptions()
+      const result = await this.processExpiredSubscriptions(opts?.heartbeat)
       this.reset_runs++
       this.reset_last_run_at = Date.now()
       return result
@@ -157,10 +180,15 @@ export class BillingResetCron {
         return
       }
     }
-    await this.runOnce()
+    const leader = this.leader
+    await this.runOnce({
+      heartbeat: leader
+        ? () => leader.heartbeat(LEADER_LOCKS.BillingResetCron, this.opts.leaderLockTtlMs)
+        : undefined,
+    })
   }
 
-  private async processExpiredSubscriptions(): Promise<{
+  private async processExpiredSubscriptions(heartbeat?: () => Promise<boolean>): Promise<{
     subscriptionsReset: number
   }> {
     let subscriptionsReset = 0
@@ -173,8 +201,17 @@ export class BillingResetCron {
       currentPeriodEnd: { $lt: now },
     })
 
+    let lastBeat = Date.now()
     try {
       for await (const found of cursor) {
+        // Keep the leader lock alive during long runs; stop if it was lost (GOV-8)
+        if (heartbeat && Date.now() - lastBeat > (this.opts.heartbeatEveryMs ?? 20_000)) {
+          lastBeat = Date.now()
+          if (!(await heartbeat())) {
+            this.log.warn("billing-reset-cron: lost leadership mid-run, stopping")
+            break
+          }
+        }
         try {
           // ── Claim the sub atomically (mutual exclusion with the tracker) ───
           // findOneAndUpdate is single-document atomic on standalone Mongo (no
@@ -188,10 +225,7 @@ export class BillingResetCron {
               _id: found._id,
               status: "active",
               currentPeriodEnd: { $lt: now },
-              $or: [
-                { resetting: { $ne: true } },
-                { resettingAt: { $lt: staleBefore } },
-              ],
+              $or: [{ resetting: { $ne: true } }, { resettingAt: { $lt: staleBefore } }],
             },
             { $set: { resetting: true, resettingAt: now } },
             { returnDocument: "after" },
@@ -208,9 +242,7 @@ export class BillingResetCron {
           const plan = await getBillingPlansCollection(this.db).findOne({
             _id: sub.planId,
           })
-          const amount = plan
-            ? getEffectivePrice(sub, plan)
-            : sub.customPrice ?? 0
+          const amount = plan ? getEffectivePrice(sub, plan) : (sub.customPrice ?? 0)
 
           // Idempotent upsert keyed by (subscriptionId, periodStart, periodEnd).
           // The unique index billing_inv_period_unique guarantees a single
@@ -274,8 +306,7 @@ export class BillingResetCron {
           // live counter resets. Keyed by the same (subscriptionId, period) as
           // the invoice → the unique index makes a re-run idempotent. Resolve
           // the invoiceId from the upsert (new) or a lookup (pre-existing).
-          let invoiceId: string | null =
-            (invoiceResult.upsertedId as unknown as string) ?? null
+          let invoiceId: string | null = (invoiceResult.upsertedId as unknown as string) ?? null
           if (!invoiceId) {
             const existingInvoice = await this.invoicesCol.findOne(
               {
@@ -338,42 +369,53 @@ export class BillingResetCron {
             // Deferred cancellation matured (decision #7): the paid period is
             // over, so close this sub and open a fresh Starter sub anchored to
             // day+1. Close FIRST so the partial unique index never sees two
-            // active subs for this user.
-            await this.billingCol.updateOne(
-              { _id: sub._id },
-              {
-                $set: {
-                  status: "ended",
-                  endDate: now,
-                  cancelAtPeriodEnd: false,
-                  resetting: false,
+            // active subs for this user. Close + open run in one transaction
+            // (BIL-4): a crash between them used to leave the user with no
+            // active subscription — blocked by the gate, scheduled plan lost.
+            const starterStart = addDaysUTC(now, 1)
+            await withTransaction(this.db, async (session) => {
+              await this.billingCol.updateOne(
+                { _id: sub._id },
+                {
+                  $set: {
+                    status: "ended",
+                    endDate: now,
+                    cancelAtPeriodEnd: false,
+                    resetting: false,
+                    updatedAt: now,
+                  },
+                },
+                { session },
+              )
+              await this.billingCol.insertOne(
+                {
+                  _id: crypto.randomUUID(),
+                  userId: sub.userId,
+                  planId: DEFAULT_PLAN_ID,
+                  customAgentHoursLimit: null,
+                  customPrice: null,
+                  customPriceNote: null,
+                  agentHoursUsed: 0,
+                  overageHours: 0,
+                  // Fresh cursor: don't bill pre-cancellation hours onto the starter.
+                  lastBilledHourBucket: now,
+                  // Reconcile from the fresh cursor, not currentPeriodStart (day+1):
+                  // without it the first day raised false drift alerts (GOV-9, TER-627).
+                  periodStartBucket: now,
+                  currentPeriodStart: starterStart,
+                  currentPeriodEnd: addMonthsClampDay(starterStart, 1),
+                  status: "active",
+                  startDate: now,
+                  endDate: null,
+                  paymentMethod: "manual",
+                  billingNotes: "Auto-created on cancellation (period completed)",
+                  terosProviderConfigId: null,
+                  teamId: null,
+                  createdAt: now,
                   updatedAt: now,
                 },
-              },
-            )
-            const starterStart = addDaysUTC(now, 1)
-            await this.billingCol.insertOne({
-              _id: crypto.randomUUID(),
-              userId: sub.userId,
-              planId: STARTER_PLAN_ID,
-              customAgentHoursLimit: null,
-              customPrice: null,
-              customPriceNote: null,
-              agentHoursUsed: 0,
-              overageHours: 0,
-              // Fresh cursor: don't bill pre-cancellation hours onto the starter.
-              lastBilledHourBucket: now,
-              currentPeriodStart: starterStart,
-              currentPeriodEnd: addMonthsClampDay(starterStart, 1),
-              status: "active",
-              startDate: now,
-              endDate: null,
-              paymentMethod: "manual",
-              billingNotes: "Auto-created on cancellation (period completed)",
-              terosProviderConfigId: null,
-              teamId: null,
-              createdAt: now,
-              updatedAt: now,
+                { session },
+              )
             })
           } else if (sub.scheduledPlanChange) {
             // Deferred downgrade matured (decision D): the paid period on the
@@ -382,44 +424,51 @@ export class BillingResetCron {
             // cancelAtPeriodEnd branch; inherits account-level fields. Close
             // FIRST so the partial unique index never sees two active subs.
             const target = sub.scheduledPlanChange
-            await this.billingCol.updateOne(
-              { _id: sub._id },
-              {
-                $set: {
-                  status: "ended",
-                  endDate: now,
-                  scheduledPlanChange: null,
-                  resetting: false,
+            const downStart = addDaysUTC(now, 1)
+            // Close + open atomically (BIL-4), same as the cancellation branch
+            await withTransaction(this.db, async (session) => {
+              await this.billingCol.updateOne(
+                { _id: sub._id },
+                {
+                  $set: {
+                    status: "ended",
+                    endDate: now,
+                    scheduledPlanChange: null,
+                    resetting: false,
+                    updatedAt: now,
+                  },
+                },
+                { session },
+              )
+              await this.billingCol.insertOne(
+                {
+                  _id: crypto.randomUUID(),
+                  userId: sub.userId,
+                  planId: target.planId,
+                  customAgentHoursLimit: null,
+                  customPrice: null,
+                  customPriceNote: null,
+                  agentHoursUsed: 0,
+                  overageHours: 0,
+                  // Fresh cursor: don't bill pre-downgrade hours onto the new plan.
+                  lastBilledHourBucket: now,
+                  // Reconcile this period from the fresh cursor, not currentPeriodStart
+                  // (which is now+1 day here) — keeps the drift check aligned (TER-627).
+                  periodStartBucket: now,
+                  currentPeriodStart: downStart,
+                  currentPeriodEnd: addMonthsClampDay(downStart, 1),
+                  status: "active",
+                  startDate: now,
+                  endDate: null,
+                  paymentMethod: sub.paymentMethod ?? "manual",
+                  billingNotes: `Auto-created on scheduled downgrade to ${target.planId}`,
+                  terosProviderConfigId: sub.terosProviderConfigId ?? null,
+                  teamId: sub.teamId ?? null,
+                  createdAt: now,
                   updatedAt: now,
                 },
-              },
-            )
-            const downStart = addDaysUTC(now, 1)
-            await this.billingCol.insertOne({
-              _id: crypto.randomUUID(),
-              userId: sub.userId,
-              planId: target.planId,
-              customAgentHoursLimit: null,
-              customPrice: null,
-              customPriceNote: null,
-              agentHoursUsed: 0,
-              overageHours: 0,
-              // Fresh cursor: don't bill pre-downgrade hours onto the new plan.
-              lastBilledHourBucket: now,
-              // Reconcile this period from the fresh cursor, not currentPeriodStart
-              // (which is now+1 day here) — keeps the drift check aligned (TER-627).
-              periodStartBucket: now,
-              currentPeriodStart: downStart,
-              currentPeriodEnd: addMonthsClampDay(downStart, 1),
-              status: "active",
-              startDate: now,
-              endDate: null,
-              paymentMethod: sub.paymentMethod ?? "manual",
-              billingNotes: `Auto-created on scheduled downgrade to ${target.planId}`,
-              terosProviderConfigId: sub.terosProviderConfigId ?? null,
-              teamId: sub.teamId ?? null,
-              createdAt: now,
-              updatedAt: now,
+                { session },
+              )
             })
           } else {
             // Normal renewal: zero the period's usage, advance the window,
@@ -472,7 +521,11 @@ export class BillingResetCron {
           // invisible in prod (a stuck reset means a period never renews/invoices).
           captureException(
             err,
-            { scope: "billing/reset_subscription", subscriptionId: found._id, userId: found.userId },
+            {
+              scope: "billing/reset_subscription",
+              subscriptionId: found._id,
+              userId: found.userId,
+            },
             { userId: found.userId },
           )
         }

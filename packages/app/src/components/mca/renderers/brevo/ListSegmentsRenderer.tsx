@@ -40,7 +40,7 @@ export function ListSegmentsRenderer({ status, output, error, appIcon }: ToolCal
   return (
     <ToolCallCard
       status={status}
-      verb="List segments"
+      description="List segments"
       badge={badge}
       iconUri={appIcon}
       animateExpand

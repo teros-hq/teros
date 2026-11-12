@@ -1,0 +1,191 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 확인 도구. OAuth 자격 증명 및 연결을 확인합니다."
+    },
+    "list-items": {
+      "name": "list-items",
+      "description": "OneDrive 폴더 내의 파일과 폴더를 나열합니다. 기본값은 드라이브 루트입니다.",
+      "params": {
+        "itemId": "폴더 항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 폴더 경로, 예: \"Documents/Reports\".",
+        "maxResults": "반환할 최대 항목 수 (기본값: 50, 최대: 200)"
+      }
+    },
+    "list-recent": {
+      "name": "list-recent",
+      "description": "이 계정이 최근에 액세스한 OneDrive 파일을 나열합니다.",
+      "params": {
+        "maxResults": "반환할 최대 항목 수 (기본값: 25, 최대: 200)"
+      }
+    },
+    "list-shared-with-me": {
+      "name": "list-shared-with-me",
+      "description": "다른 사람이 이 계정과 공유한 OneDrive 파일 및 폴더를 나열합니다.",
+      "params": {
+        "maxResults": "반환할 최대 항목 수 (기본값: 50, 최대: 200)"
+      }
+    },
+    "search-items": {
+      "name": "search-items",
+      "description": "자유 텍스트 쿼리와 일치하는 OneDrive 파일 및 폴더를 검색합니다.",
+      "params": {
+        "query": "자유 텍스트 검색 쿼리",
+        "maxResults": "반환할 최대 결과 수 (기본값: 25, 최대: 200)"
+      }
+    },
+    "get-item": {
+      "name": "get-item",
+      "description": "itemId 또는 경로로 지정된 단일 OneDrive 파일 또는 폴더의 메타데이터를 가져옵니다.",
+      "params": {
+        "itemId": "항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 항목 경로, 예: \"Documents/notes.txt\"."
+      }
+    },
+    "get-drive-info": {
+      "name": "get-drive-info",
+      "description": "저장 할당량 및 사용량을 포함한 OneDrive 계정 정보를 가져옵니다."
+    },
+    "get-file-content": {
+      "name": "get-file-content",
+      "description": "텍스트 기반 OneDrive 파일의 내용을 디스크에 저장하지 않고 인라인으로 읽습니다. 1 MB 제한.",
+      "params": {
+        "itemId": "항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 파일 경로."
+      }
+    },
+    "download-file": {
+      "name": "download-file",
+      "description": "OneDrive 파일을 다운로드하여 로컬에 저장합니다. 50 MB 초과 파일은 거부됩니다.",
+      "params": {
+        "itemId": "항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 파일 경로.",
+        "outputPath": "출력 디렉토리 (기본값: /workspace/onedrive-downloads)"
+      }
+    },
+    "upload-file": {
+      "name": "upload-file",
+      "description": "로컬 파일을 OneDrive에 업로드합니다. 4 MB 미만은 직접 업로드; 더 큰 파일은 청크 업로드 세션을 사용합니다. 같은 이름의 기존 파일을 덮어씁니다.",
+      "params": {
+        "localPath": "업로드할 로컬 파일의 절대 경로",
+        "destinationPath": "드라이브 루트에 대한 대상 폴더 경로. 기본값은 루트.",
+        "fileName": "저장할 파일 이름. 기본값은 로컬 파일 이름."
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "OneDrive에 새 폴더를 만듭니다.",
+      "params": {
+        "name": "새 폴더 이름",
+        "parentId": "부모 폴더 ID. 기본값은 드라이브 루트.",
+        "parentPath": "드라이브 루트에 대한 부모 폴더 경로.",
+        "conflictBehavior": "이름이 존재할 때의 동작: \"rename\" (기본값), \"replace\", 또는 \"fail\"."
+      }
+    },
+    "copy-item": {
+      "name": "copy-item",
+      "description": "OneDrive 파일 또는 폴더를 다른 폴더로 복사합니다. 복사가 완료될 때까지 기다립니다.",
+      "params": {
+        "itemId": "복사할 항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 복사할 항목 경로.",
+        "destinationFolderId": "대상 폴더 ID. destinationPath보다 우선합니다.",
+        "destinationPath": "드라이브 루트에 대한 대상 폴더 경로.",
+        "newName": "복사본의 새 이름 (선택사항)",
+        "pollIntervalMs": "진행 상황 확인 간격 (밀리초, 기본값: 1000)"
+      }
+    },
+    "move-item": {
+      "name": "move-item",
+      "description": "OneDrive 파일 또는 폴더를 다른 폴더로 이동합니다.",
+      "params": {
+        "itemId": "이동할 항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 이동할 항목 경로.",
+        "destinationFolderId": "대상 폴더 ID. destinationPath보다 우선합니다.",
+        "destinationPath": "드라이브 루트에 대한 대상 폴더 경로."
+      }
+    },
+    "rename-item": {
+      "name": "rename-item",
+      "description": "이동하지 않고 OneDrive 파일 또는 폴더의 이름을 변경합니다.",
+      "params": {
+        "itemId": "항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 항목 경로.",
+        "newName": "항목의 새 이름"
+      }
+    },
+    "delete-item": {
+      "name": "delete-item",
+      "description": "OneDrive 파일 또는 폴더를 삭제합니다. 항목이 휴지통으로 이동합니다.",
+      "params": {
+        "itemId": "항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 항목 경로."
+      }
+    },
+    "list-versions": {
+      "name": "list-versions",
+      "description": "OneDrive 파일의 버전 기록을 나열합니다.",
+      "params": {
+        "itemId": "항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 항목 경로."
+      }
+    },
+    "create-share-link": {
+      "name": "create-share-link",
+      "description": "선택한 권한 수준과 대상으로 OneDrive 항목의 공유 링크를 만듭니다.",
+      "params": {
+        "itemId": "항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 항목 경로.",
+        "type": "링크 권한: \"view\" (기본값), \"edit\", 또는 \"embed\".",
+        "scope": "대상: \"anonymous\" (기본값) 또는 \"organization\".",
+        "expirationDateTime": "선택적 ISO 8601 만료."
+      }
+    },
+    "invite-people": {
+      "name": "invite-people",
+      "description": "이메일로 특정 사람들에게 OneDrive 항목을 공유하고 읽기 또는 쓰기 권한을 부여합니다.",
+      "params": {
+        "itemId": "항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 항목 경로.",
+        "emails": "초대할 이메일 주소 (쉼표로 구분)",
+        "role": "액세스 수준: \"read\" (기본값) 또는 \"write\".",
+        "message": "초대에 포함할 선택적 메시지",
+        "requireSignIn": "수신자 로그인 필요 여부 (기본값: true)",
+        "sendInvitation": "이메일 초대 발송 여부 (기본값: true)"
+      }
+    },
+    "list-permissions": {
+      "name": "list-permissions",
+      "description": "OneDrive 항목에 현재 액세스 권한이 있는 모든 사람과 공유 링크를 나열합니다.",
+      "params": {
+        "itemId": "항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 항목 경로."
+      }
+    },
+    "remove-permission": {
+      "name": "remove-permission",
+      "description": "OneDrive 항목의 공유 권한 또는 링크를 취소합니다.",
+      "params": {
+        "itemId": "항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 항목 경로.",
+        "permissionId": "취소할 권한 ID"
+      }
+    },
+    "convert-file": {
+      "name": "convert-file",
+      "description": "OneDrive 문서를 PDF로 변환하여 로컬에 저장합니다. 50 MB 초과 파일은 거부됩니다.",
+      "params": {
+        "itemId": "항목 ID. path보다 우선합니다.",
+        "path": "드라이브 루트에 대한 파일 경로.",
+        "outputPath": "출력 디렉토리 (기본값: /workspace/onedrive-downloads)"
+      }
+    }
+  },
+  "name": "OneDrive",
+  "description": "Microsoft Graph API를 통한 Microsoft OneDrive 통합",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — OneDrive 파일 탐색, 업로드, 다운로드, 정리, 공유 및 검색"
+    }
+  ]
+}

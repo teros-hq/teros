@@ -48,6 +48,28 @@ describe('ChannelWorker — FIFO + batch drain', () => {
     await c.awaitStart();
   });
 
+  it('[TLANE-AC-10] a batch with any interactive message runs interactive, whichever came last', async () => {
+    const { worker, driver } = mkWorker();
+    worker.enqueue({ ...mkInput('A'), lane: 'background' });
+    await until(() => driver.turns.length === 1);
+    expect(driver.turns[0]!.input.lane).toBe('background');
+
+    // A user message and then a scheduled one land while A runs → one cohort.
+    worker.enqueue({ ...mkInput('B'), lane: 'interactive' });
+    worker.enqueue({ ...mkInput('C'), lane: 'background' });
+    driver.turns[0]!.resolve(mkResult('message_ra'));
+    await until(() => driver.turns.length === 2);
+    expect(driver.turns[1]!.input.parts).toEqual([{ type: 'text', text: 'C' }]);
+    expect(driver.turns[1]!.input.lane).toBe('interactive');
+
+    // An all-background cohort stays background.
+    worker.enqueue({ ...mkInput('D'), lane: 'background' });
+    driver.turns[1]!.resolve(mkResult('message_rbc'));
+    await until(() => driver.turns.length === 3);
+    expect(driver.turns[2]!.input.lane).toBe('background');
+    driver.turns[2]!.resolve(mkResult('message_rd'));
+  });
+
   it('exposes the live queue length to the turn via getPendingItemCount', async () => {
     const { worker, driver } = mkWorker();
     worker.enqueue(mkInput('A'));

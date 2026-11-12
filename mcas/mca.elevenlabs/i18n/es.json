@@ -48,7 +48,7 @@
     }
   },
   "name": "ElevenLabs",
-  "description": "ElevenLabs Text-to-Speech — genera voz natural a partir de texto usando voces de IA",
+  "description": "App de voz ElevenLabs — genera voz natural a partir de texto (TTS) y haz llamadas telefónicas con un agente de voz conversacional (llamadas salientes vía Twilio, transcripciones y análisis de llamadas, configuración del agente ConvAI).",
   "changelog": [
     {
       "notes": "Versión inicial — convierte texto en voz natural, explora e inspecciona voces de IA, crea conversaciones con varios interlocutores y consulta el uso del plan"

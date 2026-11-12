@@ -12,7 +12,7 @@
  */
 import { type Browser, test as base, type Page } from "@playwright/test"
 import { CONFIG, type Creds, type Fixtures, loadFixtures } from "./helpers/config"
-import { login } from "./helpers/login"
+import { dismissWhatsNew, login } from "./helpers/login"
 import { type CapturedErrors, getClientState, installEventRecorder } from "./helpers/teros"
 
 const ERRORS = new WeakMap<Page, CapturedErrors>()
@@ -52,6 +52,7 @@ async function bootstrap(page: Page, fallbackCreds: Creds, label: string): Promi
   if (!state.ok)
     throw new Error(`No se pudo autenticar (${label}): ${(state as { reason?: string }).reason}`)
 
+  await dismissWhatsNew(page)
   await installEventRecorder(page)
 }
 

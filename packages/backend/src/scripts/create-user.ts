@@ -4,6 +4,10 @@
  * Creates a new user with password authentication.
  * Can optionally set a role and migrate existing data from another userId.
  *
+ * The user document is inserted directly, outside the service container, so
+ * nothing else is provisioned here: the Private workspace and the default
+ * agent are created the first time the user signs in (spec SIP).
+ *
  * Usage:
  *   npx ts-node src/scripts/create-user.ts <email> <password> [displayName] [--role <role>] [--migrate-from <oldUserId>]
  *
@@ -15,6 +19,8 @@
  */
 
 import { generateUserId } from "@teros/core"
+import { COLLECTIONS, ensureIndexesFor } from "../db"
+import { withSchemaValidation } from "../db/validated"
 import * as bcrypt from "bcrypt"
 import { config as dotenvConfig } from "dotenv"
 import { type Db, MongoClient } from "mongodb"
@@ -149,7 +155,7 @@ async function main() {
   console.log(`Connecting to MongoDB: ${MONGODB_URI}`)
   const client = new MongoClient(MONGODB_URI)
   await client.connect()
-  const db = client.db(MONGODB_DATABASE)
+  const db = withSchemaValidation(client.db(MONGODB_DATABASE))
   console.log(`Connected to database: ${MONGODB_DATABASE}\n`)
 
   // Check if email already exists
@@ -187,6 +193,7 @@ async function main() {
     profile: {
       displayName,
       email: email.toLowerCase(),
+      conversationSummary: true, // CSUM-REQ-1
     },
     status: "active",
     role,
@@ -223,12 +230,7 @@ async function main() {
 
   // Ensure indexes
   console.log("🔄 Ensuring indexes...")
-  await db.collection("users").createIndex({ userId: 1 }, { unique: true })
-  await db.collection("users").createIndex({ "profile.email": 1 }, { unique: true })
-  await db
-    .collection("user_identities")
-    .createIndex({ type: 1, providerUserId: 1 }, { unique: true })
-  await db.collection("user_identities").createIndex({ userId: 1 })
+  await ensureIndexesFor(db, [COLLECTIONS.users, COLLECTIONS.userIdentities])
   console.log("✅ Indexes created")
 
   // Migrate data if requested

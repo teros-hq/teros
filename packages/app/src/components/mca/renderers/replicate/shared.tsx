@@ -22,17 +22,18 @@ import Svg, { Path } from 'react-native-svg';
 import { Text, YStack } from 'tamagui';
 import { type BadgeVariant, colors } from '../../primitives';
 import { useColors } from '../../primitives';
+import { backendUrl } from '../../../../config/runtime';
 
 // ─── Identity ──────────────────────────────────────────────────────────────
 
 /**
  * Backend-served Replicate icon. Kept as a constant so sub-renderers
  * pass it as `<ToolCallCard iconUri={REPLICATE_ICON}>` without each
- * file knowing about the path scheme. NOTE: when EXPO_PUBLIC_BACKEND_URL
- * is set, the icon resolves via the backend static path; otherwise we
- * fall back to the inline SVG (`<ReplicateLogo>`) for chat bubbles.
+ * file knowing about the path scheme. NOTE: the icon resolves via the
+ * backend static path (`backendUrl()`, same origin when unset); chat
+ * bubbles fall back to the inline SVG (`<ReplicateLogo>`).
  */
-export const REPLICATE_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL ?? ''}/static/mcas/mca.replicate/icon.png`;
+export const REPLICATE_ICON = `${backendUrl()}/static/mcas/mca.replicate/icon.svg`;
 
 /** Inline Replicate wordmark — used when iconUri is unavailable. */
 export function ReplicateLogo({ size = 14 }: { size?: number }) {

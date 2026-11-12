@@ -18,7 +18,9 @@ export const TAB_RADIUS = 12
 
 interface ConcaveCornerProps {
   side: "left" | "right"
-  borderColor: string
+  /** Arc stroke. Omit for fill-only wings — the curve reads by contrast with
+   *  the strip behind it (R17: no drawn edges on OS surfaces). */
+  borderColor?: string
   backgroundColor: string
   /** Override the default radius (defaults to TAB_RADIUS) */
   radius?: number
@@ -52,13 +54,15 @@ export function ConcaveCorner({ side, borderColor, backgroundColor, radius }: Co
         style={{ display: "block", position: "absolute", bottom: 0 }}
       >
         <path d={fillPath} fill={backgroundColor} stroke="none" />
-        <path
-          d={strokePath}
-          fill="none"
-          stroke={borderColor}
-          strokeWidth={1}
-          vectorEffect="non-scaling-stroke"
-        />
+        {borderColor != null && (
+          <path
+            d={strokePath}
+            fill="none"
+            stroke={borderColor}
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
       </svg>
     </View>
   )

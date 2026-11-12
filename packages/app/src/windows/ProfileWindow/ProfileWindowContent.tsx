@@ -1,347 +1,256 @@
 /**
  * ProfileWindowContent - Contenido de la ventana de perfil
  *
- * Premium design with animated avatar, carousel badges and stats.
- * Includes edit mode for modifying the profile.
+ * OS prototype vocabulary (design-testing): a Page on the sheet with a
+ * PageHead ("Cuenta" eyebrow · serif name · email lead), an identity Card
+ * (mint human avatar, name, email, member-since, badges), Stats, the
+ * achievement cards, an LGroup of account rows (edit · plan · help ·
+ * theme), the improve-Teros opt-in, a danger zone (sign out) isolated
+ * at the bottom, and a quiet delete-account link by the version footer.
+ * Edit mode swaps in a form Card.
  */
 
+import type React from "react"
+import { useEffect, useRef, useState } from "react"
+import { Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native"
+import { useTranslation } from "react-i18next"
+import i18n, { SUPPORTED_LOCALES, LOCALE_LABELS, type SupportedLocale } from "../../i18n"
+import { getTerosClient } from "../../services/terosClientSingleton"
+import { useAuthStore } from "../../store/authStore"
+import { useTilingStore } from "../../store/tilingStore"
+import { useUiPreferencesStore } from "../../store/uiPreferencesStore"
+import type { ProfileWindowProps } from "./definition"
+import { FullscreenLoader } from "../../components/ui"
+import { ProfilePlanSection } from "./ProfilePlanSection"
+import { ProfileImproveTerosSection } from "./ProfileImproveTerosSection"
+import { ProfileConversationSummarySection } from "./ProfileConversationSummarySection"
+import { DeleteAccountDialog } from "./DeleteAccountDialog"
+import { useColors } from "../../components/mca/primitives/useColors"
+import { useImageWithFallback } from "../../hooks/useImageWithFallback"
+import { Avatar } from "../../components/Avatar"
 import {
-  ArrowLeft,
-  Check,
-  ChevronRight,
-  Clock,
-  CreditCard,
-  Edit3,
-  FileText,
-  Globe,
-  HelpCircle,
-  LogOut,
-  MessageSquare,
-  Save,
-  User,
-  Users,
-} from '@tamagui/lucide-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import type React from 'react';
-import { useEffect, useRef, useState } from 'react';
-import { Platform, ScrollView, TouchableOpacity } from 'react-native';
-import { useTranslation } from "react-i18next";
-import { Button, Input, Text, TextArea, XStack, YStack } from 'tamagui';
-import i18n, { SUPPORTED_LOCALES, LOCALE_LABELS, type SupportedLocale } from "../../i18n";
-import { getTerosClient } from '../../services/terosClientSingleton';
-import { useAuthStore } from '../../store/authStore';
-import { useTilingStore } from '../../store/tilingStore';
-import type { ProfileWindowProps } from './definition';
-import { AppSpinner, FullscreenLoader } from '../../components/ui';
-import { ProfilePlanSection } from './ProfilePlanSection';
-import { useColors } from '../../components/mca/primitives/useColors';
-import { colors as semanticColors, surface } from '../../components/mca/primitives/colors';
+  Badge,
+  Btn,
+  Card,
+  ChipBtn,
+  DangerZone,
+  Field,
+  FieldHelp,
+  FieldLabel,
+  LGroup,
+  LRow,
+  Page,
+  PageHead,
+  Ph,
+  SectionLabel,
+  Segmented,
+  Stat,
+  Stats,
+  T,
+  Tile,
+} from "../../components/ui/ds"
+import { backendUrl } from "../../config/runtime"
 
-// Semantic accents — theme-agnostic (same hex in light and dark)
-const ACCENT = '#06B6D4'; // Brand cyan — no semantic token equivalent
-const ACCENT_DARK = '#0891B2'; // Selected-state variant
-const PINK = '#EC4899'; // Help icon accent — no semantic token equivalent
-const RED = semanticColors.red;
-const GREEN = semanticColors.green;
-const AMBER = semanticColors.amber;
-const VIOLET = semanticColors.violet;
+// ── Badge image sub-component (needs its own hook state per badge) ─────────────
+
+function BadgeImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
+  const c = useColors()
+  const { showImage, onError } = useImageWithFallback(imageUrl)
+  if (Platform.OS === "web" && showImage) {
+    return (
+      <img
+        src={imageUrl}
+        alt={alt}
+        style={{
+          width: 64,
+          height: 64,
+          objectFit: "contain",
+        }}
+        onError={onError}
+      />
+    )
+  }
+  // Fallback: simple placeholder box (same as non-web branch)
+  return <View style={{ width: 64, height: 64, backgroundColor: c.wash2, borderRadius: 8 }} />
+}
 
 interface Props extends ProfileWindowProps {
-  windowId: string;
+  windowId: string
 }
 
 // Badge data type
 interface Badge {
-  id: string;
-  titleKey: string;
-  descriptionKey: string;
-  reasonKey: string;
-  imageUrl: string;
-  gradientColors: [string, string];
-  borderColor: string;
-  backgroundColors: [string, string];
+  id: string
+  titleKey: string
+  descriptionKey: string
+  reasonKey: string
+  imageUrl: string
+  gradientColors: [string, string]
+  borderColor: string
+  backgroundColors: [string, string]
 }
 
 // Backend URL for static assets
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const BACKEND_URL = backendUrl()
 
 // Achievement badges - mapped to kawaii images
 const BADGES: Badge[] = [
   // === Status Badges ===
   {
-    id: 'founder',
-    titleKey: 'badges.founder.title',
-    descriptionKey: 'badges.founder.description',
-    reasonKey: 'badges.founder.reason',
+    id: "founder",
+    titleKey: "badges.founder.title",
+    descriptionKey: "badges.founder.description",
+    reasonKey: "badges.founder.reason",
     imageUrl: `${BACKEND_URL}/static/badges/kawaii-v1/05-lion-rockstar.webp`,
-    gradientColors: ['#8B5CF6', '#7C3AED'],
-    borderColor: 'rgba(139, 92, 246, 0.3)',
-    backgroundColors: ['rgba(139, 92, 246, 0.1)', 'rgba(124, 58, 237, 0.08)'],
+    gradientColors: ["#8B5CF6", "#7C3AED"],
+    borderColor: "rgba(139, 92, 246, 0.3)",
+    backgroundColors: ["rgba(139, 92, 246, 0.1)", "rgba(124, 58, 237, 0.08)"],
   },
   {
-    id: 'early-adopter',
-    titleKey: 'badges.earlyAdopter.title',
-    descriptionKey: 'badges.earlyAdopter.description',
-    reasonKey: 'badges.earlyAdopter.reason',
+    id: "early-adopter",
+    titleKey: "badges.earlyAdopter.title",
+    descriptionKey: "badges.earlyAdopter.description",
+    reasonKey: "badges.earlyAdopter.reason",
     imageUrl: `${BACKEND_URL}/static/badges/kawaii-v1/02-fox-programmer.webp`,
-    gradientColors: ['#F59E0B', '#D97706'],
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-    backgroundColors: ['rgba(245, 158, 11, 0.1)', 'rgba(217, 119, 6, 0.08)'],
+    gradientColors: ["#F59E0B", "#D97706"],
+    borderColor: "rgba(245, 158, 11, 0.3)",
+    backgroundColors: ["rgba(245, 158, 11, 0.1)", "rgba(217, 119, 6, 0.08)"],
   },
 
   // === Usage Badges ===
   {
-    id: 'first-steps',
-    titleKey: 'badges.firstSteps.title',
-    descriptionKey: 'badges.firstSteps.description',
-    reasonKey: 'badges.firstSteps.reason',
+    id: "first-steps",
+    titleKey: "badges.firstSteps.title",
+    descriptionKey: "badges.firstSteps.description",
+    reasonKey: "badges.firstSteps.reason",
     imageUrl: `${BACKEND_URL}/static/badges/kawaii-v1/01-koala-barista.webp`,
-    gradientColors: ['#06B6D4', '#0891B2'],
-    borderColor: 'rgba(6, 182, 212, 0.3)',
-    backgroundColors: ['rgba(6, 182, 212, 0.1)', 'rgba(8, 145, 178, 0.08)'],
+    gradientColors: ["#06B6D4", "#0891B2"],
+    borderColor: "rgba(6, 182, 212, 0.3)",
+    backgroundColors: ["rgba(6, 182, 212, 0.1)", "rgba(8, 145, 178, 0.08)"],
   },
   {
-    id: 'power-user',
-    titleKey: 'badges.powerUser.title',
-    descriptionKey: 'badges.powerUser.description',
-    reasonKey: 'badges.powerUser.reason',
+    id: "power-user",
+    titleKey: "badges.powerUser.title",
+    descriptionKey: "badges.powerUser.description",
+    reasonKey: "badges.powerUser.reason",
     imageUrl: `${BACKEND_URL}/static/badges/kawaii-v1/04-octopus-dj.webp`,
-    gradientColors: ['#EC4899', '#DB2777'],
-    borderColor: 'rgba(236, 72, 153, 0.3)',
-    backgroundColors: ['rgba(236, 72, 153, 0.1)', 'rgba(219, 39, 119, 0.08)'],
+    gradientColors: ["#EC4899", "#DB2777"],
+    borderColor: "rgba(236, 72, 153, 0.3)",
+    backgroundColors: ["rgba(236, 72, 153, 0.1)", "rgba(219, 39, 119, 0.08)"],
   },
   {
-    id: 'super-user',
-    titleKey: 'badges.superUser.title',
-    descriptionKey: 'badges.superUser.description',
-    reasonKey: 'badges.superUser.reason',
+    id: "super-user",
+    titleKey: "badges.superUser.title",
+    descriptionKey: "badges.superUser.description",
+    reasonKey: "badges.superUser.reason",
     imageUrl: `${BACKEND_URL}/static/badges/kawaii-v1/07-shark-surfer.webp`,
-    gradientColors: ['#3B82F6', '#2563EB'],
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-    backgroundColors: ['rgba(59, 130, 246, 0.1)', 'rgba(37, 99, 235, 0.08)'],
+    gradientColors: ["#3B82F6", "#2563EB"],
+    borderColor: "rgba(59, 130, 246, 0.3)",
+    backgroundColors: ["rgba(59, 130, 246, 0.1)", "rgba(37, 99, 235, 0.08)"],
   },
 
   // === Contribution Badges ===
   {
-    id: 'bug-hunter',
-    titleKey: 'badges.bugHunter.title',
-    descriptionKey: 'badges.bugHunter.description',
-    reasonKey: 'badges.bugHunter.reason',
+    id: "bug-hunter",
+    titleKey: "badges.bugHunter.title",
+    descriptionKey: "badges.bugHunter.description",
+    reasonKey: "badges.bugHunter.reason",
     imageUrl: `${BACKEND_URL}/static/badges/kawaii-v1/08-frog-scientist.webp`,
-    gradientColors: ['#84CC16', '#65A30D'],
-    borderColor: 'rgba(132, 204, 22, 0.3)',
-    backgroundColors: ['rgba(132, 204, 22, 0.1)', 'rgba(101, 163, 13, 0.08)'],
+    gradientColors: ["#84CC16", "#65A30D"],
+    borderColor: "rgba(132, 204, 22, 0.3)",
+    backgroundColors: ["rgba(132, 204, 22, 0.1)", "rgba(101, 163, 13, 0.08)"],
   },
   {
-    id: 'feature-requester',
-    titleKey: 'badges.visionary.title',
-    descriptionKey: 'badges.visionary.description',
-    reasonKey: 'badges.visionary.reason',
+    id: "feature-requester",
+    titleKey: "badges.visionary.title",
+    descriptionKey: "badges.visionary.description",
+    reasonKey: "badges.visionary.reason",
     imageUrl: `${BACKEND_URL}/static/badges/kawaii-v1/03-owl-wizard.webp`,
-    gradientColors: ['#8B5CF6', '#7C3AED'],
-    borderColor: 'rgba(139, 92, 246, 0.3)',
-    backgroundColors: ['rgba(139, 92, 246, 0.1)', 'rgba(124, 58, 237, 0.08)'],
+    gradientColors: ["#8B5CF6", "#7C3AED"],
+    borderColor: "rgba(139, 92, 246, 0.3)",
+    backgroundColors: ["rgba(139, 92, 246, 0.1)", "rgba(124, 58, 237, 0.08)"],
   },
   {
-    id: 'beta-tester',
-    titleKey: 'badges.betaTester.title',
-    descriptionKey: 'badges.betaTester.description',
-    reasonKey: 'badges.betaTester.reason',
+    id: "beta-tester",
+    titleKey: "badges.betaTester.title",
+    descriptionKey: "badges.betaTester.description",
+    reasonKey: "badges.betaTester.reason",
     imageUrl: `${BACKEND_URL}/static/badges/kawaii-v1/06-panda-chef.webp`,
-    gradientColors: ['#10B981', '#059669'],
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-    backgroundColors: ['rgba(16, 185, 129, 0.1)', 'rgba(5, 150, 105, 0.08)'],
+    gradientColors: ["#10B981", "#059669"],
+    borderColor: "rgba(16, 185, 129, 0.3)",
+    backgroundColors: ["rgba(16, 185, 129, 0.1)", "rgba(5, 150, 105, 0.08)"],
   },
-];
+]
 
 // Helper: calculate days since a date string
 function daysSince(dateStr: string): number {
-  const created = new Date(dateStr).getTime();
-  const now = Date.now();
-  return Math.floor((now - created) / (1000 * 60 * 60 * 24));
+  const created = new Date(dateStr).getTime()
+  const now = Date.now()
+  return Math.floor((now - created) / (1000 * 60 * 60 * 24))
 }
-
-// Animated ring component for web
-const AnimatedRing = () => {
-  const c = useColors();
-  if (Platform.OS !== 'web') {
-    return (
-      <XStack
-        position="absolute"
-        top={-4}
-        left={-4}
-        right={-4}
-        bottom={-4}
-        borderRadius={64}
-        borderWidth={3}
-        borderColor={ACCENT}
-        opacity={0.8}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: -4,
-        left: -4,
-        right: -4,
-        bottom: -4,
-        borderRadius: 64,
-        background:
-          'conic-gradient(from 0deg, #06B6D4, #8B5CF6, #EC4899, #F59E0B, #10B981, #06B6D4)',
-        animation: 'spin 8s linear infinite',
-        opacity: 0.8,
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          top: 3,
-          left: 3,
-          right: 3,
-          bottom: 3,
-          borderRadius: 60,
-          background: c.bgPage,
-        }}
-      />
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-    </div>
-  );
-};
-
-// Editable field component
-interface EditableFieldProps {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  icon: React.ReactNode;
-  placeholder?: string;
-  multiline?: boolean;
-  maxLength?: number;
-}
-
-function EditableField({
-  label,
-  value,
-  onChange,
-  icon,
-  placeholder,
-  multiline,
-  maxLength,
-}: EditableFieldProps) {
-  const c = useColors();
-  return (
-    <YStack gap="$2">
-      <XStack alignItems="center" gap="$2">
-        {icon}
-        <Text fontSize={12} color={c.text2} textTransform="uppercase" letterSpacing={1}>
-          {label}
-        </Text>
-      </XStack>
-      {multiline ? (
-        <TextArea
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          backgroundColor={c.bgInner}
-          borderColor={c.borderStrong}
-          borderWidth={1}
-          borderRadius={12}
-          color={c.text}
-          placeholderTextColor={c.text3}
-          padding="$3"
-          minHeight={100}
-          maxLength={maxLength}
-          fontSize={14}
-        />
-      ) : (
-        <Input
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          backgroundColor={c.bgInner}
-          borderColor={c.borderStrong}
-          borderWidth={1}
-          borderRadius={12}
-          color={c.text}
-          placeholderTextColor={c.text3}
-          height={48}
-          paddingHorizontal="$3"
-          maxLength={maxLength}
-          fontSize={14}
-        />
-      )}
-      {maxLength && (
-        <Text fontSize={11} color={c.text3} textAlign="right">
-          {value.length}/{maxLength}
-        </Text>
-      )}
-    </YStack>
-  );
-}
-
 export function ProfileWindowContent({ windowId, onLogout, initialMode }: Props) {
-  const { t } = useTranslation();
-  const c = useColors();
-  const isDark = c.bgPage === surface.dark.bgPage;
-  const { user, logout, updateProfile } = useAuthStore();
-  const client = getTerosClient();
-  const { openWindow } = useTilingStore();
-  const [activeIndex, setActiveIndex] = useState(0);
-  const carouselRef = useRef<ScrollView>(null);
+  const { t } = useTranslation()
+  const c = useColors()
+  const { width } = useWindowDimensions()
+  const narrow = width <= 620
+  const theme = useUiPreferencesStore((s) => s.theme)
+  const setTheme = useUiPreferencesStore((s) => s.setTheme)
+  const { user, logout, updateProfile } = useAuthStore()
+  const client = getTerosClient()
+  const { openWindow } = useTilingStore()
+  const [activeIndex, setActiveIndex] = useState(0)
+  const carouselRef = useRef<ScrollView>(null)
 
   // View mode: 'view', 'edit' or 'plan' (billing). Can be opened straight on a
   // section via the initialMode prop (e.g. 'plan' from the hours-exhausted CTA).
-  const [mode, setMode] = useState<'view' | 'edit' | 'plan'>(initialMode ?? 'view');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"view" | "edit" | "plan">(initialMode ?? "view")
+  const [isSaving, setIsSaving] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   // Stats state
-  const [channelCount, setChannelCount] = useState<number | null>(null);
-  const [agentCount, setAgentCount] = useState<number | null>(null);
+  const [channelCount, setChannelCount] = useState<number | null>(null)
+  const [agentCount, setAgentCount] = useState<number | null>(null)
 
   // Badges from profile
-  const [userBadges, setUserBadges] = useState<Array<'founding_partner' | 'early_bird'>>([]);
+  const [userBadges, setUserBadges] = useState<Array<"founding_partner" | "early_bird">>([])
+
+  // "Help improve Teros" opt-in (anonymized conversation evaluation), default OFF
+  const [evaluationOptIn, setEvaluationOptIn] = useState(false)
 
   // Form state for edit mode
-  const [displayName, setDisplayName] = useState(user?.name || '');
-  const [description, setDescription] = useState(user?.description || '');
-  const [locale, setLocale] = useState(user?.locale || '');
-  const [timezone, setTimezone] = useState(user?.timezone || '');
+  const [displayName, setDisplayName] = useState(user?.name || "")
+  const [description, setDescription] = useState(user?.description || "")
+  const [locale, setLocale] = useState(user?.locale || "")
+  const [timezone, setTimezone] = useState(user?.timezone || "")
 
   // Load profile and stats on mount — each call is independent so a stats
   // failure never prevents the profile from rendering (and vice-versa).
   // If the WebSocket is not yet connected we wait for the "connected" event
   // before making the requests (handles hard-reload with profile open).
   useEffect(() => {
-    let cancelled = false;
+    let cancelled = false
 
     /** Wait until the WS client is connected, then resolve. */
     function waitForConnection(): Promise<void> {
-      if (client.isConnected()) return Promise.resolve();
+      if (client.isConnected()) return Promise.resolve()
       return new Promise((resolve) => {
         const onConnected = () => {
-          client.off('connected', onConnected);
-          resolve();
-        };
-        client.on('connected', onConnected);
-      });
+          client.off("connected", onConnected)
+          resolve()
+        }
+        client.on("connected", onConnected)
+      })
     }
 
     async function loadProfile() {
       try {
-        await waitForConnection();
-        if (cancelled) return;
-        const profile = await client.profile.getProfile();
-        if (cancelled) return;
+        await waitForConnection()
+        if (cancelled) return
+        const profile = await client.profile.getProfile()
+        if (cancelled) return
         updateProfile({
           name: profile.displayName,
           avatarUrl: profile.avatarUrl,
@@ -349,64 +258,65 @@ export function ProfileWindowContent({ windowId, onLogout, initialMode }: Props)
           locale: profile.locale,
           timezone: profile.timezone,
           createdAt: profile.createdAt,
-        });
-        setDisplayName(profile.displayName || '');
-        setDescription(profile.description || '');
-        setLocale(profile.locale || '');
-        setTimezone(profile.timezone || '');
-        setUserBadges(profile.badges ?? []);
+        })
+        setDisplayName(profile.displayName || "")
+        setDescription(profile.description || "")
+        setLocale(profile.locale || "")
+        setTimezone(profile.timezone || "")
+        setUserBadges(profile.badges ?? [])
+        setEvaluationOptIn(profile.consent?.evaluationOptIn ?? false)
       } catch (err) {
-        console.error('Failed to load profile:', err);
+        console.error("Failed to load profile:", err)
       }
     }
 
     async function loadStats() {
       try {
-        await waitForConnection();
-        if (cancelled) return;
-        const stats = await client.profile.getStats();
-        if (cancelled) return;
-        setChannelCount(stats.channelCount);
-        setAgentCount(stats.agentCount);
+        await waitForConnection()
+        if (cancelled) return
+        const stats = await client.profile.getStats()
+        if (cancelled) return
+        setChannelCount(stats.channelCount)
+        setAgentCount(stats.agentCount)
       } catch (err) {
-        console.error('Failed to load stats:', err);
+        console.error("Failed to load stats:", err)
       }
     }
 
     async function loadProfileAndStats() {
       // Run both independently — a failure in one does not affect the other.
-      await Promise.all([loadProfile(), loadStats()]);
-      if (!cancelled) setIsLoading(false);
+      await Promise.all([loadProfile(), loadStats()])
+      if (!cancelled) setIsLoading(false)
     }
 
-    loadProfileAndStats();
+    loadProfileAndStats()
 
     return () => {
-      cancelled = true;
-    };
-  }, []);
+      cancelled = true
+    }
+  }, [])
 
   // Sync form when entering edit mode
   useEffect(() => {
-    if (mode === 'edit' && user) {
-      setDisplayName(user.name || '');
-      setDescription(user.description || '');
-      setLocale(user.locale || '');
-      setTimezone(user.timezone || '');
+    if (mode === "edit" && user) {
+      setDisplayName(user.name || "")
+      setDescription(user.description || "")
+      setLocale(user.locale || "")
+      setTimezone(user.timezone || "")
     }
-  }, [mode]);
+  }, [mode])
 
   const handleLogout = async () => {
-    await logout();
-    onLogout?.();
-  };
+    await logout()
+    onLogout?.()
+  }
 
   const handleSave = async () => {
-    setIsSaving(true);
-    setError(null);
+    setIsSaving(true)
+    setError(null)
 
     // Capture original locale before saving to detect changes
-    const originalLocale = user?.locale;
+    const originalLocale = user?.locale
 
     try {
       const profile = await client.profile.updateProfile({
@@ -414,7 +324,7 @@ export function ProfileWindowContent({ windowId, onLogout, initialMode }: Props)
         description: description.trim() || undefined,
         locale: locale.trim() || undefined,
         timezone: timezone.trim() || undefined,
-      });
+      })
 
       updateProfile({
         name: profile.displayName,
@@ -422,652 +332,541 @@ export function ProfileWindowContent({ windowId, onLogout, initialMode }: Props)
         description: profile.description,
         locale: profile.locale,
         timezone: profile.timezone,
-      });
+      })
 
-      setIsSaving(false);
-      setSaveSuccess(true);
+      setIsSaving(false)
+      setSaveSuccess(true)
 
       // If locale changed, apply immediately via i18n and reload to flush all state
       if (profile.locale && profile.locale !== originalLocale) {
-        i18n.changeLanguage(profile.locale);
+        i18n.changeLanguage(profile.locale)
         setTimeout(() => {
-          if (Platform.OS === 'web') {
+          if (Platform.OS === "web") {
             // Web: full page reload flushes all cached strings
-            window.location.reload();
+            window.location.reload()
           } else {
             // Native: i18n.changeLanguage() is reactive — UI updates without reload.
             // expo-updates reloadAsync() is intentionally NOT used here: it would
             // restart the JS bundle and lose all in-memory state. The reactive
             // i18n update is sufficient for native.
-            setSaveSuccess(false);
-            setMode('view');
+            setSaveSuccess(false)
+            setMode("view")
           }
-        }, 500);
+        }, 500)
       } else {
         setTimeout(() => {
-          setSaveSuccess(false);
-          setMode('view');
-        }, 1000);
+          setSaveSuccess(false)
+          setMode("view")
+        }, 1000)
       }
     } catch (err) {
-      console.error('Failed to update profile:', err);
-      setError(t("profile.saveError"));
-      setIsSaving(false);
+      console.error("Failed to update profile:", err)
+      setError(t("profile.saveError"))
+      setIsSaving(false)
     }
-  };
+  }
 
   if (!user) {
     return (
-      <YStack flex={1} padding="$4" alignItems="center" justifyContent="center">
-        <Text color={c.text2}>{t("profile.noActiveSession")}</Text>
-      </YStack>
-    );
+      <Page narrow>
+        <T step="sm" tone="text2" center style={{ padding: 32 }}>
+          {t("profile.noActiveSession")}
+        </T>
+      </Page>
+    )
   }
 
   if (isLoading) {
-    return (
-      <FullscreenLoader label={t('profile.loadingProfile')} />
-    );
+    return <FullscreenLoader label={t("profile.loadingProfile")} />
   }
 
-  const initials =
-    user.name || displayName
-      ? (user.name || displayName)
-          .split(' ')
-          .map((n) => n[0])
-          .join('')
-          .toUpperCase()
-          .slice(0, 2)
-      : user.email[0].toUpperCase();
-
   const visibleBadges = BADGES.filter((badge) => {
-    if (badge.id === 'founder') return userBadges.includes('founding_partner');
-    if (badge.id === 'early-adopter') return userBadges.includes('early_bird');
-    return false;
-  });
+    if (badge.id === "founder") return userBadges.includes("founding_partner")
+    if (badge.id === "early-adopter") return userBadges.includes("early_bird")
+    return false
+  })
 
   const handleScroll = (event: any) => {
-    const scrollX = event.nativeEvent.contentOffset.x;
-    const cardWidth = event.nativeEvent.layoutMeasurement.width - 48;
-    const newIndex = Math.round(scrollX / cardWidth);
+    const scrollX = event.nativeEvent.contentOffset.x
+    const cardWidth = event.nativeEvent.layoutMeasurement.width - 48
+    const newIndex = Math.round(scrollX / cardWidth)
     if (newIndex !== activeIndex && newIndex >= 0 && newIndex < visibleBadges.length) {
-      setActiveIndex(newIndex);
+      setActiveIndex(newIndex)
     }
-  };
+  }
 
   const scrollToIndex = (index: number) => {
-    carouselRef.current?.scrollTo({ x: index * 320, animated: true });
-    setActiveIndex(index);
-  };
-
-  const getStatIconColor = (color: string) => {
-    switch (color) {
-      case 'cyan':
-        return ACCENT;
-      case 'purple':
-        return VIOLET;
-      case 'amber':
-        return AMBER;
-      default:
-        return c.text2;
-    }
-  };
-
-  const getStatBgColor = (color: string) => {
-    switch (color) {
-      case 'cyan':
-        return 'rgba(6, 182, 212, 0.15)';
-      case 'purple':
-        return 'rgba(139, 92, 246, 0.15)';
-      case 'amber':
-        return 'rgba(245, 158, 11, 0.15)';
-      default:
-        return isDark ? 'rgba(113, 113, 122, 0.15)' : 'rgba(74, 74, 90, 0.12)';
-    }
-  };
+    carouselRef.current?.scrollTo({ x: index * 320, animated: true })
+    setActiveIndex(index)
+  }
 
   const memberSince = user.createdAt
-    ? new Date(user.createdAt).toLocaleDateString(i18n.language, { month: 'long', year: 'numeric' })
-    : '';
+    ? new Date(user.createdAt).toLocaleDateString(i18n.language, { month: "long", year: "numeric" })
+    : ""
 
   // Derived stats array with real data
-  const daysOnPlatform = user.createdAt ? daysSince(user.createdAt) : 0;
+  const daysOnPlatform = user.createdAt ? daysSince(user.createdAt) : 0
   const STATS = [
-    { value: channelCount !== null ? String(channelCount) : '–', label: t('profile.statChats'), icon: MessageSquare, color: 'cyan' },
-    { value: agentCount !== null ? String(agentCount) : '–', label: t('profile.statAgents'), icon: Users, color: 'purple' },
-    { value: String(daysOnPlatform), label: t('profile.statDays'), icon: Clock, color: 'amber' },
-  ];
+    {
+      value: channelCount !== null ? String(channelCount) : "–",
+      label: t("profile.statChats"),
+      icon: "chats",
+    },
+    {
+      value: agentCount !== null ? String(agentCount) : "–",
+      label: t("profile.statAgents"),
+      icon: "users-three",
+    },
+    { value: String(daysOnPlatform), label: t("profile.statDays"), icon: "clock" },
+  ]
+
+  const displayLabel = user.name || t("profile.fallbackName")
 
   // ========================================
   // PLAN / BILLING MODE
   // ========================================
-  if (mode === 'plan') {
-    return <ProfilePlanSection onBack={() => setMode('view')} />;
+  if (mode === "plan") {
+    return <ProfilePlanSection onBack={() => setMode("view")} />
   }
 
   // ========================================
   // EDIT MODE
   // ========================================
-  if (mode === 'edit') {
+  if (mode === "edit") {
     return (
-      <YStack flex={1} backgroundColor={c.bgPage}>
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-          {/* Header */}
-          <XStack paddingHorizontal={24} paddingTop={20} paddingBottom={16} alignItems="center">
-            <Button
-              size="$3"
-              circular
-              backgroundColor={c.bgInner}
-              borderWidth={0}
-              onPress={() => setMode('view')}
-              pressStyle={{ backgroundColor: c.bgCardHover }}
-            >
-              <ArrowLeft size={20} color={c.text} />
-            </Button>
-            <Text flex={1} textAlign="center" fontSize={18} fontWeight="600" color={c.text}>
-              {t('profile.editProfile')}
-            </Text>
-            <Button
-              size="$3"
-              circular
-              backgroundColor={saveSuccess ? 'rgba(34,197,94,0.2)' : 'rgba(6, 182, 212, 0.15)'}
-              borderWidth={0}
-              onPress={handleSave}
-              disabled={isSaving}
-              pressStyle={{ backgroundColor: 'rgba(6, 182, 212, 0.25)' }}
-            >
-              {isSaving ? (
-                <AppSpinner size="sm" variant="brand" />
-              ) : saveSuccess ? (
-                <Check size={20} color={GREEN} />
-              ) : (
-                <Save size={20} color={ACCENT} />
-              )}
-            </Button>
-          </XStack>
+      <Page narrow>
+        <PageHead
+          eyebrow={t("nav.account", { defaultValue: "Account" })}
+          title={t("profile.editProfile")}
+          lead={t("profile.editProfileSub")}
+          actions={
+            <>
+              <Btn
+                variant="ghost"
+                icon="arrow-left"
+                onPress={() => setMode("view")}
+                disabled={isSaving}
+              >
+                {t("common.cancel")}
+              </Btn>
+              <Btn
+                variant={saveSuccess ? "mint" : "primary"}
+                icon={saveSuccess ? "check" : "floppy-disk"}
+                onPress={handleSave}
+                disabled={isSaving}
+                loading={isSaving}
+                testID="profile-save"
+              >
+                {saveSuccess ? t("common.saved") : t("common.save")}
+              </Btn>
+            </>
+          }
+        />
 
-          {/* Error message */}
-          {error && (
-            <YStack
-              marginHorizontal={24}
-              marginBottom={16}
-              padding={12}
-              backgroundColor="rgba(239, 68, 68, 0.1)"
-              borderWidth={1}
-              borderColor="rgba(239, 68, 68, 0.2)"
-              borderRadius={8}
-            >
-              <Text fontSize={13} color={RED}>
-                {error}
-              </Text>
-            </YStack>
-          )}
+        {/* Error message */}
+        {error && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              padding: 12,
+              paddingHorizontal: 14,
+              borderRadius: 10,
+              backgroundColor: c.tint.r.bg,
+              borderWidth: 1,
+              borderColor: c.tint.r.bd,
+              marginBottom: 16,
+            }}
+          >
+            <Ph name="warning-circle" size={16} color={c.tint.r.tx} />
+            <T step="sm" color={c.tint.r.tx} style={{ flex: 1 }}>
+              {error}
+            </T>
+          </View>
+        )}
 
+        <Card pad>
           {/* Avatar preview */}
-          <YStack alignItems="center" paddingVertical={24}>
-            <XStack
-              width={80}
-              height={80}
-              borderRadius={40}
-              backgroundColor={isDark ? '#1a1a2e' : c.bgCardHover}
-              alignItems="center"
-              justifyContent="center"
-              borderWidth={2}
-              borderColor={ACCENT}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 20 }}>
+            <Avatar name={displayName || user.email} imageUrl={user.avatarUrl} size={64} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <T step="hsm" ellipsis>
+                {displayName || displayLabel}
+              </T>
+              <T step="12" tone="text3" ellipsis>
+                {user.email}
+              </T>
+            </View>
+          </View>
+
+          <FieldLabel
+            right={
+              <T step="codenote" tone="text3">
+                {displayName.length}/100
+              </T>
+            }
+          >
+            {t("profile.labelName")}
+          </FieldLabel>
+          <Field
+            icon="user"
+            value={displayName}
+            onChangeText={setDisplayName}
+            placeholder={t("profile.namePlaceholder")}
+            maxLength={100}
+          />
+
+          <View style={{ marginTop: 16 }}>
+            <FieldLabel
+              right={
+                <T step="codenote" tone="text3">
+                  {description.length}/1000
+                </T>
+              }
             >
-              {user.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt={displayName || 'Avatar'}
-                  style={{ width: '100%', height: '100%', borderRadius: 40, objectFit: 'cover' }}
-                />
-              ) : (
-                <Text fontSize={28} fontWeight="600" color={ACCENT}>
-                  {initials}
-                </Text>
-              )}
-            </XStack>
-          </YStack>
-
-          {/* Form Fields */}
-          <YStack paddingHorizontal={24} gap={20}>
-            <EditableField
-              label={t('profile.labelName')}
-              value={displayName}
-              onChange={setDisplayName}
-              icon={<User size={14} color={c.text2} />}
-              placeholder={t('profile.namePlaceholder')}
-              maxLength={100}
-            />
-
-            <EditableField
-              label={t('profile.labelDescription')}
+              {t("profile.labelDescription")}
+            </FieldLabel>
+            <Field
+              area
+              minHeight={110}
               value={description}
-              onChange={setDescription}
-              icon={<FileText size={14} color={c.text2} />}
-              placeholder={t('profile.descriptionPlaceholder')}
-              multiline
+              onChangeText={setDescription}
+              placeholder={t("profile.descriptionPlaceholder")}
               maxLength={1000}
             />
+            <FieldHelp>{t("profile.descriptionHint")}</FieldHelp>
+          </View>
 
-            {/* Language picker — fixed list of supported locales */}
-            <YStack gap={6}>
-              <XStack alignItems="center" gap={6}>
-                <Globe size={14} color={c.text2} />
-                <Text fontSize={12} color={c.text2} fontWeight="500">
-                  {t('profile.labelLanguage')}
-                </Text>
-              </XStack>
-              <XStack gap={8} flexWrap="wrap">
-                {SUPPORTED_LOCALES.map((loc) => {
-                  const isSelected = locale === loc;
-                  return (
-                    <TouchableOpacity
-                      key={loc}
-                      onPress={() => setLocale(loc as SupportedLocale)}
-                      style={{
-                        paddingHorizontal: 14,
-                        paddingVertical: 7,
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: isSelected ? ACCENT_DARK : c.borderStrong,
-                        backgroundColor: isSelected ? 'rgba(8,145,178,0.15)' : 'transparent',
-                      }}
-                    >
-                      <Text
-                        fontSize={13}
-                        color={isSelected ? ACCENT : c.text2}
-                        fontWeight={isSelected ? '600' : '400'}
-                      >
-                        {LOCALE_LABELS[loc]}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </XStack>
-            </YStack>
+          {/* Language picker — fixed list of supported locales */}
+          <View style={{ marginTop: 16 }}>
+            <FieldLabel>{t("profile.labelLanguage")}</FieldLabel>
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+              {SUPPORTED_LOCALES.map((loc) => (
+                <ChipBtn
+                  key={loc}
+                  lg
+                  icon={locale === loc ? "check" : "translate"}
+                  on={locale === loc}
+                  onPress={() => setLocale(loc as SupportedLocale)}
+                >
+                  {LOCALE_LABELS[loc]}
+                </ChipBtn>
+              ))}
+            </View>
+          </View>
 
-            <EditableField
-              label={t('profile.labelTimezone')}
+          <View style={{ marginTop: 16 }}>
+            <FieldLabel
+              right={
+                <T step="codenote" tone="text3">
+                  {timezone.length}/50
+                </T>
+              }
+            >
+              {t("profile.labelTimezone")}
+            </FieldLabel>
+            <Field
+              icon="clock"
               value={timezone}
-              onChange={setTimezone}
-              icon={<Clock size={14} color={c.text2} />}
-              placeholder={t('profile.timezonePlaceholder')}
+              onChangeText={setTimezone}
+              placeholder={t("profile.timezonePlaceholder")}
               maxLength={50}
             />
-          </YStack>
-
-          {/* Info box */}
-          <YStack
-            marginHorizontal={24}
-            marginTop={24}
-            marginBottom={40}
-            padding={16}
-            backgroundColor="rgba(6, 182, 212, 0.05)"
-            borderWidth={1}
-            borderColor="rgba(6, 182, 212, 0.1)"
-            borderRadius={12}
-          >
-            <Text fontSize={13} color={c.text2} lineHeight={20}>
-              💡 {t('profile.descriptionHint')}
-            </Text>
-          </YStack>
-        </ScrollView>
-      </YStack>
-    );
+          </View>
+        </Card>
+      </Page>
+    )
   }
 
   // ========================================
-  // VIEW MODE (Original beautiful design)
+  // VIEW MODE
   // ========================================
   return (
-    <YStack flex={1} backgroundColor={c.bgPage}>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-        {/* Header with Avatar */}
-        <YStack paddingTop={48} paddingBottom={40} paddingHorizontal={24} alignItems="center">
-          {/* Avatar with animated ring */}
-          <YStack
-            width={128}
-            height={128}
-            marginBottom={24}
-            alignItems="center"
-            justifyContent="center"
+    <View style={{ flex: 1 }}>
+      <Page narrow>
+        <PageHead
+          eyebrow={t("nav.account", { defaultValue: "Account" })}
+          title={displayLabel}
+          lead={user.email}
+          actions={
+            <Btn variant="sec" icon="pencil-simple" onPress={() => setMode("edit")}>
+              {t("profile.editProfile")}
+            </Btn>
+          }
+        />
+
+        {/* Identity card */}
+        <Card pad={20} style={{ marginBottom: 16 }}>
+          <View
+            style={{
+              flexDirection: narrow ? "column" : "row",
+              alignItems: narrow ? "flex-start" : "center",
+              gap: 18,
+            }}
           >
-            <AnimatedRing />
-
-            <XStack
-              width={120}
-              height={120}
-              borderRadius={60}
-              backgroundColor={isDark ? '#1a1a2e' : c.bgCardHover}
-              alignItems="center"
-              justifyContent="center"
-              zIndex={1}
+            <Avatar name={displayLabel} imageUrl={user.avatarUrl} size={72} />
+            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+              <T step="xl" ellipsis>
+                {displayLabel}
+              </T>
+              <T step="sm" tone="text2" ellipsis>
+                {user.email}
+              </T>
+              {memberSince ? (
+                <T step="codenote" tone="text3">
+                  {t("profile.memberSince", { date: memberSince })}
+                </T>
+              ) : null}
+              {user.description ? (
+                <T step="sm" tone="text2" numberOfLines={3} style={{ marginTop: 6 }}>
+                  {user.description}
+                </T>
+              ) : null}
+            </View>
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: 6,
+                alignSelf: narrow ? "flex-start" : "center",
+              }}
             >
-              {user.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt={user.name || 'Avatar'}
-                  style={{ width: '100%', height: '100%', borderRadius: 60, objectFit: 'cover' }}
-                />
-              ) : (
-                <Text fontSize={42} fontWeight="600" color={ACCENT} letterSpacing={2}>
-                  {initials}
-                </Text>
-              )}
-            </XStack>
+              {user.locale ? (
+                <Badge mono icon="translate">
+                  {LOCALE_LABELS[user.locale as SupportedLocale] ?? user.locale}
+                </Badge>
+              ) : null}
+              {user.timezone ? (
+                <Badge mono icon="clock">
+                  {user.timezone}
+                </Badge>
+              ) : null}
+            </View>
+          </View>
+        </Card>
 
-            {/* Online Status */}
-            <XStack
-              position="absolute"
-              bottom={4}
-              right={4}
-              width={24}
-              height={24}
-              backgroundColor={GREEN}
-              borderRadius={12}
-              borderWidth={3}
-              borderColor={c.bgPage}
-              zIndex={2}
-            />
-          </YStack>
+        {/* Stats */}
+        <Stats cols={3} style={{ marginBottom: 12 }}>
+          {STATS.map((stat) => (
+            <Stat key={stat.label} v={stat.value} label={stat.label} />
+          ))}
+        </Stats>
 
-          {/* Name & Email */}
-          <Text fontSize={28} fontWeight="600" color={c.text} marginBottom={4}>
-            {user.name || t('profile.fallbackName')}
-          </Text>
-          <Text fontSize={14} color={c.text2}>
-            {user.email}
-          </Text>
-          <Text fontSize={12} color={c.text3} marginTop={4}>
-            {t('profile.memberSince', { date: memberSince })}
-          </Text>
-        </YStack>
-
-        {/* Badge Carousel - shown only if user has badges */}
+        {/* Achievement cards - shown only if user has badges */}
         {visibleBadges.length > 0 && (
-          <YStack marginBottom={24}>
+          <View style={{ marginBottom: 20 }}>
+            <SectionLabel
+              label={t("windows.usersPanel.detail.meta.badges", { defaultValue: "Badges" })}
+              count={visibleBadges.length}
+            />
             <ScrollView
               ref={carouselRef}
               horizontal
               showsHorizontalScrollIndicator={false}
               snapToInterval={320}
               decelerationRate="fast"
-              contentContainerStyle={{ paddingHorizontal: 24, gap: 12 }}
+              contentContainerStyle={{ gap: 10, paddingVertical: 4 }}
               onScroll={handleScroll}
               scrollEventThrottle={16}
             >
               {visibleBadges.map((badge) => (
-                <LinearGradient
-                  key={badge.id}
-                  colors={badge.backgroundColors}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={{
-                    width: 320,
-                    borderRadius: 20,
-                    borderWidth: 1,
-                    borderColor: badge.borderColor,
-                    padding: 20,
-                  }}
-                >
-                  <XStack gap={16} alignItems="flex-start">
-                    <XStack
-                      width={72}
-                      height={72}
-                      borderRadius={16}
-                      backgroundColor="rgba(255,255,255,0.95)"
-                      alignItems="center"
-                      justifyContent="center"
-                      overflow="hidden"
-                      borderWidth={2}
-                      borderColor={badge.borderColor}
+                <Card key={badge.id} pad={16} style={{ width: 310 }}>
+                  <View style={{ flexDirection: "row", gap: 14, alignItems: "flex-start" }}>
+                    <View
+                      style={{
+                        width: 72,
+                        height: 72,
+                        borderRadius: 16,
+                        backgroundColor: c.wash,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                        flexShrink: 0,
+                      }}
                     >
-                      {Platform.OS === 'web' ? (
-                        <img 
-                          src={badge.imageUrl} 
-                          alt={t(badge.titleKey)}
-                          style={{ 
-                            width: 64, 
-                            height: 64, 
-                            objectFit: 'contain',
-                          }}
-                        />
-                      ) : (
-                        <YStack width={64} height={64} backgroundColor="rgba(255,255,255,0.5)" borderRadius={8} />
-                      )}
-                    </XStack>
-                    
-                    <YStack flex={1}>
-                      <Text fontSize={18} fontWeight="600" color={c.text} marginBottom={4}>
-                        {t(badge.titleKey)}
-                      </Text>
-                      <Text fontSize={13} color={c.text2} lineHeight={20}>
+                      <BadgeImage imageUrl={badge.imageUrl} alt={t(badge.titleKey)} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <T step="hsm">{t(badge.titleKey)}</T>
+                      <T step="12" tone="text2" style={{ marginTop: 4 }}>
                         {t(badge.descriptionKey)}
-                      </Text>
-                    </YStack>
-                  </XStack>
-                  
-                  <YStack 
-                    marginTop={16} 
-                    paddingTop={14} 
-                    borderTopWidth={1} 
-                    borderTopColor={c.border}
+                      </T>
+                    </View>
+                  </View>
+                  <View
+                    style={{
+                      marginTop: 12,
+                      paddingTop: 10,
+                      borderTopWidth: 1,
+                      borderTopColor: c.border,
+                    }}
                   >
-                    <Text 
-                      fontSize={11} 
-                      color={c.text3} 
-                      textTransform="uppercase" 
-                      letterSpacing={1}
-                    >
+                    <T step="codenote" tone="text3">
                       {t(badge.reasonKey)}
-                    </Text>
-                  </YStack>
-                </LinearGradient>
+                    </T>
+                  </View>
+                </Card>
               ))}
             </ScrollView>
-            
+
             {visibleBadges.length > 1 && (
-              <XStack justifyContent="center" gap={8} marginTop={16}>
+              <View
+                style={{ flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 12 }}
+              >
                 {visibleBadges.map((_, index) => (
-                  <XStack
+                  <View
                     key={index}
-                    width={activeIndex === index ? 24 : 8}
-                    height={8}
-                    borderRadius={4}
-                    backgroundColor={activeIndex === index ? ACCENT : c.borderStrong}
-                    pressStyle={{ opacity: 0.8 }}
-                    onPress={() => scrollToIndex(index)}
-                    cursor="pointer"
+                    onTouchEnd={() => scrollToIndex(index)}
+                    {...(Platform.OS === "web"
+                      ? ({ onClick: () => scrollToIndex(index) } as any)
+                      : {})}
+                    style={[
+                      {
+                        width: activeIndex === index ? 20 : 6,
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor: activeIndex === index ? c.accent : c.borderStrong,
+                      },
+                      Platform.OS === "web"
+                        ? ({ cursor: "pointer", transition: "width 0.3s" } as any)
+                        : null,
+                    ]}
                   />
                 ))}
-              </XStack>
+              </View>
             )}
-          </YStack>
+          </View>
         )}
 
-        {/* Stats Grid */}
-        <YStack paddingHorizontal={24} marginBottom={24}>
-          <XStack gap={12}>
-            {STATS.map((stat) => (
-              <YStack
-                key={stat.label}
-                flex={1}
-                backgroundColor={c.bgInner}
-                borderWidth={1}
-                borderColor={c.border}
-                borderRadius={16}
-                padding={16}
-                alignItems="center"
-                pressStyle={{ backgroundColor: c.bgCardHover }}
-              >
-                <XStack
-                  width={36}
-                  height={36}
-                  borderRadius={10}
-                  backgroundColor={getStatBgColor(stat.color)}
-                  alignItems="center"
-                  justifyContent="center"
-                  marginBottom={10}
+        {/* Account rows */}
+        <SectionLabel label={t("nav.account", { defaultValue: "Account" })} />
+        <LGroup style={{ marginBottom: 16 }}>
+          <LRow hov onPress={() => setMode("edit")}>
+            <Tile sm icon="pencil-simple" />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <T step="sm">{t("profile.editProfile")}</T>
+              <T step="12" tone="text3">
+                {t("profile.editProfileSub")}
+              </T>
+            </View>
+            <Ph name="caret-right" size={14} color={c.text3} />
+          </LRow>
+          <LRow hov onPress={() => setMode("plan")} testID="profile-open-plan">
+            <Tile sm icon="credit-card" tone="mint" />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <T step="sm">{t("profile.plan.entryTitle")}</T>
+              <T step="12" tone="text3">
+                {t("profile.plan.entrySub")}
+              </T>
+            </View>
+            <Ph name="caret-right" size={14} color={c.text3} />
+          </LRow>
+          <LRow hov>
+            <Tile sm icon="question" tone="amber" />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <T step="sm">{t("profile.help")}</T>
+              <T step="12" tone="text3">
+                {t("profile.helpSub")}
+              </T>
+            </View>
+            <Ph name="caret-right" size={14} color={c.text3} />
+          </LRow>
+          <LRow>
+            <Tile sm icon={theme === "dark" ? "moon" : "sun"} tone="muted" />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <T step="sm">{t("profile.theme", { defaultValue: "Theme" })}</T>
+              <T step="12" tone="text3">
+                {t("profile.themeSub", { defaultValue: "Light or dark interface" })}
+              </T>
+            </View>
+            <Segmented
+              value={theme}
+              onChange={(k) => setTheme(k)}
+              items={[
+                {
+                  key: "light",
+                  label: t("profile.themeLight", { defaultValue: "Light" }),
+                  icon: "sun",
+                },
+                {
+                  key: "dark",
+                  label: t("profile.themeDark", { defaultValue: "Dark" }),
+                  icon: "moon",
+                },
+              ]}
+              style={{ width: 170 }}
+            />
+          </LRow>
+        </LGroup>
+
+        {/* Conversations — the agent's summary on a new chat (CSUM-REQ-3) */}
+        <View style={{ marginBottom: 16 }}>
+          <SectionLabel label={t("profile.conversationSummary.section")} />
+          <ProfileConversationSummarySection />
+        </View>
+
+        {/* Help improve Teros — anonymized evaluation opt-in (default OFF) */}
+        <View style={{ marginBottom: 16 }}>
+          <SectionLabel label={t("profile.improveTeros.section")} />
+          <ProfileImproveTerosSection
+            initialOptIn={evaluationOptIn}
+            onOptInChange={setEvaluationOptIn}
+          />
+        </View>
+
+        {/* Danger zone — sign out only, isolated at the bottom
+          (Pablo, 2026-10-27): the sign-out used to sit directly under the
+          evaluation opt-in, reading as if turning the opt-in off and
+          leaving went together. It now lives in a zone of its own,
+          clearly separated from everything above.
+          (Pablo, 2026-10-27, review): delete account must NOT stand out
+          and must NOT sit close to the sign-out — it is demoted to a
+          quiet text link by the version footer, far from the logout. */}
+        <View style={{ marginTop: 40 }}>
+          <SectionLabel label={t("profile.dangerZone.section")} />
+          <View style={{ gap: 12 }}>
+            <DangerZone
+              title={t("profile.signOut")}
+              text={t("profile.dangerZone.signOutSub")}
+              action={
+                <Btn
+                  variant="dangerSoft"
+                  icon="sign-out"
+                  onPress={handleLogout}
+                  testID="profile-sign-out"
                 >
-                  <stat.icon size={18} color={getStatIconColor(stat.color)} />
-                </XStack>
-                <Text fontSize={22} fontWeight="700" color={c.text} marginBottom={2}>
-                  {stat.value}
-                </Text>
-                <Text fontSize={10} color={c.text2} textTransform="uppercase" letterSpacing={0.5}>
-                  {stat.label}
-                </Text>
-              </YStack>
-            ))}
-          </XStack>
-        </YStack>
+                  {t("profile.signOut")}
+                </Btn>
+              }
+            />
+          </View>
+        </View>
 
-        {/* Spacer */}
-        <YStack flex={1} minHeight={40} />
-
-        {/* Bottom Section */}
-        <YStack padding={24} gap={16}>
-          {/* Edit Profile Button */}
-          <YStack
-            backgroundColor={c.bgInner}
-            borderWidth={1}
-            borderColor={c.border}
-            borderRadius={16}
-            overflow="hidden"
+        {/* Version Footer — with the demoted delete-account link, kept as
+          far from the sign-out as the panel allows (Pablo, 2026-10-27). */}
+        <View style={{ padding: 16, alignItems: "center", gap: 8 }}>
+          <T step="12" tone="text3">
+            {t("profile.madeWith")}
+          </T>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setDeleteOpen(true)}
+            testID="profile-delete-account"
+            style={Platform.OS === "web" ? ({ cursor: "pointer" } as any) : undefined}
           >
-            <XStack
-              padding={16}
-              alignItems="center"
-              pressStyle={{ backgroundColor: c.bgCardHover }}
-              cursor="pointer"
-              onPress={() => setMode('edit')}
-            >
-              <XStack
-                width={40}
-                height={40}
-                borderRadius={10}
-                backgroundColor="rgba(6, 182, 212, 0.15)"
-                alignItems="center"
-                justifyContent="center"
-                marginRight={14}
-              >
-                <Edit3 size={20} color={ACCENT} />
-              </XStack>
-              <YStack flex={1}>
-                <Text fontSize={15} color={c.text} fontWeight="500" marginBottom={2}>
-                  {t('profile.editProfile')}
-                </Text>
-                <Text fontSize={12} color={c.text2}>
-                  {t('profile.editProfileSub')}
-                </Text>
-              </YStack>
-              <ChevronRight size={18} color={c.text3} />
-            </XStack>
-          </YStack>
-
-          {/* Plan & Billing Button */}
-          <YStack
-            backgroundColor={c.bgInner}
-            borderWidth={1}
-            borderColor={c.border}
-            borderRadius={16}
-            overflow="hidden"
-          >
-            <XStack
-              testID="profile-open-plan"
-              padding={16}
-              alignItems="center"
-              pressStyle={{ backgroundColor: c.bgCardHover }}
-              cursor="pointer"
-              onPress={() => setMode('plan')}
-            >
-              <XStack
-                width={40}
-                height={40}
-                borderRadius={10}
-                backgroundColor="rgba(6, 182, 212, 0.15)"
-                alignItems="center"
-                justifyContent="center"
-                marginRight={14}
-              >
-                <CreditCard size={20} color={ACCENT} />
-              </XStack>
-              <YStack flex={1}>
-                <Text fontSize={15} color={c.text} fontWeight="500" marginBottom={2}>
-                  {t('profile.plan.entryTitle')}
-                </Text>
-                <Text fontSize={12} color={c.text2}>
-                  {t('profile.plan.entrySub')}
-                </Text>
-              </YStack>
-              <ChevronRight size={18} color={c.text3} />
-            </XStack>
-          </YStack>
-
-          {/* Help Button */}
-          <YStack
-            backgroundColor={c.bgInner}
-            borderWidth={1}
-            borderColor={c.border}
-            borderRadius={16}
-            overflow="hidden"
-          >
-            <XStack
-              padding={16}
-              alignItems="center"
-              pressStyle={{ backgroundColor: c.bgCardHover }}
-              cursor="pointer"
-            >
-              <XStack
-                width={40}
-                height={40}
-                borderRadius={10}
-                backgroundColor="rgba(236, 72, 153, 0.15)"
-                alignItems="center"
-                justifyContent="center"
-                marginRight={14}
-              >
-                <HelpCircle size={20} color={PINK} />
-              </XStack>
-              <YStack flex={1}>
-                <Text fontSize={15} color={c.text} fontWeight="500" marginBottom={2}>
-                  {t('profile.help')}
-                </Text>
-                <Text fontSize={12} color={c.text2}>
-                  {t('profile.helpSub')}
-                </Text>
-              </YStack>
-              <ChevronRight size={18} color={c.text3} />
-            </XStack>
-          </YStack>
-
-          {/* Logout Button */}
-          <Button
-            height={52}
-            backgroundColor="rgba(239, 68, 68, 0.1)"
-            borderWidth={1}
-            borderColor="rgba(239, 68, 68, 0.2)"
-            borderRadius={12}
-            pressStyle={{ backgroundColor: 'rgba(239, 68, 68, 0.15)' }}
-            onPress={handleLogout}
-          >
-            <XStack alignItems="center" gap={8}>
-              <LogOut size={18} color={RED} />
-              <Text color={RED} fontSize={15} fontWeight="500">
-                {t('profile.signOut')}
-              </Text>
-            </XStack>
-          </Button>
-        </YStack>
-
-        {/* Version Footer */}
-        <YStack padding={16} alignItems="center">
-          <Text fontSize={11} color={c.text3}>
-            {t('profile.madeWith')}
-          </Text>
-        </YStack>
-      </ScrollView>
-    </YStack>
-  );
+            <T step="12" tone="text3" style={{ textDecorationLine: "underline" }}>
+              {t("profile.deleteAccount.open")}
+            </T>
+          </Pressable>
+        </View>
+      </Page>
+      <DeleteAccountDialog
+        open={deleteOpen}
+        email={user.email}
+        onCancel={() => setDeleteOpen(false)}
+        onDeleted={handleLogout}
+      />
+    </View>
+  )
 }

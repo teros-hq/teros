@@ -269,3 +269,50 @@ export async function validateTaskId(taskId: string): Promise<void> {
 export async function validateProjectId(projectId: string): Promise<void> {
   await validateExists(projectId, 'get_project', { projectId }, 'Project', 'list-projects');
 }
+
+// ============================================================================
+// TAGS NORMALIZATION
+// ============================================================================
+
+/**
+ * Normaliza el campo `tags` a `string[]`.
+ *
+ * Algunos LLMs pasan el array como string JSON (`"[\"a\",\"b\"]"`) en vez de
+ * array nativo. El schema del tool declara `type: 'array'` pero el runtime no
+ * valida estrictamente, y el string llegaba intacto hasta MongoDB — rompiendo
+ * `task.tags.join()` en el frontend (BoardRenderer) y bloqueando la ventana
+ * entera de la conversación (bug "task.tags.join is not a function").
+ *
+ * Acepta: array nativo, string JSON de array, string con comas, undefined.
+ * Devuelve siempre `string[]` (o undefined si no había nada).
+ */
+export function normalizeTags(
+  tags: unknown,
+): string[] | undefined {
+  if (tags === undefined || tags === null) return undefined;
+  if (Array.isArray(tags)) {
+    return tags.map((t) => String(t).trim()).filter(Boolean);
+  }
+  if (typeof tags === 'string') {
+    const trimmed = tags.trim();
+    if (!trimmed) return [];
+    // String JSON: '["a","b"]'
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((t) => String(t).trim()).filter(Boolean);
+        }
+      } catch {
+        // fallback abajo
+      }
+    }
+    // CSV: 'a,b,c'
+    return trimmed
+      .replace(/^\[|\]$/g, '')
+      .split(',')
+      .map((t) => t.trim().replace(/^"|"$/g, ''))
+      .filter(Boolean);
+  }
+  return undefined;
+}

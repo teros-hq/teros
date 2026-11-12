@@ -38,7 +38,9 @@ export function createSubscribeToEventsHandler(
       topic,
       channelId,
       rules: rules ?? [],
-      mode: mode ?? 'notify',
+      // @todo nira - 2026.09.24 : default flipped notify → wake (decision Pablo):
+      // silence-by-default hid events; over-waking is monitored and tuned later.
+      mode: mode ?? 'wake',
     })
 
     return {

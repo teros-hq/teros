@@ -18,6 +18,7 @@
  *    pre-fills `iconUri={GITHUB_ICON}` and the description label.
  */
 
+import i18n from '../../../../i18n';
 import type React from 'react';
 import {
   AlertCircle,
@@ -43,12 +44,13 @@ import {
 } from '../../primitives';
 import type { McaStatusType } from '../../primitives/colors';
 import type { ToolCallRendererProps } from '../../types';
+import { backendUrl } from '../../../../config/runtime';
 
 // =============================================================================
 // Brand
 // =============================================================================
 
-export const GITHUB_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL ?? ''}/static/github-icon.png`;
+export const GITHUB_ICON = `${backendUrl()}/static/mcas/mca.github/icon.svg`;
 
 /**
  * Official GitHub Primer palette. Validated against the GitHub UI itself
@@ -384,6 +386,75 @@ export function getToolLabel(toolName: string): string {
 }
 
 // =============================================================================
+// Action labels — verb + resource, conjugated by status
+// =============================================================================
+
+/**
+ * Verb conjugation per tool. Each entry has:
+ *  - `running`: gerund ("Cargando…", "Consultando…", "Mergueando…")
+ *  - `completed`: past participle / preterite ("Consultado", "Mergueado")
+ *  - `failed`: infinitive for error phrasing ("Error al consultar")
+ *
+ * Tools not listed here fall back to a generic "Cargando…" / "Completado".
+ */
+const VERB_KEY_PREFIX = "githubCards.verbs";
+
+/**
+ * Compose a human-readable action label for a tool call.
+ *
+ * @param toolName  Full tool name (e.g. `github_get-pull`)
+ * @param status    Current tool call status
+ * @param resource  Optional resource context (e.g. `PR #507`, `owner/repo`, `main`)
+ * @param detail    Optional extra detail appended after an em-dash (e.g. PR title)
+ *
+ * Examples:
+ *  - `actionLabel('github_get-pull', 'running', 'PR #507')` → "Cargando PR #507"
+ *  - `actionLabel('github_get-pull', 'completed', 'PR #507', 'fix(auth): …')` → "Consultado PR #507 — fix(auth): …"
+ *  - `actionLabel('github_merge-pull', 'running', 'PR #507')` → "Mergueando PR #507"
+ *  - `actionLabel('github_list-pulls', 'completed')` → "Consultados"
+ */
+export function actionLabel(
+  toolName: string,
+  status: ToolCallRendererProps['status'],
+  resource?: string,
+  detail?: string,
+): string {
+  const short = getShortToolName(toolName);
+  const phase =
+    status === 'running' || status === 'pending' || status === 'pending_permission'
+      ? 'running'
+      : status === 'failed'
+        ? 'failed'
+        : 'completed';
+  const verb = i18n.t(`${VERB_KEY_PREFIX}.${short}.${phase}`, {
+    defaultValue: i18n.t(`${VERB_KEY_PREFIX}._default.${phase}`),
+  });
+
+  const parts = [verb];
+  if (resource) parts.push(resource);
+  let label = parts.join(' ');
+  if (detail && phase !== 'failed') label += ` — ${detail}`;
+  return label;
+}
+
+export function noun(key: string): string {
+  return i18n.t(`githubCards.nouns.${key}`);
+}
+
+export function detailText(key: string, values?: Record<string, unknown>): string {
+  return i18n.t(`githubCards.details.${key}`, values);
+}
+
+export function listItems<T>(parsed: unknown, field?: string): T[] {
+  if (Array.isArray(parsed)) return parsed as T[];
+  if (!parsed || typeof parsed !== 'object') return [];
+  const o = parsed as Record<string, unknown>;
+  if (Array.isArray(o.items)) return o.items as T[];
+  if (field && Array.isArray(o[field])) return o[field] as T[];
+  return [];
+}
+
+// =============================================================================
 // Prop factories — feed the global primitives
 // =============================================================================
 
@@ -584,8 +655,7 @@ export function GitHubToolShell({
   return (
     <ToolCallCard
       status={toolStatusForPrimitive(status)}
-      description={description}
-      verb={getToolLabel(toolName)}
+      description={description ?? getToolLabel(toolName)}
       iconUri={GITHUB_ICON}
       badge={badge}
       defaultExpanded={defaultExpanded ?? false}

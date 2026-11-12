@@ -6,7 +6,7 @@ import type { Db } from 'mongodb'
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { ProjectService } from '../../../services/project-service'
-import { canAccessWorkspace } from '../../../auth/workspace-access'
+import { canWriteWorkspace } from '../../../auth/workspace-access'
 
 interface UpdateProjectData {
   projectId: string
@@ -28,7 +28,7 @@ export function createUpdateProjectHandler(projectService: ProjectService, db: D
     if (!existing) {
       throw new HandlerError('PROJECT_NOT_FOUND', `Project ${projectId} not found`)
     }
-    if (!(await canAccessWorkspace(db, ctx.userId, existing.workspaceId))) {
+    if (!(await canWriteWorkspace(db, ctx.userId, existing.workspaceId))) {
       throw new HandlerError('FORBIDDEN', 'No access to this project')
     }
 

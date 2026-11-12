@@ -5,3 +5,6 @@ export { sendHtmlFile } from './send-html-file';
 export { sendImage } from './send-image';
 export { sendVideo } from './send-video';
 export { notifyByEmail } from './notify-by-email';
+export { shareFile } from './share-file';
+export { unshareFile } from './unshare-file';
+export { getShare } from './get-share';

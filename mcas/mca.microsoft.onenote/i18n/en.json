@@ -1,0 +1,135 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "list-notebooks": {
+      "name": "list-notebooks",
+      "description": "List every OneNote notebook the signed-in account can open, including shared ones."
+    },
+    "get-notebook": {
+      "name": "get-notebook",
+      "description": "Get one OneNote notebook by id, with its name, sharing state, and web URL.",
+      "params": {
+        "notebookId": "Notebook id, as returned by list-notebooks."
+      }
+    },
+    "create-notebook": {
+      "name": "create-notebook",
+      "description": "Create a new OneNote notebook. Names may not contain ? * \\ / : < > | ' \" # and are limited to 50 characters.",
+      "params": {
+        "displayName": "Notebook name. Max 50 characters; ? * \\ / : < > | ' \" # are not allowed."
+      }
+    },
+    "list-sections": {
+      "name": "list-sections",
+      "description": "List OneNote sections. Scoped to one notebook when notebookId is given, this returns only that notebook's top-level sections — sections nested inside a section group are not included. Omit notebookId to list every section the account can reach, section groups included.",
+      "params": {
+        "notebookId": "Optional notebook id from list-notebooks. Returns only that notebook's top-level sections — sections inside a section group are not included. Omit to list sections across all notebooks, including ones inside section groups."
+      }
+    },
+    "create-section": {
+      "name": "create-section",
+      "description": "Create a section inside a OneNote notebook. Names may not contain ? * \\ / : < > | ' \" # and are limited to 50 characters.",
+      "params": {
+        "parentNotebookId": "Id of the notebook to create the section in, from list-notebooks. Also accepted as notebookId.",
+        "notebookId": "Alias for parentNotebookId.",
+        "displayName": "Section name. Max 50 characters; ? * \\ / : < > | ' \" # are not allowed."
+      }
+    },
+    "list-section-groups": {
+      "name": "list-section-groups",
+      "description": "List OneNote section groups — the folders that hold sections inside a notebook. Scoped to one notebook when notebookId is given.",
+      "params": {
+        "notebookId": "Optional notebook id from list-notebooks. Omit to list section groups across all notebooks."
+      }
+    },
+    "list-pages": {
+      "name": "list-pages",
+      "description": "List OneNote pages, newest first. Scoped to one section when sectionId is given, otherwise across every notebook. Returns metadata only — use get-page-content to read a page.",
+      "params": {
+        "sectionId": "Optional section id from list-sections. Omit to list recent pages across all notebooks.",
+        "top": "Maximum pages to return. Defaults to 50, capped at 100."
+      }
+    },
+    "get-page": {
+      "name": "get-page",
+      "description": "Get one OneNote page by id: its title, timestamps, position, and parent section. Use get-page-content to read the page body.",
+      "params": {
+        "pageId": "Page id, as returned by list-pages or search-pages."
+      }
+    },
+    "get-page-content": {
+      "name": "get-page-content",
+      "description": "Read the body of a OneNote page. Returns markdown by default. Set includeIDs to get the element ids that append-to-page and replace-page-content can target — that always returns HTML, because markdown cannot carry the ids.",
+      "params": {
+        "pageId": "Page id, as returned by list-pages or search-pages.",
+        "format": "Output format. Defaults to markdown. Forced to html when includeIDs is set.",
+        "includeIDs": "Include OneNote data-id attributes so individual elements can be targeted for editing. Implies format: html."
+      }
+    },
+    "create-page": {
+      "name": "create-page",
+      "description": "Create a OneNote page in a section. Content is markdown by default and is converted to the HTML OneNote stores.",
+      "params": {
+        "parentSectionId": "Id of the section to create the page in, from list-sections. Also accepted as sectionId.",
+        "sectionId": "Alias for parentSectionId.",
+        "title": "Page title. OneNote stores this as the page's <title> element — there is no separate title field.",
+        "content": "Page body, in markdown unless contentFormat says otherwise.",
+        "contentFormat": "Format of `content`. Defaults to markdown. Use html to pass OneNote markup through unchanged."
+      }
+    },
+    "delete-page": {
+      "name": "delete-page",
+      "description": "Delete a OneNote page. The page goes to the notebook recycle bin, but this cannot be undone from here.",
+      "params": {
+        "pageId": "Page id, as returned by list-pages or search-pages."
+      }
+    },
+    "copy-page-to-section": {
+      "name": "copy-page-to-section",
+      "description": "Copy a OneNote page into another section, including across notebooks. Waits for the copy to finish and returns the new page id.",
+      "params": {
+        "pageId": "Id of the page to copy, from list-pages or search-pages.",
+        "destinationSectionId": "Id of the section to copy the page into, from list-sections."
+      }
+    },
+    "append-to-page": {
+      "name": "append-to-page",
+      "description": "Add content to an existing OneNote page without removing anything. Appends to the end of the page by default; pass a target element id from get-page-content (includeIDs: true) to add next to a specific element.",
+      "params": {
+        "pageId": "Page id, as returned by list-pages or search-pages.",
+        "content": "Content to add, in markdown unless contentFormat says otherwise.",
+        "contentFormat": "Format of `content`. Defaults to markdown.",
+        "target": "Where to add the content: \"body\" (default), or a data-id from get-page-content with includeIDs: true.",
+        "position": "Whether the content goes after (default) or before the target."
+      }
+    },
+    "replace-page-content": {
+      "name": "replace-page-content",
+      "description": "Replace the content of a OneNote page, or just its title. This overwrites what was there and cannot be undone — use append-to-page to add without removing.",
+      "params": {
+        "pageId": "Page id, as returned by list-pages or search-pages.",
+        "content": "Replacement content, in markdown unless contentFormat says otherwise. When target is \"title\", this is plain text.",
+        "contentFormat": "Format of `content`. Defaults to markdown. Ignored when target is \"title\".",
+        "target": "What to replace: \"body\" (default), \"title\", or a data-id from get-page-content with includeIDs: true."
+      }
+    },
+    "search-pages": {
+      "name": "search-pages",
+      "description": "Search OneNote pages by text. Results may not be exhaustive — OneNote search coverage varies by account type, and this falls back to matching page titles when full-text search is unavailable. Use list-pages to browse a section reliably.",
+      "params": {
+        "query": "Text to search for. Pass the literal text, not a pre-encoded string.",
+        "top": "Maximum pages to return. Defaults to 25, capped at 100."
+      }
+    }
+  },
+  "name": "OneNote",
+  "description": "Microsoft OneNote automation — browse notebooks and sections, read and write pages as markdown, and search notes via the Microsoft Graph OneNote API",
+  "changelog": [
+    {
+      "notes": "Initial release — read, write, and search OneNote notebooks, sections, and pages"
+    }
+  ]
+}

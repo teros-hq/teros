@@ -11,11 +11,12 @@
  *   - `boardId` param → `mcaId` + `filter.metadata.boardId`
  *   - `board_subscriptions` collection → `mca_subscriptions`
  *   - `notifySubscribers(boardId, event)` → `notifySubscribers(mcaId, event)`
- *
+ * See docs/mcas/01-VISION.md §5 (Events & Subscriptions) for full migration map.
  * ───────────────────────────────────────────────────────────────────────────
  */
 
 import { generateId } from '@teros/core';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import type { Collection, Db } from 'mongodb';
 import type { BoardEventType, BoardSubscription, BoardSubscriptionFilter } from '../types/database';
 import type { ScheduledEvent } from '../handlers/event-handler';
@@ -44,6 +45,14 @@ export interface BoardEventPayload {
   taskId?: string;
   taskTitle?: string;
   assignedAgentId?: string;
+  /**
+   * Agent that caused this event, when the emitter was an agent.
+   * Consumed by the self-wake guard in `event-handler` — an agent must not be
+   * woken by an event it produced itself (self-feedback loops).
+   */
+  actorAgentId?: string;
+  /** Human user that caused this event (manager actions via ctx.userId). */
+  actorUserId?: string;
   columnId?: string;
   columnName?: string;
   fromColumnId?: string;
@@ -75,19 +84,30 @@ export type EventInjectorFn = (event: ScheduledEvent) => Promise<{ success: bool
 
 /**
  * Default wakeUpAgent value per event type when `wakeUpOn` is not configured.
- * Rule: informational events don't wake; progress notes wake by default.
+ *
+ * Rule (decision Pablo, 2026-09-24): EVERY event type wakes by default. Silence
+ * by default hid board activity from subscribed agents; over-waking is monitored
+ * (🔕 self-wake guard logs in event-handler) and tuned later, which is strictly
+ * preferable to missing events. Existing subscriptions without `wakeUpOn` are
+ * covered by this default — no migration needed.
+ *
+ * The only wake suppression is the self-wake guard in `event-handler`
+ * (`handleScheduledEvent`): an agent is not woken by an event it caused itself.
  */
+// @todo nira - 2026.09.24 : this table is now uniformly `true` — collapse it to
+// a plain `return true` (and drop the per-event-type knob) once we confirm the
+// per-type distinction is not needed; kept for now as the explicit monitoring knob.
 const DEFAULT_WAKE_UP: Record<BoardEventType, boolean> = {
-  'board.task_moved': false,
-  'board.task_archived': false,
-  'board.task_assigned': false,
-  'board.task_created': false,
-  'board.task_updated': false,
+  'board.task_moved': true,
+  'board.task_archived': true,
+  'board.task_assigned': true,
+  'board.task_created': true,
+  'board.task_updated': true,
   'board.task_progress_note': true,
-  'board.agent_play_changed': false,
-  'board.agent_slots_changed': false,
-  'board.dependency_added': false,
-  'board.dependency_removed': false,
+  'board.agent_play_changed': true,
+  'board.agent_slots_changed': true,
+  'board.dependency_added': true,
+  'board.dependency_removed': true,
 };
 
 // ============================================================================
@@ -107,13 +127,9 @@ export class BoardSubscriptionService {
   // --------------------------------------------------------------------------
 
   async ensureIndexes(): Promise<void> {
-    await this.col.createIndex({ boardId: 1 }, { name: 'boardId_lookup' });
-    await this.col.createIndex({ channelId: 1 }, { name: 'channelId_lookup' });
-    await this.col.createIndex(
-      { boardId: 1, channelId: 1 },
-      { unique: true, name: 'boardId_channelId_unique' },
-    );
-    console.log('[BoardSubscriptionService] Indexes ensured for board_subscriptions');
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.col, COLLECTIONS.boardSubscriptions);
   }
 
   setEventInjector(fn: EventInjectorFn): void {
@@ -127,6 +143,13 @@ export class BoardSubscriptionService {
   /**
    * Subscribe a channel to board events (upsert — updates filter if already exists).
    * Migration: rename `boardId` param to `mcaId` when generalising.
+   *
+   * Upsert semantics (documented for fb_d211b16343bd3034): a second subscribe
+   * for the same (boardId, channelId) does NOT create a new subscription —
+   * it REPLACES the filter of the existing one in place (same subscriptionId,
+   * original createdAt). Callers that need to distinguish both cases check
+   * `result.createdAt.getTime() === result.updatedAt.getTime()` (true only on
+   * creation) or use `subscribeWithStatus`.
    */
   async subscribe(
     boardId: string,
@@ -160,6 +183,23 @@ export class BoardSubscriptionService {
     await this.col.insertOne(sub);
     console.log(`[BoardSubscriptionService] Created subscription ${sub.subscriptionId} for channel ${channelId} on board ${boardId}`);
     return sub;
+  }
+
+  /**
+   * Like `subscribe` but reports whether a new subscription was created or an
+   * existing one's filter was replaced (fb_d211b16343bd3034 — silent upsert
+   * risk: the caller believed they added a subscription and had actually
+   * replaced the previous filter without notice).
+   */
+  async subscribeWithStatus(
+    boardId: string,
+    channelId: string,
+    agentId: string,
+    filter: BoardSubscriptionFilter = {},
+  ): Promise<{ subscription: BoardSubscription; created: boolean }> {
+    const existing = await this.col.findOne({ boardId, channelId });
+    const subscription = await this.subscribe(boardId, channelId, agentId, filter);
+    return { subscription, created: !existing };
   }
 
   /**
@@ -283,6 +323,11 @@ export class BoardSubscriptionService {
     if (filter.tags && filter.tags.length > 0) {
       const taskTags = (p.tags as string[] | undefined) ?? [];
       if (!filter.tags.every((t) => taskTags.includes(t))) return false;
+    }
+
+    // taskIds filter — only events for these specific tasks
+    if (filter.taskIds && filter.taskIds.length > 0) {
+      if (!p.taskId || !filter.taskIds.includes(p.taskId as string)) return false;
     }
 
     return true;

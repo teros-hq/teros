@@ -37,7 +37,7 @@ export function ListListsRenderer({ status, output, error, appIcon }: ToolCallRe
   return (
     <ToolCallCard
       status={status}
-      verb="List lists"
+      description="List lists"
       badge={badge}
       iconUri={appIcon}
       animateExpand

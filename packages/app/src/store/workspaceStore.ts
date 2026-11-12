@@ -370,6 +370,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
 // @todo nira - 2026-05-20: migrate to createSessionStore once circular deps resolved
 
 import { storeRegistry } from './session/StoreRegistry'
+import { registerWorkspaceStoreRef } from './workspaceStoreRef'
 
 storeRegistry.register('workspace', {
   resetSession: async () => {
@@ -377,4 +378,10 @@ storeRegistry.register('workspace', {
     await state.clearActiveWorkspace()
     state.clearFloatingWindows()
   },
+})
+
+// Register into the cycle-breaker so tilingStore's cross-workspace guard can
+// read the active workspace ID without importing this module (circular dep).
+registerWorkspaceStoreRef({
+  getActiveWorkspaceId: () => useWorkspaceStore.getState().activeWorkspaceId,
 })

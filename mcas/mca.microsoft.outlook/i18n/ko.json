@@ -178,6 +178,17 @@
     "list-rules": {
       "name": "list-rules",
       "description": "계정의 모든 받은 편지함 규칙(메일 필터)을 나열합니다."
+    },
+    "set-signature": {
+      "name": "set-signature",
+      "description": "연결된 이메일 계정의 서명(HTML)을 저장합니다. 서명은 계정별로 저장되며 발신 이메일(send-message, reply-message, create-draft, update-draft)에 자동으로 추가됩니다 — 다른 이메일에서 재구성하거나 임의로 만들지 않습니다. 사용자가 서명을 원하는데 설정되어 있지 않으면 사용자에게 요청(HTML 권장)한 후 이 도구로 저장하세요.",
+      "params": {
+        "signatureHtml": "HTML 형식의 서명(예: 로고 <img>, 스타일이 적용된 이름, 직함, 회사). 이미지는 절대 https URL을 사용해야 합니다."
+      }
+    },
+    "get-signature": {
+      "name": "get-signature",
+      "description": "연결된 이메일 계정에 설정된 서명(HTML)이 있으면 가져옵니다. 이메일을 작성하기 전에 서명이 설정되어 있는지 확인할 때 사용하세요."
     }
   },
   "name": "Outlook",

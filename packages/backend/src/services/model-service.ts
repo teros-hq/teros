@@ -20,6 +20,7 @@ import { SkillService, interpolateSkill } from './skill-service';
 import { escapePromptBlockAttr, neutralizePromptTags } from './prompt-safety';
 import { ProjectService } from './project-service';
 import { McaService } from './mca-service';
+import type { EnvironmentContextResult } from './environment-context-service';
 
 export interface EffectiveLLMConfig {
   /** Model ID (unique identifier in our DB) */
@@ -36,6 +37,7 @@ export interface EffectiveLLMConfig {
    * - 'zhipu-coding': Z.ai coding API (GLM models optimized for coding)
    * - 'ollama': Local Ollama models
    * - 'openai-codex-oauth': Uses OAuth (ChatGPT Pro/Plus subscription via Codex)
+   * - 'helmcode': Helmcode (EU private inference, open-weight, flat-rate, BYOK, OpenAI-compatible)
    */
   provider:
     | 'anthropic'
@@ -54,7 +56,8 @@ export interface EffectiveLLMConfig {
     | 'teros'
     | 'cloudflare'
     | 'fireworks'
-    | 'together';
+    | 'together'
+    | 'helmcode';
   modelString: string;
   temperature: number;
   /**
@@ -99,8 +102,14 @@ export interface EffectiveLLMConfig {
 export interface EffectiveAgentConfig {
   /** LLM configuration */
   llm: EffectiveLLMConfig;
-  /** Combined system prompt (core + agent customization) */
+  /** Combined system prompt (core + agent customization). Full text = stable + volatile. */
   systemPrompt: string;
+  /**
+   * The trailing, per-request portion of `systemPrompt` (loaded skills + <context>
+   * timestamp). When present, `systemPrompt.endsWith(systemPromptVolatile)` holds.
+   * Cache-aware LLM adapters slice this off so only the stable prefix is cached.
+   */
+  systemPromptVolatile?: string;
   /** Agent metadata */
   agent: {
     agentId: string;
@@ -319,6 +328,14 @@ export class ModelService {
       workspaceId?: string;
       parentChannelId?: string;
     },
+    loadedSkillsContent?: Array<{ name: string; content: string }>,
+    /**
+     * Pre-built <environment> contribution (Fase 1/2, flag
+     * `prompt.environment-context`). Built by the caller (message-handler)
+     * via environment-context-service — model-service only owns the SLOT,
+     * keeping flag resolution and tool execution out of this hot path.
+     */
+    environmentContext?: EnvironmentContextResult,
   ): Promise<EffectiveAgentConfig | null> {
     // Get agent instance
     const agentsCollection = this.db.collection<AgentInstance>('agents');
@@ -385,7 +402,7 @@ export class ModelService {
     }
 
     // Build system prompt: core prompt + agent context + skills + workspace context + project context + <context> block
-    const systemPrompt = await this.buildSystemPrompt(
+    const { systemPrompt, systemPromptVolatile } = await this.buildSystemPrompt(
       resolvedCore,
       agent,
       workspaceContext,
@@ -394,11 +411,14 @@ export class ModelService {
       projectName,
       channelId,
       contextData,
+      loadedSkillsContent,
+      environmentContext,
     );
 
     return {
       llm: llmConfig,
       systemPrompt,
+      systemPromptVolatile,
       agent: {
         agentId: agent.agentId,
         name: agent.name,
@@ -426,7 +446,9 @@ export class ModelService {
       workspaceId?: string;
       parentChannelId?: string;
     },
-  ): Promise<string> {
+    loadedSkillsContent?: Array<{ name: string; content: string }>,
+    environmentContext?: EnvironmentContextResult,
+  ): Promise<{ systemPrompt: string; systemPromptVolatile?: string }> {
     let prompt = core.systemPrompt;
 
     // Add agent identity (first, right after core prompt)
@@ -443,8 +465,14 @@ export class ModelService {
     // Skills belong to a workspace, so only skills from the active workspace
     // are injected — this ensures superagents get the right skills per workspace.
     const effectiveWorkspaceId = contextData?.workspaceId ?? agent.workspaceId;
-    const skills = await this.skillService.getAgentSkills(agent.agentId, effectiveWorkspaceId ?? undefined);
-    if (skills.length > 0) {
+
+    // Single query partitions the agent's skills into always-on + on-demand index,
+    // instead of two separate getAgentSkills round-trips on this hot path.
+    const { alwaysOn: alwaysOnSkills, onDemandIndex } =
+      await this.skillService.getPartitionedAgentSkills(agent.agentId, effectiveWorkspaceId ?? undefined);
+
+    // Inject always-on skills with full content (cached block)
+    if (alwaysOnSkills.length > 0) {
       const interpolationContext = {
         agent: {
           name: agent.name,
@@ -456,12 +484,25 @@ export class ModelService {
         workspace: workspaceName ? { name: workspaceName } : undefined,
       };
 
-      for (const skill of skills) {
+      for (const skill of alwaysOnSkills) {
         const interpolated = interpolateSkill(skill.content, interpolationContext);
         // Escape collaborative content so it can't break out of its <skill>
         // block or forge a fake one (TER-379).
         prompt += `\n\n<skill name="${escapePromptBlockAttr(skill.name)}">\n${neutralizePromptTags(interpolated)}\n</skill>`;
       }
+    }
+
+    // Inject on-demand skill index (cached block)
+    if (onDemandIndex.length > 0) {
+      prompt += `\n\n<available_skills>\n`;
+      for (const entry of onDemandIndex) {
+        prompt += `- ${escapePromptBlockAttr(entry.name)}`;
+        if (entry.description) {
+          prompt += `: ${escapePromptBlockAttr(entry.description)}`;
+        }
+        prompt += `\n`;
+      }
+      prompt += `\nTo load a skill, use the load_skill tool with the skill name.\n</available_skills>`;
     }
 
     // Add workspace context if available
@@ -484,9 +525,12 @@ export class ModelService {
     // so an apps lookup failure degrades to "no app instructions" rather than
     // breaking the whole system prompt (this runs for every agent).
     try {
+      // MUW-REQ-12: only the apps this conversation can use contribute instructions.
+      const viewer = channelId ? await this.mcaService.getChannelViewer(channelId) : null;
       const { apps: agentApps } = await this.mcaService.getAgentApps(
         agent.agentId,
         effectiveWorkspaceId ?? undefined,
+        viewer ?? undefined,
       );
       for (const { app } of agentApps) {
         const appContext = (app.context ?? '').trim();
@@ -497,6 +541,36 @@ export class ModelService {
       }
     } catch (err) {
       console.error('[ModelService] Failed to inject app instructions:', err);
+    }
+
+    // Fase 2 — app context prehooks (STABLE, cacheable): apps that declare a
+    // static `contextPrehook` contribute a computed <app_context> block next
+    // to their <app_instructions>. Everything above stays the cached prefix.
+    if (environmentContext?.stable) {
+      prompt += environmentContext.stable;
+    }
+
+    // Everything above is the STABLE (cacheable) prefix. Everything below is the
+    // VOLATILE suffix (per-request loaded skills + the <context> timestamp): it
+    // changes every turn, so it is emitted as a separate, non-cached system block
+    // by cache-aware adapters. Keep this contiguous at the tail so the invariant
+    // `systemPrompt.endsWith(volatile)` holds.
+    let volatile = '';
+
+    // Inject per-request loaded skills (non-cached, from @mention / skillIds)
+    if (loadedSkillsContent && loadedSkillsContent.length > 0) {
+      volatile += `\n\n<loaded_skills>`;
+      for (const loadedSkill of loadedSkillsContent) {
+        volatile += `\n<loaded_skill name="${escapePromptBlockAttr(loadedSkill.name)}">\n${neutralizePromptTags(loadedSkill.content)}\n</loaded_skill>`;
+      }
+      volatile += `\n</loaded_skills>`;
+    }
+
+    // Fase 1/2 — environment context (VOLATILE): harness snapshot (cwd,
+    // platform, git, capped project tree) + tool-type app prehooks. Recomputed
+    // per request so it never invalidates the cached prefix above.
+    if (environmentContext?.volatile) {
+      volatile += environmentContext.volatile;
     }
 
     // Add <context> block at the very end (not cacheable — evaluated per request)
@@ -529,10 +603,13 @@ export class ModelService {
         contextBlock += `\nProject: ${neutralizePromptTags(projectName)}`;
       }
       contextBlock += `\n</context>`;
-      prompt += contextBlock;
+      volatile += contextBlock;
     }
 
-    return prompt;
+    return {
+      systemPrompt: prompt + volatile,
+      systemPromptVolatile: volatile || undefined,
+    };
   }
 
   /**

@@ -29,7 +29,7 @@ export function CreateContactRenderer({ input, status, output, error, appIcon }:
   return (
     <ToolCallCard
       status={status}
-      verb="Create contact"
+      description="Create contact"
       iconUri={appIcon}
       animateExpand
       defaultExpanded={status === 'completed'}

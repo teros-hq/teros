@@ -12,8 +12,8 @@ import { TOPIC_IDS } from '../../src/tools/get-section';
 const SUMMARY_MAX = 200;
 
 describe('content — topics invariants', () => {
-  it('hay topics y son los 13 esperados', () => {
-    expect(GUIDE_TOPICS.length).toBe(13);
+  it('hay topics y son los 15 esperados', () => {
+    expect(GUIDE_TOPICS.length).toBe(15);
   });
 
   it('ids únicos y kebab-case', () => {

@@ -9,6 +9,8 @@ import type { WsHandlerContext } from '@teros/shared'
 import type { McaService } from '../../../services/mca-service'
 import type { McaManager } from '../../../services/mca-manager'
 import type { WorkspaceService } from '../../../services/workspace-service'
+import type { PubSubService } from '../../../services/pubsub-service'
+import type { Db } from 'mongodb'
 
 interface ExecuteToolData {
   requestId?: string
@@ -45,6 +47,8 @@ export function createExecuteToolHandler(
   mcaService: McaService,
   mcaManager: McaManager | null,
   workspaceService?: WorkspaceService,
+  pubSubService?: PubSubService | null,
+  db?: Db,
 ) {
   return async function executeTool(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as ExecuteToolData
@@ -65,13 +69,29 @@ export function createExecuteToolHandler(
       throw new HandlerError('ACCESS_DENIED', `You don't have access to app ${appId}`)
     }
 
-    const context = await getExecutionContext(mcaService, ctx.userId, appId)
-    if (!context) {
+    const app = await mcaService.getApp(appId)
+    if (!app) {
       throw new HandlerError('APP_NOT_FOUND', `App ${appId} not found`)
     }
 
-    const app = await mcaService.getApp(appId)
-    if (!app) {
+    // ──────────────────────────────────────────────────────────────────────
+    // MUW-REQ-12/13 (UI path): the caller must see the app, and inside a
+    // conversation the per-conversation rule applies — shared conversation →
+    // shared apps only; personal conversation → shared + the creator's own.
+    // ──────────────────────────────────────────────────────────────────────
+    if (!mcaService.isAppVisibleTo(app, ctx.userId)) {
+      throw new HandlerError('ACCESS_DENIED', `You don't have access to app ${appId}`)
+    }
+    const gateChannelId = (input as Record<string, any>)?.channelId
+    if (gateChannelId && (await mcaService.isAppBlockedInChannel(app, gateChannelId))) {
+      throw new HandlerError(
+        'PERSONAL_APP_BLOCKED',
+        'This personal app cannot be used in this conversation (shared conversations only run shared apps).',
+      )
+    }
+
+    const context = await getExecutionContext(mcaService, ctx.userId, appId)
+    if (!context) {
       throw new HandlerError('APP_NOT_FOUND', `App ${appId} not found`)
     }
 
@@ -87,6 +107,11 @@ export function createExecuteToolHandler(
       userId: context.userId,
       workspaceId: context.workspaceId,
       ...(inputChannelId ? { channelId: inputChannelId } : {}),
+      // UI path: windows parse the raw JSON (no LLM context). The 200K
+      // truncation guard is for LLM prompts — here it would cut a large
+      // get-tree payload mid-JSON and the window would silently render an
+      // empty tree (2026-10-24 incident: 396-node tree, ~260K chars).
+      skipTruncation: true,
     })
 
     let output: any
@@ -97,6 +122,45 @@ export function createExecuteToolHandler(
     }
 
     console.log(`[app.execute-tool] Tool executed: ${fullToolName} (success: ${!result.isError})`)
+
+    // Broadcast todo_node_changed event so the TodoWindow refreshes in real-time
+    // when the user interacts with the todo-list MCA directly from the frontend.
+    // Only broadcast for WRITE tools — read tools (get-tree, get-node, search-nodes)
+    // would cause an infinite loop: loadTree → get-tree → broadcast → loadTree → ...
+    const TODO_WRITE_TOOLS = new Set([
+      'add-node', 'update-node', 'toggle-complete',
+      'delete-node', 'move-node', 'add-log-entry',
+      'set-state', 'set-kind', 'set-progress', 'set-input', 'set-output',
+      'toggle-instruction-item', 'plan-node', 'assign-node',
+      // Archive: the flag changes what the default views show.
+      'set-archived', 'archive-finished',
+      // To Do autoplay (TODOAP): a manual start writes the node. Runner changes
+      // are not node writes — they broadcast todo_autoplay_changed themselves.
+      'start-node',
+      // 'toggle-collapse' removed — UI state, doesn't need real-time sync
+    ]);
+    if (!result.isError && app.mcaId === 'mca.teros.todo-list' && TODO_WRITE_TOOLS.has(tool)) {
+      // Extract nodeId, parentId, and full node data from the tool result so the
+      // frontend can apply granular animations (insert/delete/update) without a
+      // full tree reload — avoids a round-trip for every real-time event.
+      let nodeId: string | undefined;
+      let parentId: string | null | undefined;
+      let node: any | undefined;
+      if (typeof output === 'object' && output !== null) {
+        node = (output as any)?.node;
+        nodeId = node?.nodeId ?? (output as any)?.nodeId;
+        parentId = node?.parentId;
+      }
+      pubSubService?.broadcastToTopic(`todo:${context.userId}`, {
+        type: 'todo_node_changed',
+        action: tool,
+        userId: context.userId,
+        ...(nodeId ? { nodeId } : {}),
+        ...(parentId !== undefined ? { parentId } : {}),
+        ...(node ? { node } : {}),
+        timestamp: Date.now(),
+      })
+    }
 
     return {
       requestId,

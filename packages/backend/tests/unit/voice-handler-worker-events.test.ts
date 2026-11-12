@@ -97,8 +97,10 @@ function makeConnection() {
     elevenLabsWs: new FakeWs(),
     userId: 'u1',
     workspaceId: 'ws1',
+    // Voice Mode v2 F0 (REQ-2): single channel — both aliases point at the
+    // conversation channel (the voice session lives in it).
     voiceChannelId: 'ch_voice',
-    chatChannelId: null,
+    chatChannelId: 'ch_voice',
     agentId: 'agent1',
     sessionId: 's1',
     activeWorkerChannels: new Map<string, string[]>(),

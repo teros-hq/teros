@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const createContact: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -40,7 +40,6 @@ export const createContact: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const { givenName, familyName, email, phone, organization, title, notes } = args as {
       givenName: string;

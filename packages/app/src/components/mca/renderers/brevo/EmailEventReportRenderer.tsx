@@ -48,7 +48,7 @@ export function EmailEventReportRenderer({ status, output, error, appIcon }: Too
   return (
     <ToolCallCard
       status={status}
-      verb="Get email events"
+      description="Get email events"
       badge={badge}
       iconUri={appIcon}
       animateExpand

@@ -14,8 +14,7 @@ export class DesktopStateService {
 
   constructor(private db: Db) {
     this.col = db.collection<UserDesktopState>('user_desktop_state');
-    // Ensure unique index
-    this.col.createIndex({ userId: 1, workspaceId: 1 }, { unique: true }).catch(() => {}); // intentional: index may already exist — cleanup only
+    // Unique {userId, workspaceId} index lives in src/db/indexes.ts (GOV-4).
   }
 
   async get(userId: string, workspaceId: string): Promise<UserDesktopState | null> {

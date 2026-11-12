@@ -19,7 +19,7 @@
 # ─────────────────────────────────────────────────────────────────
 # Stage 1 — builder: bake @teros packages + bash's external deps
 # ─────────────────────────────────────────────────────────────────
-FROM node:20-bookworm-slim AS builder
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS builder
 
 # Toolchain some native modules need to build (node-gyp etc.)
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
@@ -63,7 +63,7 @@ RUN cd /opt/mca-deps && npm install --omit=dev --no-audit --no-fund && \
 # ─────────────────────────────────────────────────────────────────
 # Stage 2 — runtime
 # ─────────────────────────────────────────────────────────────────
-FROM node:20-bookworm-slim
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -74,6 +74,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl wget git openssh-client procps jq unzip zip less nano \
       python3 python3-pip python3-venv \
+      tmux \
     && rm -f /etc/apt/apt.conf.d/docker-clean \
     && mkdir -p /etc/teros \
     && apt-mark showmanual | sort > /etc/teros/apt-baseline.txt \
@@ -94,13 +95,27 @@ COPY --from=builder /opt/mca-deps  /opt/mca-deps
 COPY docker/mca-runtime/entrypoint.sh       /entrypoint-base.sh
 COPY docker/mca-runtime-bash/entrypoint.sh  /entrypoint.sh
 COPY docker/mca-runtime-bash/apt-wrapper.sh /usr/local/bin/apt-get
-RUN chmod +x /entrypoint.sh /entrypoint-base.sh /usr/local/bin/apt-get && \
+# Persistence bootstrap shared with the workspace terminal host, whose
+# containers (teros-term-*) run this same image with term-host.sh as entry
+# point and host the workspace's tmux server (terminal sessions).
+COPY docker/mca-runtime-bash/persist-bootstrap.sh /usr/local/lib/teros/persist-bootstrap.sh
+COPY docker/mca-runtime-bash/term-host.sh         /usr/local/bin/teros-term-host
+# SSH for agent-driven shells (no TTY): GitHub's host keys pre-seeded system-wide
+# and `StrictHostKeyChecking accept-new`, so a host-key question never hangs a
+# command. The per-user ~/.ssh persists through persist-bootstrap.sh (/root/.ssh
+# → /app-data/home/.ssh: ssh resolves `~` via /etc/passwd, not $HOME).
+COPY docker/mca-runtime-bash/ssh_known_hosts /etc/ssh/ssh_known_hosts
+COPY docker/mca-runtime-bash/ssh_config      /etc/ssh/ssh_config.d/teros.conf
+RUN chmod +x /entrypoint.sh /entrypoint-base.sh /usr/local/bin/apt-get \
+      /usr/local/lib/teros/persist-bootstrap.sh /usr/local/bin/teros-term-host && \
     ln -sf /usr/local/bin/apt-get /usr/local/bin/apt
 
 ENV MCA_TRANSPORT=http
 ENV MCA_HTTP_PORT=3000
 ENV MCA_HTTP_HOST=0.0.0.0
 ENV NODE_ENV=production
+# UTF-8 everywhere (readline, vim, TUIs): the C locale mangles non-ASCII input.
+ENV LANG=C.UTF-8
 
 # Persistence-aware home + package locations. These live under the bind-mounted
 # /app-data, so `npm i -g` / `pip install --user` / dotfiles all survive a

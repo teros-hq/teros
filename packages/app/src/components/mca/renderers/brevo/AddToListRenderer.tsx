@@ -26,7 +26,7 @@ export function AddToListRenderer({ input, status, output, error, appIcon }: Too
   return (
     <ToolCallCard
       status={status}
-      verb="Add to list"
+      description="Add to list"
       iconUri={appIcon}
       animateExpand
       defaultExpanded={status === 'completed'}

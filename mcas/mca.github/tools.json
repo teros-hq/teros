@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -103,7 +106,7 @@
     },
     {
       "name": "list-issues",
-      "description": "List issues for a repository with optional filters",
+      "description": "List issues for a repository with optional filters. Pull requests are left out unless include_pull_requests is true (use list-pulls for them). Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -137,9 +140,17 @@
             ],
             "description": "Sort by (default: created)"
           },
+          "include_pull_requests": {
+            "type": "boolean",
+            "description": "Also return pull requests (GitHub lists them as issues). Default false."
+          },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -361,7 +372,7 @@
     },
     {
       "name": "search-issues",
-      "description": "Search issues and pull requests across GitHub. Use GitHub search syntax in `q` (e.g. `repo:owner/name is:issue is:open label:bug`). Returns {total_count, incomplete_results, items[]}.",
+      "description": "Search issues and pull requests with GitHub search syntax (items with is_pull_request: true are PRs). Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -390,11 +401,11 @@
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
           },
           "page": {
             "type": "number",
-            "description": "Page index (1-based)"
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -407,7 +418,7 @@
     },
     {
       "name": "list-pulls",
-      "description": "List pull requests for a repository",
+      "description": "List pull requests for a repository. Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -440,7 +451,11 @@
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -576,7 +591,7 @@
     },
     {
       "name": "list-pr-files",
-      "description": "List files changed in a pull request. Each file includes {filename, status, additions, deletions, changes, patch?, sha, blob_url}.",
+      "description": "List files changed in a pull request ({filename, status, additions, deletions, changes, patch excerpt}); read a whole file with get-file-content or clone-repo + git-diff. Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -594,11 +609,11 @@
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
           },
           "page": {
             "type": "number",
-            "description": "Page index (1-based)"
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -613,7 +628,7 @@
     },
     {
       "name": "list-pr-commits",
-      "description": "List commits on a pull request. Each commit includes {sha, commit.message, author, html_url}.",
+      "description": "List commits on a pull request. Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -631,11 +646,11 @@
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
           },
           "page": {
             "type": "number",
-            "description": "Page index (1-based)"
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -650,7 +665,7 @@
     },
     {
       "name": "list-pr-review-comments",
-      "description": "List review comments (inline comments on diff) of a pull request. Returns array with {id, user, body, path, line, commit_id, created_at}.",
+      "description": "List review comments (inline, on the diff) of a pull request. Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -685,11 +700,11 @@
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
           },
           "page": {
             "type": "number",
-            "description": "Page index (1-based)"
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -823,7 +838,7 @@
     },
     {
       "name": "list-branches",
-      "description": "List branches in a repository",
+      "description": "List branches for a repository. Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -837,7 +852,11 @@
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -913,7 +932,7 @@
     },
     {
       "name": "list-commits",
-      "description": "List commits in a repository",
+      "description": "List commits for a repository. Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -931,7 +950,11 @@
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -1011,7 +1034,7 @@
     },
     {
       "name": "list-workflows",
-      "description": "List workflows in a repository",
+      "description": "List GitHub Actions workflows of a repository. Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1022,6 +1045,14 @@
           "repo": {
             "type": "string",
             "description": "Repository name"
+          },
+          "per_page": {
+            "type": "number",
+            "description": "Results per page (default: 30, max: 100)."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -1035,7 +1066,7 @@
     },
     {
       "name": "list-workflow-runs",
-      "description": "List workflow runs for a repository",
+      "description": "List workflow runs for a repository. Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1070,9 +1101,17 @@
             ],
             "description": "Filter by status"
           },
+          "branch": {
+            "type": "string",
+            "description": "Only runs for this branch"
+          },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -1115,7 +1154,7 @@
     },
     {
       "name": "list-workflow-run-jobs",
-      "description": "List jobs of a workflow run. Each job includes {id, name, status, conclusion, started_at, completed_at, html_url, steps[]}.",
+      "description": "List the jobs (and their steps) of a workflow run. Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1141,11 +1180,11 @@
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
           },
           "page": {
             "type": "number",
-            "description": "Page index (1-based)"
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -1268,7 +1307,7 @@
     },
     {
       "name": "list-releases",
-      "description": "List releases of a repository, newest first. Each release includes {id, tag_name, name, draft, prerelease, body, html_url, published_at, author}.",
+      "description": "List releases for a repository. Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1282,11 +1321,11 @@
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
           },
           "page": {
             "type": "number",
-            "description": "Page index (1-based)"
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -1353,7 +1392,7 @@
     },
     {
       "name": "get-file-content",
-      "description": "Get the content of a file in a repository",
+      "description": "Get the content of a file in a repository. Text comes back once, decoded (`decoded_content`), cut at 150,000 characters with `truncated: true` and a note; binary files come back as base64 `content` with `binary: true`; files over 10 MB are refused with the alternative (clone-repo + git-read-file). A directory path returns its entries.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1386,7 +1425,7 @@
     },
     {
       "name": "create-or-update-file",
-      "description": "Create or update a file in a repo. Pass `sha` of the existing file when updating. Path must not contain `..` or start with `/`.",
+      "description": "Create or update a file in a repo. Pass `sha` of the existing file when updating. Path must not contain `..` or start with `/`. Files under .github/workflows/ need the installation to have accepted the Teros App's \"Workflows\" permission; if not, the error says where to accept it.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1433,7 +1472,7 @@
     },
     {
       "name": "search-repos",
-      "description": "Search for repositories on GitHub",
+      "description": "Search repositories on GitHub. Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1453,7 +1492,11 @@
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -1466,7 +1509,7 @@
     },
     {
       "name": "search-code",
-      "description": "Search for code across GitHub repositories",
+      "description": "Search for code across GitHub repositories (file name, path and repository of each match; read a match with get-file-content). Returns {items, page, per_page, has_next_page}: trimmed fields (long texts cut to an excerpt); call again with page+1 while has_next_page is true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1476,7 +1519,11 @@
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number, 1-based (default: 1). Use it when has_next_page is true."
           }
         },
         "required": [
@@ -1489,7 +1536,7 @@
     },
     {
       "name": "get-installation-context",
-      "description": "List the Teros GitHub App installations reachable by the current user, with accessible repos, granted permissions, and manage/install URLs.",
+      "description": "List the Teros GitHub App installations reachable by the authenticated user (own account + orgs/collabs) — NOT the user identity; use get-user for that. Includes accessible repos, granted permissions, and manage/install URLs.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -1500,7 +1547,7 @@
     },
     {
       "name": "get-user",
-      "description": "List the Teros GitHub App installations reachable by the current user, with accessible repos, granted permissions, and manage/install URLs.",
+      "description": "Get the authenticated GitHub user of the current token (real identity: login, name, profile URL, account type). Use this — not get-installation-context — to answer \"who am I / which account is connected?\".",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -1510,168 +1557,8 @@
       }
     },
     {
-      "name": "create-check-run",
-      "description": "Create a check run on a commit (exclusive to GitHub Apps). The check appears in the PR/commit sidebar. Use status:in_progress while the check runs, then update with conclusion when done.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "owner": {
-            "type": "string",
-            "description": "Repository owner"
-          },
-          "repo": {
-            "type": "string",
-            "description": "Repository name"
-          },
-          "name": {
-            "type": "string",
-            "description": "Display name of the check (e.g. \"Teros review\")"
-          },
-          "head_sha": {
-            "type": "string",
-            "description": "Commit SHA the check applies to"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "queued",
-              "in_progress",
-              "completed"
-            ],
-            "description": "Status (default: queued)"
-          },
-          "conclusion": {
-            "type": "string",
-            "enum": [
-              "success",
-              "failure",
-              "neutral",
-              "cancelled",
-              "skipped",
-              "timed_out",
-              "action_required"
-            ],
-            "description": "Required when status is `completed`"
-          },
-          "output": {
-            "type": "object",
-            "description": "Rich output with title, summary (markdown), optional text body",
-            "properties": {
-              "title": {
-                "type": "string"
-              },
-              "summary": {
-                "type": "string"
-              },
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "title",
-              "summary"
-            ]
-          },
-          "details_url": {
-            "type": "string",
-            "description": "Optional URL with more detail (shown as link in the check)"
-          },
-          "external_id": {
-            "type": "string",
-            "description": "Reference ID controlled by the App (idempotency on App side)"
-          }
-        },
-        "required": [
-          "owner",
-          "repo",
-          "name",
-          "head_sha"
-        ]
-      },
-      "annotations": {
-        "readOnlyHint": false
-      }
-    },
-    {
-      "name": "update-check-run",
-      "description": "Update an existing check run — typically to set status:completed + conclusion when work finishes. Pass only the fields you want to change.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "owner": {
-            "type": "string",
-            "description": "Repository owner"
-          },
-          "repo": {
-            "type": "string",
-            "description": "Repository name"
-          },
-          "check_run_id": {
-            "type": "number",
-            "description": "Check run id (returned by create-check-run)"
-          },
-          "name": {
-            "type": "string",
-            "description": "New display name (optional)"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "queued",
-              "in_progress",
-              "completed"
-            ],
-            "description": "New status"
-          },
-          "conclusion": {
-            "type": "string",
-            "enum": [
-              "success",
-              "failure",
-              "neutral",
-              "cancelled",
-              "skipped",
-              "timed_out",
-              "action_required"
-            ],
-            "description": "Required when status is `completed`"
-          },
-          "output": {
-            "type": "object",
-            "description": "Updated output",
-            "properties": {
-              "title": {
-                "type": "string"
-              },
-              "summary": {
-                "type": "string"
-              },
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "title",
-              "summary"
-            ]
-          },
-          "details_url": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo",
-          "check_run_id"
-        ]
-      },
-      "annotations": {
-        "readOnlyHint": false
-      }
-    },
-    {
       "name": "get-rate-limit",
-      "description": "Read the current GitHub API rate-limit budget for the installation token. Returns per-bucket {limit, remaining, reset, used} — core, search, graphql, code_search.",
+      "description": "Read the current GitHub API rate-limit budget for the authenticated user token. Returns per-bucket {limit, remaining, reset, used} — core, search, graphql, code_search.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -1715,7 +1602,7 @@
     },
     {
       "name": "clone-repo",
-      "description": "Clone a GitHub repository to the local filesystem (uses the current user access token from the Teros GitHub App). Returns {path, branch, sha, recentCommits[]}.",
+      "description": "Clone a GitHub repository to the local filesystem (uses the current user access token from the Teros GitHub App). Each agent gets its own clone; unused clones are removed automatically (unsaved work is first pushed to a teros/saved/... branch) and come back by themselves on the next call. Idempotent: if the destination already holds a working clone of the same repo it is returned as-is (`reused: true`, nothing is fetched or checked out); a clone left broken by an interrupted clone is replaced. Returns {path, branch, sha, recentCommits[]}.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1729,11 +1616,15 @@
           },
           "destination": {
             "type": "string",
-            "description": "Local path where the repo will be cloned (default: /workspace/<repo>)"
+            "description": "Local path where the repo will be cloned (default: <workspace>/<owner>/<repo>, or an existing <workspace>/<repo> clone of the same repo)"
           },
           "branch": {
             "type": "string",
             "description": "Branch to checkout after cloning (default: default branch)"
+          },
+          "depth": {
+            "type": "number",
+            "description": "Shallow clone with the last N commits (implies a single branch; fetch others later with git-fetch). Use it for large repos that time out."
           }
         },
         "required": [
@@ -1753,7 +1644,7 @@
         "properties": {
           "repoPath": {
             "type": "string",
-            "description": "Absolute path to the cloned repo. If omitted, resolved as `<workspace>/<repo>`."
+            "description": "Absolute path to the cloned repo. If omitted, resolved as `<workspace>/<owner>/<repo>` (or a legacy `<workspace>/<repo>` clone)."
           },
           "owner": {
             "type": "string",
@@ -1854,7 +1745,7 @@
     },
     {
       "name": "git-push",
-      "description": "Push commits to the remote. `force: true` uses `--force-with-lease`; `forceUnsafe: true` uses raw `--force` (destructive).",
+      "description": "Push commits to the remote. `force: true` uses `--force-with-lease`; `forceUnsafe: true` uses raw `--force` (destructive). Pushes that add or change files under .github/workflows/ need the installation to have accepted the Teros App's \"Workflows\" permission; if not, the error says where to accept it.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1899,8 +1790,8 @@
         }
       },
       "annotations": {
-        "readOnlyHint": false,
         "destructiveHint": true,
+        "readOnlyHint": false,
         "idempotentHint": false,
         "openWorldHint": true
       }
@@ -1947,8 +1838,8 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false,
         "destructiveHint": false,
+        "readOnlyHint": false,
         "idempotentHint": false,
         "openWorldHint": false
       }
@@ -2151,7 +2042,7 @@
     },
     {
       "name": "git-pull",
-      "description": "Pull commits from the remote into the current branch. `rebase: true` for a linear history (no merge commit).",
+      "description": "Pull commits from the remote into the current branch. By default it only fast-forwards; when your branch and the remote both have new commits it stops with GIT_DIVERGED. Then use `rebase: true` (your commits replayed on top, linear history) or `ff: \"no\"` (a merge commit).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2174,7 +2065,7 @@
           },
           "rebase": {
             "type": "boolean",
-            "description": "Use `--rebase` instead of merge.",
+            "description": "Replay local commits on top of the remote (`--rebase`).",
             "default": false
           },
           "ff": {
@@ -2184,8 +2075,8 @@
               "no",
               "auto"
             ],
-            "default": "auto",
-            "description": "`only` = abort if not fast-forward; `no` = always merge commit; `auto` = git default."
+            "default": "only",
+            "description": "`only` (default) = fast-forward or stop; `no` = always a merge commit; `auto` = fast-forward when possible, else a merge commit."
           }
         }
       },
@@ -2502,8 +2393,8 @@
         }
       },
       "annotations": {
-        "readOnlyHint": false,
         "destructiveHint": true,
+        "readOnlyHint": false,
         "idempotentHint": false,
         "openWorldHint": false
       }
@@ -2540,8 +2431,8 @@
         }
       },
       "annotations": {
-        "readOnlyHint": false,
         "destructiveHint": true,
+        "readOnlyHint": false,
         "idempotentHint": false,
         "openWorldHint": false
       }
@@ -2693,7 +2584,7 @@
     },
     {
       "name": "git-remote",
-      "description": "List, add, remove, or update git remotes. `list` returns name + fetch/push URLs.",
+      "description": "List, add, remove, or update git remotes. `list` returns name + fetch/push URLs. `add`/`set-url` only accept clean https://github.com/<owner>/<repo>(.git) URLs — no embedded credentials, no other hosts.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2722,7 +2613,7 @@
           },
           "url": {
             "type": "string",
-            "description": "Remote URL (required for add/set-url)."
+            "description": "Remote URL (required for add/set-url). Must be https://github.com/<owner>/<repo>(.git)."
           }
         }
       },
@@ -2849,6 +2740,46 @@
             "default": false
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-cleanup",
+      "description": "Free your clone of a repository when you are done with it. If it holds work that is not on GitHub yet (uncommitted changes, untracked files, stashes, unpushed commits), that work is first committed to a branch teros/saved/<agent>/<branch>-<date> and pushed to the same repository, after a secret scan and the 100 MB and Workflows checks; only then is the clone removed. If saving is not possible the clone is kept and the reason is returned. The next git tool call on that repository clones it again by itself.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "-cleanup-agent-clones",
+      "description": "Internal: called by Teros when an agent is deleted or loses the GitHub grant. Removes that agent's clones; unsaved work is first pushed to teros/saved/... branches, and clones that cannot be saved are kept.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "agentId"
+        ]
       },
       "annotations": {
         "readOnlyHint": false

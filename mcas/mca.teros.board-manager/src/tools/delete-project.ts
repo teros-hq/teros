@@ -13,8 +13,10 @@ export const deleteProject: ToolConfig = {
     },
     required: ['projectId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const projectId = args?.projectId as string;
     if (!projectId) {
@@ -24,11 +26,12 @@ export const deleteProject: ToolConfig = {
     const result = await withTimeout(
       wsClient.queryConversations<any>('delete_project', {
         projectId,
+        callerAgentId,
       }),
       15_000,
       'delete_project',
     );
 
-    return { projectId, deleted: true };
+    return { projectId, deleted: true, callerAgentId};
   },
 };

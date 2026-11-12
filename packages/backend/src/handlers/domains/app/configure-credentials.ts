@@ -3,6 +3,7 @@
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
+import { assertAppVisible, assertAppManageable } from './app-visibility'
 import type { WsHandlerContext } from '@teros/shared'
 import type { McaService } from '../../../services/mca-service'
 import type { McaOAuth } from '../../../auth/mca-oauth'
@@ -34,6 +35,7 @@ export function createConfigureCredentialsHandler(
     if (!app) {
       throw new HandlerError('APP_NOT_FOUND', `App ${appId} not found`)
     }
+    await assertAppManageable(mcaService, app, ctx.userId)
 
     await mcaOAuth.saveApiKeyCredentials(ctx.userId, appId, app.mcaId, credentials)
 

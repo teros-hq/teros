@@ -27,7 +27,6 @@ const ctx: MockContext = {
     USER_REFRESH_TOKEN: 'ghr_test',
     USER_TOKEN_EXPIRES_AT: new Date(Date.now() + 3_600_000).toISOString(),
     USER_LOGIN: 'tester',
-    INSTALLATION_ID: '1',
   }),
   getSystemSecrets: async () => ({
     GITHUB_APP_ID: '1',
@@ -91,6 +90,18 @@ describe('git-mv', () => {
     expect(r.to).toBe('docs/README.md');
     expect(existsSync(join(repoPath, 'docs/README.md'))).toBe(true);
     expect(existsSync(join(repoPath, 'README.md'))).toBe(false);
+  });
+
+  it('treats a dash-leading path as a literal path, not an option (git-option injection)', async () => {
+    // `--` before the positionals: a path that starts with '-' must be
+    // resolved as a pathspec (failing with a classifiable not-found error if
+    // it does not exist), never parsed as an option of `git mv`.
+    await expect(
+      gitMv.handler({ repoPath, from: '-dash-leading.txt', to: 'other.txt' }, ctx as never),
+    ).rejects.toThrow(); // classifiable git error (pathspec not found) — NOT an option effect
+    // And the repo is untouched by any option side effect:
+    const status = execSync(`git -C ${repoPath} status --porcelain`, { encoding: 'utf-8' });
+    expect(status.trim()).toBe('');
   });
 });
 

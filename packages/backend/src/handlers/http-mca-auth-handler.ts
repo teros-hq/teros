@@ -13,13 +13,16 @@
  * - POST /auth/mca/:appId/disconnect - Disconnect OAuth for an app
  *
  * Authentication is ALWAYS required. Every request must carry a valid session
- * via ?token=, Authorization: Bearer, or teros_session cookie. Unauthenticated
+ * via Authorization: Bearer header or teros_session cookie. Unauthenticated
  * requests are rejected with 401 — there is no anonymous fallback.
  */
 
 import type { IncomingMessage, ServerResponse } from "http"
+import { config } from '../config';
+import { renderOAuthResultPage, scriptJson } from '../lib/oauth-result-page';
 import type { AuthService } from "../auth/auth-service"
 import type { GitHubAppService } from "../auth/github-app"
+import { parseCookies, SESSION_COOKIE_NAME } from "../lib/session-cookie"
 import type { McaOAuth } from "../auth/mca-oauth"
 import type { SecretsManager } from "../secrets/secrets-manager"
 import type { McaService } from "../services/mca-service"
@@ -67,9 +70,13 @@ export class HttpMcaAuthHandler {
    * Handle OAuth connect - redirect to provider
    *
    * Authentication is REQUIRED. userId must be resolved from one of:
-   * 1. Query param: ?token=xxx (primary — frontend always passes this)
-   * 2. Header: Authorization: Bearer xxx
-   * 3. Cookie: teros_session
+   * 1. Header: Authorization: Bearer xxx (primary — frontend uses this)
+   * 2. Cookie: teros_session
+   *
+   * When the client sends `Accept: application/json`, the response is a JSON
+   * object `{ url }` so the frontend can open the provider URL directly without
+   * ever putting the session token in the URL. Otherwise a 302 redirect is sent
+   * for backward compatibility.
    *
    * Access is granted if the user owns the app directly OR is a member
    * of the workspace that owns the app.
@@ -117,9 +124,17 @@ export class HttpMcaAuthHandler {
       // Generate OAuth URL
       const { url } = await this.mcaOAuth.generateAuthUrl(appId, userId, app.mcaId, redirectUri)
 
-      // Redirect to OAuth provider
-      res.writeHead(302, { Location: url })
-      res.end()
+      // If the client prefers JSON (fetch-based flow), return the URL as JSON
+      // so the frontend can open it without ever putting the token in the URL.
+      const acceptJson = (req.headers["accept"] || "").includes("application/json")
+      if (acceptJson) {
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+        res.end(JSON.stringify({ url }))
+      } else {
+        // 302 redirect for backward compatibility (e.g. direct browser navigation)
+        res.writeHead(302, { Location: url })
+        res.end()
+      }
     } catch (error) {
       console.error("[HttpMcaAuthHandler] Connect error:", error)
       const message = error instanceof Error ? error.message : "Failed to start OAuth"
@@ -144,6 +159,7 @@ export class HttpMcaAuthHandler {
       // GitHub App: capture installation_id if present
       const installationId = urlObj.searchParams.get("installation_id")
       const setupAction = urlObj.searchParams.get("setup_action") // "install" or "update"
+      const realmId = urlObj.searchParams.get("realmId") // QuickBooks (Intuit) company ID
 
       console.log(`[HttpMcaAuthHandler] OAuth callback received - state: ${state}, code: ${code ? 'present' : 'missing'}, error: ${error || 'none'}, installation_id: ${installationId || 'none'}, setup_action: ${setupAction || 'none'}`)
 
@@ -178,6 +194,15 @@ export class HttpMcaAuthHandler {
         }
       }
 
+      if (!state && installationId && setupAction) {
+        this.sendOAuthResult(res, { success: true }, {
+          title: "GitHub App installed · Teros",
+          heading: "Installed",
+          lead: "The Teros GitHub App is installed. Back in Teros, your agents can reach the repositories you selected.",
+        })
+        return
+      }
+
       // Validate parameters
       if (!code || !state) {
         this.sendOAuthResult(res, {
@@ -194,6 +219,10 @@ export class HttpMcaAuthHandler {
       const extraParams: Record<string, string> = {}
       if (installationId) extraParams.installation_id = installationId
       if (setupAction) extraParams.setup_action = setupAction
+      // @todo nira - 2026.09.20 : if a 3rd OAuth provider needs callback-specific params,
+      // refactor this to a per-provider extractCallbackParams hook in OAUTH_PROVIDERS
+      // (same pattern as customizeAuthorizeParams / extraCredentials)
+      if (realmId) extraParams.realmId = realmId
 
       // Process callback
       const result = await this.mcaOAuth.handleCallback(code, state, redirectUri, extraParams)
@@ -202,10 +231,16 @@ export class HttpMcaAuthHandler {
       this.sendOAuthResult(res, result)
     } catch (error) {
       console.error("[HttpMcaAuthHandler] Callback error:", error)
-      this.sendOAuthResult(res, {
-        success: false,
-        error: error instanceof Error ? error.message : "OAuth callback failed",
-      })
+      try {
+        this.sendOAuthResult(res, {
+          success: false,
+          error: error instanceof Error ? error.message : "OAuth callback failed",
+        })
+      } catch (renderError) {
+        console.error("[HttpMcaAuthHandler] Could not render the callback result:", renderError)
+        res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" })
+        res.end("The connection could not be completed. Close this window and try again from Teros.")
+      }
     }
   }
 
@@ -258,10 +293,10 @@ export class HttpMcaAuthHandler {
   }
 
   /**
-   * Get userId from request (Authorization header, cookie, or query param)
+   * Get userId from request (Authorization header or cookie)
    */
   private async getUserIdFromRequest(req: IncomingMessage): Promise<string | null> {
-    // Check Authorization header
+    // Check Authorization header (primary — frontend uses Bearer tokens)
     const authHeader = req.headers["authorization"]
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7)
@@ -269,40 +304,14 @@ export class HttpMcaAuthHandler {
       return result.success ? result.user?.userId || null : null
     }
 
-    // Check query parameter (for popup OAuth flow)
-    const url = new URL(req.url || "", `http://${req.headers.host}`)
-    const queryToken = url.searchParams.get("token")
-    if (queryToken) {
-      const result = await this.authService.validateSession(queryToken)
-      return result.success ? result.user?.userId || null : null
-    }
-
     // Check cookie
-    const cookies = this.parseCookies(req)
-    const sessionToken = cookies["teros_session"]
+    const sessionToken = parseCookies(req)[SESSION_COOKIE_NAME]
     if (sessionToken) {
       const result = await this.authService.validateSession(sessionToken)
       return result.success ? result.user?.userId || null : null
     }
 
     return null
-  }
-
-  /**
-   * Parse cookies from request
-   */
-  private parseCookies(req: IncomingMessage): Record<string, string> {
-    const cookies: Record<string, string> = {}
-    const cookieHeader = req.headers.cookie
-
-    if (cookieHeader) {
-      cookieHeader.split(";").forEach((cookie) => {
-        const [name, ...rest] = cookie.trim().split("=")
-        cookies[name] = rest.join("=")
-      })
-    }
-
-    return cookies
   }
 
   /**
@@ -341,6 +350,7 @@ export class HttpMcaAuthHandler {
   private sendOAuthResult(
     res: ServerResponse,
     result: { success: boolean; appId?: string; error?: string },
+    copy?: { title: string; heading: string; lead: string },
   ): void {
     const appUrl = this.getAppUrl()
     // In dev Metro serves the app at :8081 but APP_URL usually points to the
@@ -350,71 +360,30 @@ export class HttpMcaAuthHandler {
     // Use "*" only in development; in production keep the strict target.
     const postMessageTarget = process.env.NODE_ENV === "production" ? appUrl : "*"
 
-    // Build redirect URL
+    // Redirect target for the no-popup flow only. The app no longer has a
+    // /app/<id> route (static URL rework), so we land on the app root — the
+    // user is already authenticated and the app shows the connected state.
     const redirectUrl = result.success
-      ? `${appUrl}/app/${result.appId}?auth=success`
-      : `${appUrl}/apps?auth=error&message=${encodeURIComponent(result.error || "Unknown error")}`
+      ? appUrl
+      : `${appUrl}?auth=error&message=${encodeURIComponent(result.error || "Unknown error")}`
 
-    // HTML page that handles both popup and redirect flows
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Conectando...</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      margin: 0;
-      background: #09090B;
-      color: #FAFAFA;
-    }
-    .container {
-      text-align: center;
-      padding: 40px;
-    }
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid #27272A;
-      border-top-color: #3B82F6;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 20px;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    .success { color: #10B981; }
-    .error { color: #EF4444; }
-    a { color: #3B82F6; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    ${
-      result.success
-        ? `
-      <div class="spinner"></div>
-      <h2 class="success">Connected successfully</h2>
-      <p>Redirecting...</p>
-    `
-        : `
-      <h2 class="error">Connection error</h2>
-      <p>${result.error || "Unknown error"}</p>
-      <p><a href="${appUrl}/apps">Back to Apps</a></p>
-    `
-    }
-  </div>
-  <script>
-    const result = ${JSON.stringify(result)};
-    const appUrl = '${appUrl}';
-    const postMessageTarget = '${postMessageTarget}';
-
-    // Try to notify opener (popup flow)
+    const { html, contentSecurityPolicy } = renderOAuthResultPage({
+      title: copy?.title ?? (result.success ? "Connected · Teros" : "Connection failed · Teros"),
+      success: result.success,
+      heading: copy?.heading ?? (result.success ? "Connected" : "Couldn't connect"),
+      lead:
+        copy?.lead ??
+        (result.success
+          ? "The app is linked to your account. Back to Teros."
+          : "The provider didn't complete the connection. You can try again from Apps."),
+      error: result.error,
+      returnUrl: appUrl,
+      returnLabel: "Back to Teros",
+      staticBaseUrl: config.static.baseUrl,
+      script: `
+    const result = ${scriptJson(result)};
+    const postMessageTarget = ${scriptJson(postMessageTarget)};
+    // Popup flow: notify the opener; close only on success so an error stays readable.
     if (window.opener) {
       try {
         window.opener.postMessage({
@@ -423,29 +392,20 @@ export class HttpMcaAuthHandler {
           appId: result.appId || '',
           error: result.error || ''
         }, postMessageTarget);
-        
-        // Close popup after short delay (only on success — on error keep it open so user can read)
-        if (result.success) {
-          setTimeout(() => window.close(), 1000);
-        }
+        if (result.success) setTimeout(() => window.close(), 900);
       } catch (e) {
         console.error('Failed to notify opener:', e);
       }
-    }
-    
-    // Redirect after delay (redirect flow or popup fallback)
-    if (result.success) {
-      setTimeout(() => {
-        window.location.href = '${redirectUrl}';
-      }, 1500);
-    }
-  </script>
-</body>
-</html>`.trim()
+    } else if (result.success) {
+      // No popup — full-page redirect flow. Land on the app root.
+      setTimeout(() => { window.location.href = ${scriptJson(redirectUrl)}; }, 1500);
+    }`,
+    })
 
     res.writeHead(200, {
-      "Content-Type": "text/html",
+      "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
+      "Content-Security-Policy": contentSecurityPolicy,
     })
     res.end(html)
   }
@@ -455,7 +415,7 @@ export class HttpMcaAuthHandler {
    */
   private redirectWithError(res: ServerResponse, error: string): void {
     const appUrl = this.getAppUrl()
-    const redirectUrl = `${appUrl}/apps?auth=error&message=${encodeURIComponent(error)}`
+    const redirectUrl = `${appUrl}?auth=error&message=${encodeURIComponent(error)}`
     res.writeHead(302, { Location: redirectUrl })
     res.end()
   }

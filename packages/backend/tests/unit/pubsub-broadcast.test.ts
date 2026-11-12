@@ -53,6 +53,20 @@ function makeWorkspaceService(
   } as unknown as WorkspaceService
 }
 
+// Membership lives in the `workspace_members` collection; broadcastToWorkspace
+// reads it through the injected db (find → project → toArray).
+function makeMembersDb(members: Record<string, Array<{ userId: string; status?: string }>>): any {
+  return {
+    collection: (name: string) => ({
+      find: (filter: { workspaceId: string }) => ({
+        project: () => ({
+          toArray: async () => (name === 'workspace_members' ? (members[filter.workspaceId] ?? []) : []),
+        }),
+      }),
+    }),
+  }
+}
+
 describe('PubSubService.broadcastToUser', () => {
   let logSpy: ReturnType<typeof spyOn>
   let warnSpy: ReturnType<typeof spyOn>
@@ -143,9 +157,11 @@ describe('PubSubService.broadcastToWorkspace', () => {
       m2: [makeSession('m2', wsMember2)],
     })
     const ws = makeWorkspaceService({
-      ws1: { ownerId: 'owner', members: [{ userId: 'm1' }, { userId: 'm2' }] },
+      ws1: { ownerId: 'owner', members: [] },
     })
-    const svc = new PubSubService(fakeDb)
+    const svc = new PubSubService(
+      makeMembersDb({ ws1: [{ userId: 'owner' }, { userId: 'm1' }, { userId: 'm2' }, { userId: 'm1' }] }),
+    )
     svc.setSessionManager(sm)
     svc.setWorkspaceService(ws)
 
@@ -163,9 +179,11 @@ describe('PubSubService.broadcastToWorkspace', () => {
       m2: [makeSession('m2', makeWs(true))],
     })
     const ws = makeWorkspaceService({
-      ws1: { ownerId: 'owner', members: [{ userId: 'm1' }, { userId: 'm2' }] },
+      ws1: { ownerId: 'owner', members: [] },
     })
-    const svc = new PubSubService(fakeDb)
+    const svc = new PubSubService(
+      makeMembersDb({ ws1: [{ userId: 'owner' }, { userId: 'm1' }, { userId: 'm2' }, { userId: 'm1' }] }),
+    )
     svc.setSessionManager(sm)
     svc.setWorkspaceService(ws)
 
@@ -195,5 +213,103 @@ describe('PubSubService.broadcastToWorkspace', () => {
 
     await expect(svc.broadcastToWorkspace('ws1', { type: 'x' })).resolves.toBeUndefined()
     expect(warnSpy).toHaveBeenCalled()
+  })
+})
+
+describe('PubSubService.broadcastToAllSessions', () => {
+  let logSpy: ReturnType<typeof spyOn>
+  let warnSpy: ReturnType<typeof spyOn>
+
+  beforeEach(() => {
+    logSpy = spyOn(console, 'log').mockImplementation(() => {})
+    warnSpy = spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  /** Register sessions directly on the service (the path SessionManager.createSession takes). */
+  function register(svc: PubSubService, sessions: Array<{ sessionId: string; ws: FakeWs }>): void {
+    for (const s of sessions) {
+      svc.registerSession(s.sessionId, s.ws as any)
+    }
+  }
+
+  it('delivers the payload to every OPEN registered session and returns the count', () => {
+    const ws1 = makeWs(true)
+    const ws2 = makeWs(true)
+    const svc = new PubSubService(fakeDb)
+    register(svc, [
+      { sessionId: 'sess-1', ws: ws1 },
+      { sessionId: 'sess-2', ws: ws2 },
+    ])
+
+    const sent = svc.broadcastToAllSessions({
+      type: 'event',
+      event: 'client.refresh',
+      data: { reason: 'deploy', maxDelayMs: 30000 },
+    })
+
+    expect(sent).toBe(2)
+    expect(ws1.send).toHaveBeenCalledTimes(1)
+    expect(ws2.send).toHaveBeenCalledTimes(1)
+    const payload = JSON.parse(ws1.send.mock.calls[0][0] as string)
+    expect(payload).toEqual({
+      type: 'event',
+      event: 'client.refresh',
+      data: { reason: 'deploy', maxDelayMs: 30000 },
+    })
+  })
+
+  it('skips non-OPEN sessions and reports sent/total separately', () => {
+    const wsOpen = makeWs(true)
+    const wsClosed = makeWs(false)
+    const svc = new PubSubService(fakeDb)
+    register(svc, [
+      { sessionId: 'sess-open', ws: wsOpen },
+      { sessionId: 'sess-closed', ws: wsClosed },
+    ])
+
+    const sent = svc.broadcastToAllSessions({ type: 'event', event: 'client.refresh' })
+
+    expect(sent).toBe(1)
+    expect(svc.getRegisteredSessionCount()).toBe(2)
+    expect(wsOpen.send).toHaveBeenCalledTimes(1)
+    expect(wsClosed.send).toHaveBeenCalledTimes(0)
+  })
+
+  it('reaches sessions regardless of user identity (no SessionManager needed)', () => {
+    // broadcastToAllSessions iterates the internal sessionMap — it must work
+    // even with no SessionManager wired (the admin deploy signal cannot
+    // depend on per-user lookups).
+    const ws = makeWs(true)
+    const svc = new PubSubService(fakeDb)
+    register(svc, [{ sessionId: 'sess-x', ws }])
+
+    const sent = svc.broadcastToAllSessions({ type: 'event', event: 'client.refresh' })
+
+    expect(sent).toBe(1)
+    expect(ws.send).toHaveBeenCalledTimes(1)
+    // (No warn assertion: bun spyOn state is shared across describe blocks in
+    // this file when not restored — earlier blocks legitimately warn twice.)
+  })
+
+  it('returns 0 when no sessions are registered', () => {
+    const svc = new PubSubService(fakeDb)
+    expect(svc.broadcastToAllSessions({ type: 'x' })).toBe(0)
+    expect(svc.getRegisteredSessionCount()).toBe(0)
+  })
+
+  it('serializes the payload once regardless of recipient count', () => {
+    const svc = new PubSubService(fakeDb)
+    register(svc, [
+      { sessionId: 's1', ws: makeWs(true) },
+      { sessionId: 's2', ws: makeWs(true) },
+      { sessionId: 's3', ws: makeWs(true) },
+    ])
+
+    const stringifySpy = spyOn(JSON, 'stringify')
+    const callsBefore = stringifySpy.mock.calls.length
+    svc.broadcastToAllSessions({ type: 'event', event: 'client.refresh' })
+    const callsAfter = stringifySpy.mock.calls.length
+    expect(callsAfter - callsBefore).toBe(1)
+    stringifySpy.mockRestore()
   })
 })

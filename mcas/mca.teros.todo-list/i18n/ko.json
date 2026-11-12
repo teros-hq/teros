@@ -1,0 +1,259 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 확인. MongoDB 연결을 확인합니다."
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "새 할 일 목록(트리 컨테이너)을 생성합니다. 반환: { list: { listId, name, nodeCount, completedCount, createdAt, updatedAt } }. add-node로 항목을 추가하세요.",
+      "params": {
+        "name": "목록 이름 (예: \"개인\", \"업무\", \"쇼핑\"). 최대 200자."
+      }
+    },
+    "list-lists": {
+      "name": "list-lists",
+      "description": "사용자의 모든 할 일 목록을 나열합니다. 반환: { items: [{ listId, name, nodeCount, completedCount, createdAt, updatedAt }], nextCursor? }. 페이지네이션: 기본 50, 최대 200.",
+      "params": {
+        "limit": "최대 결과 수 (기본 50, 최대 200).",
+        "cursor": "이전 응답의 페이지네이션 커서."
+      }
+    },
+    "get-tree": {
+      "name": "get-tree",
+      "description": "목록의 전체 노드 트리를 중첩 계층 구조로 가져옵니다 (Workflowy 스타일). 반환: { list: {...}, tree: [{ nodeId, text, note, completed, collapsed, position, childCount, completedChildren, children?: [...] }] }. nodeId로 특정 노드 아래의 하위 트리만 가져올 수 있습니다.",
+      "params": {
+        "listId": "트리를 가져올 목록 ID.",
+        "nodeId": "선택사항: 이 노드 아래의 하위 트리만 가져오기."
+      }
+    },
+    "rename-list": {
+      "name": "rename-list",
+      "description": "할 일 목록 이름을 변경합니다. 반환: { list: { listId, name, nodeCount, completedCount, updatedAt } }.",
+      "params": {
+        "listId": "이름을 변경할 목록 ID.",
+        "name": "새 목록 이름. 최대 200자."
+      }
+    },
+    "delete-list": {
+      "name": "delete-list",
+      "description": "할 일 목록과 모든 노드를 영구적으로 삭제합니다. 되돌릴 수 없습니다. 반환: { deleted: true, listId }.",
+      "params": {
+        "listId": "삭제할 목록 ID (모든 노드도 함께 삭제됨)."
+      }
+    },
+    "add-node": {
+      "name": "add-node",
+      "description": "목록에 새 항목/노드를 추가합니다. parentId를 생략하거나 null이면 최상위 루트 노드로 추가됩니다. parentId를 제공하면 해당 노드의 하위로 추가됩니다. 반환: { node: { nodeId, listId, parentId, text, note, completed, collapsed, position, createdAt, updatedAt } }.",
+      "params": {
+        "listId": "노드를 추가할 목록 ID.",
+        "parentId": "중첩할 부모 노드 ID. 생략 또는 null이면 최상위 루트 노드.",
+        "text": "항목 텍스트. 최대 2000자.",
+        "note": "항목 아래의 선택적 메모/설명. 최대 2000자.",
+        "kind": "task(기본값, 완료 가능) 또는 group(상태가 없는 컨테이너). 그룹은 작업 안에 넣을 수 없습니다.",
+        "state": "작업의 초기 상태(기본값 pending). 그룹에는 사용할 수 없습니다. 작업을 차단하려면 사유와 함께 set-state를 사용하세요.",
+        "expectedOutput": "작업이 제출해야 하는 결과: { format: \"markdown\"|\"form\"|\"file\", description?, fileType? (file 전용: pdf|docx|xlsx|csv|png|jpg|json|md|txt|html|other), fields? (form 전용: 1–40개 필드 [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, required?, options? }]) }. null이면 지웁니다. set-output은 이와 맞지 않는 결과를 거부합니다 (OUTPUT_MISMATCH). 그룹에는 사용할 수 없습니다."
+      }
+    },
+    "update-node": {
+      "name": "update-node",
+      "description": "노드의 텍스트 및/또는 메모를 업데이트합니다. 생략된 필드는 변경되지 않습니다. 반환: { node: { nodeId, text, note, updatedAt } }.",
+      "params": {
+        "nodeId": "업데이트할 노드 ID.",
+        "text": "새 항목 텍스트. 최대 2000자.",
+        "note": "새 메모 텍스트. 최대 2000자. 빈 문자열로 지우기.",
+        "expectedOutput": "작업이 제출해야 하는 결과: { format: \"markdown\"|\"form\"|\"file\", description?, fileType? (file 전용: pdf|docx|xlsx|csv|png|jpg|json|md|txt|html|other), fields? (form 전용: 1–40개 필드 [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, required?, options? }]) }. null이면 지웁니다. set-output은 이와 맞지 않는 결과를 거부합니다 (OUTPUT_MISMATCH). 그룹에는 사용할 수 없습니다."
+      }
+    },
+    "toggle-complete": {
+      "name": "toggle-complete",
+      "description": "노드의 완료 상태를 토글합니다 (Workflowy의 취소선). 반환: { node: { nodeId, completed, updatedAt } }.",
+      "params": {
+        "nodeId": "완료 토글할 노드 ID."
+      }
+    },
+    "toggle-collapse": {
+      "name": "toggle-collapse",
+      "description": "노드의 접기/펼치기 상태를 토글합니다 (하위 항목 숨기기/표시). 반환: { node: { nodeId, collapsed, updatedAt } }.",
+      "params": {
+        "nodeId": "접기 토글할 노드 ID."
+      }
+    },
+    "move-node": {
+      "name": "move-node",
+      "description": "트리 내에서 노드를 다른 부모 및/또는 위치로 이동합니다. newParentId를 null로 설정하면 루트로 이동. newPosition은 형제 중 0-based 인덱스. 순환 이동을 감지합니다. 반환: { node: { nodeId, parentId, position, updatedAt } }.",
+      "params": {
+        "nodeId": "이동할 노드 ID.",
+        "newParentId": "새 부모 노드 ID. null이면 루트로. 생략하면 현재 부모 유지.",
+        "newPosition": "새 형제 중 0-based 위치 (기본 0)."
+      }
+    },
+    "delete-node": {
+      "name": "delete-node",
+      "description": "노드와 모든 하위 항목(전체 하위 트리)을 삭제합니다. 되돌릴 수 없습니다. 반환: { deleted: true, nodeId }.",
+      "params": {
+        "nodeId": "삭제할 노드 ID. 모든 하위 항목이 재귀적으로 제거됩니다."
+      }
+    },
+    "search-nodes": {
+      "name": "search-nodes",
+      "description": "모든 목록(또는 특정 목록)에서 텍스트로 노드를 검색합니다. 대소문자 구분 없음. 반환: { results: [{ nodeId, listId, text, note, completed, path, updatedAt }] }. path는 \"부모 / 자식 / 일치\" 형태의 경로. 최대 50결과.",
+      "params": {
+        "query": "검색 텍스트 (대소문자 구분 없음). 최소 1자, 최대 500자.",
+        "listId": "선택사항: 특정 목록으로 검색 제한."
+      }
+    },
+    "set-state": {
+      "name": "set-state",
+      "description": "작업을 다른 상태로 이동합니다: planning(아이디어, 아직 정의되지 않음) · pending(정의됨, 시작 준비 완료) · working(진행 중) · blocked(계속할 수 없음 — 사유 필수) · review(작업 완료, 검토 대기) · done. 허용되는 이동: planning→pending; pending→working|done; working→review|blocked|pending|done; blocked→working|planning; review→done|working; done→working(다시 열기 — 사유 기재). 그 외에는 INVALID_TRANSITION으로 실패합니다. review 또는 done으로 들어가면 진행률이 100으로 설정되고, 열린 상태로 나가면 100은 지워집니다(다른 값은 유지). 그룹에는 상태가 없습니다(NOT_A_TASK). 로그에 \"이전 → 이후\" 항목을 추가합니다. 반환: { node: { nodeId, parentId, text, kind, state, blockedReason, reportedProgress, completed, hasInput, hasOutput, updatedAt, ... }, transition: { from, to } }.",
+      "params": {
+        "nodeId": "작업 노드 ID.",
+        "state": "대상 상태.",
+        "reason": "이유. blocked에는 필수(무엇이 부족한지 / 누구를 기다리는지 — 사용자에게 표시됨). 완료된 작업을 다시 열 때 권장. 최대 2000자.",
+        "reply": "blocked → working(차단 질문에 대한 답변, \"Reply: <텍스트>\"로 기록) 또는 review → working(작업을 되돌려 보내는 이유, \"Sent back: <텍스트>\"로 기록) 전용. 작업에 대화가 있으면 그곳에 게시되며(되돌려 보내기는 \"Sent back from review: <텍스트>\"로) 에이전트가 계속 진행합니다. 최대 2000자."
+      }
+    },
+    "set-kind": {
+      "name": "set-kind",
+      "description": "자식을 유지한 채 노드를 작업과 그룹 사이에서 변환합니다. 그룹은 완료할 수 없는 컨테이너(상태, 진행률, 출력 없음)이며, 작업은 완료할 수 있고 작업만 포함합니다. 그룹으로: 부모가 작업이면 GROUP_IN_TASK, 출력이 있으면 HAS_OUTPUT으로 실패합니다. 작업으로: 그룹을 포함하면 GROUP_IN_TASK로 실패하며 pending으로 시작합니다. 로그 항목을 추가합니다. 반환: { node: { nodeId, parentId, text, kind, state, ... } }.",
+      "params": {
+        "nodeId": "변환할 노드 ID.",
+        "kind": "대상 종류."
+      }
+    },
+    "set-progress": {
+      "name": "set-progress",
+      "description": "작업의 진행 정도를 0–100 정수 백분율로 보고하거나 null로 지웁니다(그러면 진행률은 하위 작업에서 계산됩니다). review와 done을 포함한 모든 상태에서 편집할 수 있습니다(값이 없으면 review/done은 100%로 계산). 그룹에는 진행률이 없습니다(NOT_A_TASK). 로그 항목을 추가합니다. 반환: { node: { nodeId, reportedProgress, state, ... } }.",
+      "params": {
+        "nodeId": "작업 노드 ID.",
+        "progress": "백분율 0–100, 지우려면 null."
+      }
+    },
+    "set-input": {
+      "name": "set-input",
+      "description": "노드의 입력 — 작업이 시작하는 데이터 — 을 설정하거나 null로 지웁니다. 마크다운과 양식은 노드에 저장되고, 파일은 객체 스토리지에 업로드되어 { format: \"file\", objectId, url, name, mime, size }로 저장됩니다. 그룹도 입력을 가질 수 있습니다. 로그 항목을 추가합니다. 반환: { node: { nodeId, hasInput, input, ... } }.",
+      "params": {
+        "nodeId": "노드 ID.",
+        "input": "다음 중 하나: { format: \"markdown\", markdown } · { format: \"form\", fields: [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, options? }], values: { [fieldId]: 값 } } · { format: \"file\", name, mime, data: base64(최대 10 MB, data: 접두사 없음) }. null이면 지웁니다."
+      }
+    },
+    "set-output": {
+      "name": "set-output",
+      "description": "작업의 출력 — 결과(마크다운 요약, 작성된 양식 또는 청구서 같은 파일) — 을 전달하거나 null로 지웁니다. 파일은 객체 스토리지에 업로드되어 { format: \"file\", objectId, url, name, mime, size }로 저장됩니다. 그룹에는 출력이 없습니다(NOT_A_TASK). 로그에 \"Output delivered · <형식>\" 항목을 추가합니다. 전달해도 상태는 바뀌지 않으므로 set-state(예: working → review)도 사용하세요. 반환: { node: { nodeId, hasOutput, output, ... } }.",
+      "params": {
+        "nodeId": "작업 노드 ID.",
+        "output": "다음 중 하나: { format: \"markdown\", markdown } · { format: \"form\", fields: [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, options? }], values: { [fieldId]: 값 } } · { format: \"file\", name, mime, data: base64(최대 10 MB, data: 접두사 없음) }. null이면 지웁니다."
+      }
+    },
+    "toggle-instruction-item": {
+      "name": "toggle-instruction-item",
+      "description": "노드 지침의 체크리스트 항목 하나를 체크하거나 해제합니다 — index번째(0부터) 마크다운 체크박스 줄(\"- [ ] 단계\" / \"- [x] 단계\")을 위에서부터 세며 코드 블록은 무시합니다. 마지막 항목을 넘으면 ITEM_NOT_FOUND로 실패합니다. 반환: { node: { nodeId, parentId, instructions, updatedAt }, item: { index, checked, text } }.",
+      "params": {
+        "nodeId": "노드 ID.",
+        "index": "지침의 모든 체크박스 중 체크박스의 0부터 시작하는 인덱스."
+      }
+    },
+    "plan-node": {
+      "name": "plan-node",
+      "description": "작업을 달력의 특정 날짜(\"Por día\")에 계획하거나, 그날 안에서 순서를 바꾸거나, 시간을 정하거나, 날짜에서 뺍니다. day는 사용자 달력 기준 \"YYYY-MM-DD\"이며, null이면 날짜에서 빼고 시간도 지웁니다. index는 그날 계획에서의 위치입니다(0 = 첫 번째; 생략하면 그날의 끝, 날짜가 같으면 현재 위치). 그날은 0..N-1로 다시 번호가 매겨집니다. time \"HH:MM\"은 계획 시간을 정하고, null은 지우며, 생략하면 유지합니다. 그룹은 계획할 수 없습니다(NOT_A_TASK). \"Planned for <day>\", \"Planned time …\" 또는 \"Removed from the day\"를 기록합니다. 반환: { node: { nodeId, plannedFor, dayOrder, plannedTime, state, ... }, day, previousDay }.",
+      "params": {
+        "nodeId": "작업 노드 ID.",
+        "day": "날짜 \"YYYY-MM-DD\", 또는 날짜에서 빼려면 null.",
+        "index": "그날 계획에서의 위치(0부터). 선택 사항.",
+        "time": "계획 시간 \"HH:MM\"(24시간제), 또는 지우려면 null. 선택 사항."
+      }
+    },
+    "get-day": {
+      "name": "get-day",
+      "description": "계획의 하루를 가져옵니다: day에 계획된 작업(계획 순서), 지난 작업(today 이전에 계획된 열린 작업, 오래된 순), 계획되지 않은 열린 작업(날짜 없음, 트리 순서). today에는 사용자의 현재 날짜 \"YYYY-MM-DD\"를 전달합니다(기본값은 UTC 날짜). 반환: { day, today, tasks: [...], overdue: [...], unplanned: [...] } 각 작업은 { nodeId, parentId, text, state, blockedReason, progress, reportedProgress, plannedFor, dayOrder, plannedTime, hasOutput, path: [조상 제목, 루트부터] }.",
+      "params": {
+        "day": "날짜 \"YYYY-MM-DD\".",
+        "today": "사용자의 현재 날짜 \"YYYY-MM-DD\"(지난 작업 판단). 선택 사항."
+      }
+    },
+    "assign-node": {
+      "name": "assign-node",
+      "description": "작업을 워크스페이스의 에이전트나 사람에게 할당하거나(\"누가 무엇을\"), null로 할당을 해제합니다. assignee는 { kind: \"agent\" | \"user\", id }이며, 이 워크스페이스에서 사용할 수 있는 agentId 또는 멤버(소유자 포함)의 userId여야 합니다. 그 외에는 INVALID_ASSIGNEE로 실패합니다. 그룹은 할당할 수 없습니다(NOT_A_TASK). assignedAt을 저장하고 \"Assigned to <name>\" / \"Unassigned\"를 기록합니다. 할당해도 작업이 시작되지는 않습니다. 반환: { node: { nodeId, assignee, assignedAt, state, ... } }.",
+      "params": {
+        "nodeId": "작업 노드 ID.",
+        "assignee": "담당자, 또는 해제하려면 null.",
+        "kind": "에이전트 또는 사람.",
+        "id": "agentId 또는 userId."
+      }
+    },
+    "set-reviewer": {
+      "name": "set-reviewer",
+      "description": "태스크의 리뷰어를 지정하거나 null로 제거(기본값인 수동 검증 — 아무도 평가하지 않음으로 돌아감). reviewer는 { kind: \"agent\" | \"user\", id } — 이 워크스페이스에서 사용 가능한 agentId 또는 멤버의 userId; 그 외에는 INVALID_ASSIGNEE 실패. 그룹은 리뷰할 수 없습니다 (NOT_A_TASK). 기본값은 비어 있음: 리뷰어가 없는 태스크는 지금과 동일하게 작동합니다. 리뷰어가 있는 태스크가 review 상태에 들어가면 리뷰어가 자동으로 알림을 받고 자신의 뷰에서 태스크가 보입니다 — 구독 필요 없습니다. \"Reviewer set to <name>\" / \"Reviewer removed\"를 로그에 기록합니다. 반환: { node: { nodeId, reviewer, reviewedAt, state, ... } }.",
+      "params": {
+        "nodeId": "태스크 노드 ID.",
+        "reviewer": "누가 리뷰하는지, 또는 null(수동 검증 — 아무도 평가하지 않음)."
+      }
+    },
+    "get-autoplay": {
+      "name": "get-autoplay",
+      "description": "이 워크스페이스의 작업(Tasks) 자동 실행(autoplay) 러너 목록: 자신의 작업(대기 중이며 오늘 또는 그 이전으로 계획된 작업)을 병렬 슬롯 수만큼 스스로 가져가는 에이전트들. activeSlots는 지금 실행 중인 에이전트 작업 수입니다. 반환: { runners: [{ agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing }] }."
+    },
+    "set-agent-slots": {
+      "name": "set-agent-slots",
+      "description": "워크스페이스 에이전트가 병렬로 실행할 작업 수를 설정합니다 (러너가 아니면 러너로 만듭니다). 슬롯 0은 일시 정지도 합니다. 에이전트는 워크스페이스에 속해야 합니다 (INVALID_ASSIGNEE). 읽기 전용 멤버는 러너를 변경할 수 없습니다 (FORBIDDEN). 반환: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "params": {
+        "agentId": "에이전트 ID.",
+        "slots": "병렬 실행 수 (0 = 목록에는 있지만 실행 불가)."
+      }
+    },
+    "set-agent-play": {
+      "name": "set-agent-play",
+      "description": "에이전트의 자동 실행을 켜거나 끕니다 (러너가 아니면 러너로 만듭니다). 켜져 있으면 Teros가 오늘 또는 그 이전으로 계획된 에이전트의 대기 작업을 슬롯에 맞춰 시작합니다. 슬롯 0으로 켜면 INVALID_STATE로 실패합니다. 일시 정지는 실행 중인 턴을 중단하지 않습니다. 읽기 전용 멤버는 러너를 변경할 수 없습니다 (FORBIDDEN). 반환: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "params": {
+        "agentId": "에이전트 ID.",
+        "enabled": "true = 실행, false = 일시 정지."
+      }
+    },
+    "set-agent-scope": {
+      "name": "set-agent-scope",
+      "description": "에이전트 러너의 범위를 설정합니다 (러너가 아니면 러너로 만듭니다). pickUnassigned가 true이면, 에이전트는 자신의 작업 다음으로 범위 그룹 안(모든 깊이; scopeNodeId가 null이면 트리 전체)에서 담당자가 없고 대기 중이며 오늘 이전으로 계획된 작업도 가져갑니다; 각 작업은 시작 전에 에이전트에게 배정됩니다. 에이전트에게 배정된 작업은 위치와 관계없이 가져갑니다. scopeNodeId는 워크스페이스의 그룹이어야 합니다 (INVALID_INPUT). 읽기 전용 멤버는 러너를 변경할 수 없습니다 (FORBIDDEN). 반환: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "params": {
+        "agentId": "에이전트 ID.",
+        "scopeNodeId": "담당자 없는 작업 가져오기를 제한하는 그룹 노드 ID, 또는 트리 전체는 null.",
+        "pickUnassigned": "true = 범위 안의 담당자 없는 계획된 작업도 가져옵니다."
+      }
+    },
+    "remove-agent": {
+      "name": "remove-agent",
+      "description": "자동 실행 러너에서 에이전트를 제거합니다. 실행 중인 턴은 중단되지 않으며 작업은 대화를 유지합니다. 읽기 전용 멤버는 러너를 변경할 수 없습니다 (FORBIDDEN). 반환: { removed: true, agentId }.",
+      "params": {
+        "agentId": "에이전트 ID."
+      }
+    },
+    "start-node": {
+      "name": "start-node",
+      "description": "작업을 지금 시작합니다: 에이전트에게 할당되고 대기 중인 (또는 대화 없이 진행 중인) 작업을, 계획된 날짜와 러너의 실행/슬롯과 관계없이 시작합니다. working으로 옮기고 에이전트와의 대화를 열거나 재사용하여 작업을 보냅니다. 에이전트에게 할당되지 않음: NOT_AGENT_TASK; 다른 상태: INVALID_STATE. 반환: { node: { nodeId, state, channelId, running, ... }, channelId }.",
+      "params": {
+        "nodeId": "작업 노드 ID."
+      }
+    },
+    "share-io": {
+      "name": "share-io",
+      "description": "작업의 출력 또는 입력에 대한 공개 링크를 만듭니다 (이미 만든 링크가 있으면 그것을 반환합니다). 링크가 있는 누구나 로그인 없이 작업의 현재 io를 볼 수 있습니다: 마크다운은 작업 텍스트를 제목으로 한 웹 페이지로, 파일은 파일 그대로. 양식 io이거나 해당 io가 없는 작업은 INVALID_STATE로 실패합니다. 읽기 전용 멤버는 공유할 수 없습니다 (FORBIDDEN). 반환: { shareId, publicUrl }.",
+      "params": {
+        "nodeId": "작업 노드 ID.",
+        "io": "작업의 어느 io인지: output 또는 input."
+      }
+    },
+    "get-io-share": {
+      "name": "get-io-share",
+      "description": "작업의 출력 또는 입력에 대해 만든 공개 링크가 있으면 가져옵니다. 읽기 전용 멤버는 사용할 수 없습니다 (FORBIDDEN). 반환: { shareId, publicUrl } 또는 null.",
+      "params": {
+        "nodeId": "작업 노드 ID.",
+        "io": "작업의 어느 io인지: output 또는 input."
+      }
+    },
+    "unshare-io": {
+      "name": "unshare-io",
+      "description": "작업의 출력 또는 입력에 대한 공개 링크를 취소합니다; 이후 링크는 404로 응답합니다. 링크를 만든 사용자만 취소할 수 있습니다 (FORBIDDEN). 반환: { ok: true }.",
+      "params": {
+        "shareId": "share-io가 반환한 공유 ID."
+      }
+    }
+  }
+}

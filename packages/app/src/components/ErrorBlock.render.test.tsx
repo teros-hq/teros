@@ -77,6 +77,25 @@ describe('ErrorBlock — hours-exhausted widget', () => {
     expect(getByTestId('hours-exhausted-body').textContent).toContain('Pro')
   })
 
+  it("renders the AutomateQuotaWidget for upgrade_required + reason:'automate_quota'", () => {
+    const { getByTestId, queryByTestId } = renderError({
+      errorType: 'upgrade_required',
+      userMessage: '"Cada minuto" was skipped',
+      context: {
+        reason: 'automate_quota',
+        used: 5,
+        limit: 5,
+        planName: 'Seed',
+        resetsAt: '2026-10-16T00:00:00.000Z',
+        starterName: 'Cada minuto',
+        topStarters: [{ starterId: 's1', name: 'Cada minuto', count: 5 }],
+      },
+    })
+    expect(getByTestId('automate-quota-widget')).toBeTruthy()
+    expect(getByTestId('automate-quota-body').textContent).toContain('Seed')
+    expect(queryByTestId('hours-exhausted-widget')).toBeNull()
+  })
+
   it('renders a plain error (no widget) for a generic error', () => {
     const { queryByTestId } = renderError({
       errorType: 'llm',

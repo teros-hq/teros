@@ -26,6 +26,12 @@ export interface Message {
   sender: "user" | "agent" | "system"
   timestamp: Date
   isStreaming?: boolean
+  /**
+   * v2 non-blocking interactions: set on a normal user message that answered
+   * a pending form in chat — the formRequestId it answers (spec §Implementation
+   * design 2). Renders the "answered the form" indicator.
+   */
+  respondsTo?: string
 
   /**
    * Detailed sender info - used to show avatar when sender differs from current user.
@@ -44,6 +50,14 @@ export interface Message {
   // Source of the message — 'voice' when sent via voice mode
   source?: "voice" | "web"
 
+  /**
+   * REQ-9 (voice-mode-v2, decisión de Pablo #5): true when this voice
+   * transcript was heard-but-not-addressed (passive). Persisted
+   * alongside source:'voice' by the backend; rendered tenue by MessageBubble
+   * (OverheardRow — "Voz · escuchado"). Absent/undefined = addressed speech.
+   */
+  overheard?: boolean
+
   /** Additional metadata for the message (e.g., board_subscription source) */
   metadata?: Record<string, any>
 
@@ -59,6 +73,25 @@ export interface Message {
   // Action metadata logged for assistant messages (copy/report)
   reportedAt?: string
   copiedAt?: string
+
+  /** Whether this message has been redacted by the channel owner (REQ-4). */
+  redacted?: boolean
+  /** userId who marked the message as redacted. */
+  redactedBy?: string
+  /** ISO timestamp when the message was redacted. */
+  redactedAt?: string
+  /**
+   * Placeholder sent by the backend for non-owners viewing a redacted message.
+   * Contains metadata only (type, reason, originalAuthor, originalTimestamp) —
+   * NEVER the original content. The content field is null when this is present.
+   * Spec: REQ-5, NFR-2.
+   */
+  redactedPlaceholder?: {
+    type: 'redacted'
+    reason: 'protected_by_owner'
+    originalAuthor: string
+    originalTimestamp: string
+  }
 
   // Retry data - preserved for failed messages to allow retry
   retryData?: {
@@ -90,8 +123,29 @@ export interface Channel {
   updatedAt: string
   /** An external action has been requested (to a human or another agent) */
   externalActionRequested?: boolean
+  /**
+   * v2 non-blocking interactions: unified awaiting-user state
+   * (docs/specs/20261024_non-blocking-user-interactions.md).
+   * kind: which interaction is waiting; pointer: its request id.
+   * null/undefined = nothing waiting.
+   */
+  awaitingUser?: { kind: "form" | "permission" | "auth"; pointer: string } | null
   /** Private channel - hidden from lists/search, deleted on close */
-  isPrivate?: boolean
+  scope?: 'personal' | 'shared'
+  /**
+   * Contextual follow-up prompts for the composer (backend-generated after
+   * each agent response, broadcast via channel_status / hydrated from
+   * channel.get). Replaces the tools row in conversations with ≥1 message.
+   */
+  suggestedPrompts?: string[] | null
+  /**
+   * Client-side UX flag (v1.4.4): true while a user message is in flight or
+   * the agent's turn is running — the chips must not show then. Set on send
+   * (incl. queued), cleared when a fresh set arrives via channel_status or
+   * when the turn ends (agentPhase idle) without one. The persisted set is
+   * untouched — this only gates visibility.
+   */
+  suggestedPromptsSuppressed?: boolean
 }
 
 interface ChatState {
@@ -215,6 +269,12 @@ interface ChatState {
    */
   setTyping: (channelId: string, isTyping: boolean) => void
   setAgentPhase: (channelId: string, phase: 'idle' | 'thinking' | 'streaming_text' | 'executing_tool') => void
+  /**
+   * Gate the suggested-prompt chips' VISIBILITY (v1.4.4). `suppressed=true`
+   * while a user message is in flight / the agent turn is running; the
+   * persisted `suggestedPrompts` set is never modified by this action.
+   */
+  setSuggestedPromptsSuppressed: (channelId: string, suppressed: boolean) => void
   /** Move `messageId` to immediately before `beforeId` in `channelMessages[channelId]`. */
   reorderMessageBefore: (channelId: string, messageId: string, beforeId: string) => void
 
@@ -320,6 +380,37 @@ function evictHead(
   }
 }
 
+/**
+ * Structural equality for settled (non-streaming) messages.
+ *
+ * `upsertMessage` fires for every message on every channel re-sync (history
+ * hydration, reconnect re-subscribe). Without this check each upsert replaced
+ * the message object with a fresh reference, invalidating every React.memo'd
+ * MessageItem in the window — the "3000 warnings" burst. Streaming messages
+ * are exempt: their content mutates chunk-by-chunk by design.
+ */
+function messageEquals(a: Message, b: Message): boolean {
+  if (a === b) return true
+  if (a.isStreaming || b.isStreaming) return false
+  if (a.id !== b.id || a.channelId !== b.channelId || a.sender !== b.sender) return false
+  if (a.status !== b.status || a.isStreaming !== b.isStreaming) return false
+  if (a.redacted !== b.redacted || a.overheard !== b.overheard) return false
+  if (a.source !== b.source) return false
+  if (+a.timestamp !== +b.timestamp) return false
+  const ac = a.content, bc = b.content
+  if (ac === bc) return true
+  if (!ac || !bc || ac.type !== bc.type) return false
+  if (ac.type === 'text' && bc.type === 'text') return ac.text === bc.text
+  if (ac.type === 'tool_execution' && bc.type === 'tool_execution') {
+    return ac.toolCallId === bc.toolCallId && ac.toolName === bc.toolName && ac.status === bc.status
+  }
+  // image/video/event/audio/voice — compare by stable identity fields
+  if (ac.type === 'image' && bc.type === 'image') return ac.url === bc.url
+  if (ac.type === 'video' && bc.type === 'video') return ac.url === bc.url
+  if (ac.type === 'event' && bc.type === 'event') return ac.eventType === bc.eventType && ac.description === bc.description
+  return false // unknown/complex shapes — be safe, treat as changed
+}
+
 /** Fallback channel when a runtime event arrives before `setChannel`. */
 function createChannelStub(channelId: string): Channel {
   return {
@@ -351,8 +442,20 @@ export const useChatStore = createSessionStore<ChatState>('chat', (set, get) => 
     set((state) => {
       const { id, channelId } = message
 
+      // Identical re-delivery (channel re-sync) — keep the existing reference
+      // so memoized MessageItems don't re-render. See messageEquals.
+      const existing = state.messages[id]
+      let effective = message
+      if (existing && messageEquals(existing, message)) {
+        const ids = state.channelMessages[channelId]
+        if (ids && ids.includes(id)) return state
+        // Equal but missing from the channel list (e.g. list was trimmed) —
+        // re-add the id but keep the old object reference.
+        effective = existing
+      }
+
       // Update messages map
-      let newMessages = { ...state.messages, [id]: message }
+      let newMessages = { ...state.messages, [id]: effective }
 
       // Update channelMessages array only if it's a new message
       let newChannelMessages = { ...state.channelMessages }
@@ -783,6 +886,26 @@ export const useChatStore = createSessionStore<ChatState>('chat', (set, get) => 
       }
     }),
 
+  setSuggestedPromptsSuppressed: (channelId, suppressed) =>
+    set((state) => {
+      const channel = state.channels[channelId]
+      // No channel yet and un-suppressing → nothing to clear (flag defaults to
+      // falsy). No channel yet and suppressing → create the stub so the flag
+      // survives until the real channel record lands.
+      if (!channel && !suppressed) return state
+      if (channel?.suggestedPromptsSuppressed === suppressed) return state
+      const updatedChannel = {
+        ...(channel ?? createChannelStub(channelId)),
+        suggestedPromptsSuppressed: suppressed,
+      }
+      return {
+        channels: {
+          ...state.channels,
+          [channelId]: updatedChannel,
+        },
+      }
+    }),
+
   setRenaming: (channelId, isRenaming) =>
     set((state) => {
       const channel = state.channels[channelId]
@@ -853,10 +976,7 @@ export const useChatStore = createSessionStore<ChatState>('chat', (set, get) => 
 
   getAllChannels: () => {
     const state = get()
-    return Object.values(state.channels).sort((a, b) => {
-      const aTime = a.lastMessageAt || a.updatedAt
-      const bTime = b.lastMessageAt || b.updatedAt
-      return new Date(bTime).getTime() - new Date(aTime).getTime()
-    })
+    // Trust backend sort order (lastMessageAt desc) — do not re-sort here
+    return Object.values(state.channels)
   },
 }))

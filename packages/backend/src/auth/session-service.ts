@@ -6,12 +6,20 @@
  */
 
 import { createHash, randomBytes } from 'crypto';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import { type Collection, type Db, ObjectId } from 'mongodb';
 import type { UserSession } from './types';
 
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const IMPERSONATION_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours
 const TOKEN_BYTES = 32; // 256 bits
+
+/**
+ * Step-up authentication window (Req 2.4.1).
+ * After re-authenticating, the user can perform sensitive operations
+ * for this duration before needing to re-authenticate again.
+ */
+export const STEP_UP_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
 /**
  * Generate a secure random session token
@@ -71,14 +79,9 @@ export class SessionService {
    * Initialize indexes for the user_sessions collection
    */
   async ensureIndexes(): Promise<void> {
-    // Find session by token hash
-    await this.sessions.createIndex({ tokenHash: 1 }, { unique: true });
-    // Find all sessions for a user
-    await this.sessions.createIndex({ userId: 1 });
-    // TTL index: automatically delete expired sessions
-    await this.sessions.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-    // Find active sessions
-    await this.sessions.createIndex({ status: 1, expiresAt: 1 });
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.sessions, COLLECTIONS.userSessions);
   }
 
   /**
@@ -392,6 +395,41 @@ export class SessionService {
     else if (ua.includes('edg')) browser = 'Edge';
 
     return { deviceType, os, browser };
+  }
+
+  // ===========================================================================
+  // STEP-UP AUTHENTICATION (Req 2.4.1)
+  // ===========================================================================
+
+  /**
+   * Mark the current session as step-up authenticated.
+   * Called after the user re-verifies their identity (password or TOTP).
+   * Sets `metadata.stepUpAt` to the current time.
+   */
+  async setStepUp(tokenHash: string): Promise<boolean> {
+    const result = await this.sessions.updateOne(
+      { tokenHash, status: 'active', expiresAt: { $gt: new Date() } },
+      {
+        $set: {
+          'metadata.stepUpAt': new Date(),
+          lastActivityAt: new Date(),
+        },
+      },
+    );
+    return result.modifiedCount > 0;
+  }
+
+  /**
+   * Check whether the session has a valid (recent) step-up authentication.
+   * Returns true if `metadata.stepUpAt` exists and is within STEP_UP_WINDOW_MS.
+   */
+  hasValidStepUp(session: UserSession): boolean {
+    const stepUpAt = session.metadata?.stepUpAt;
+    if (!stepUpAt) {
+      return false;
+    }
+    const elapsed = Date.now() - new Date(stepUpAt).getTime();
+    return elapsed >= 0 && elapsed < STEP_UP_WINDOW_MS;
   }
 
   /**

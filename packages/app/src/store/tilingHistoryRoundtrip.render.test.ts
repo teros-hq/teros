@@ -23,6 +23,7 @@ const FAKE_TYPE = '__history_roundtrip_test__'
 // restored, making a history entry that skipped the cycle observable.
 const fakeDefinition: WindowTypeDefinition = {
   type: FAKE_TYPE,
+  audience: 'user',
   displayName: 'Fake',
   icon: (() => null) as unknown as WindowTypeDefinition['icon'],
   color: '#000000',

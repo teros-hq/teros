@@ -2,8 +2,8 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.elevenlabs",
   "name": "ElevenLabs",
-  "version": "1.0.0",
-  "description": "ElevenLabs Text-to-Speech - generate natural-sounding speech from text using AI voices",
+  "version": "1.1.1",
+  "description": "ElevenLabs voice app — generate natural-sounding speech from text (TTS) and make phone calls with a conversational voice agent (outbound calls via Twilio, call transcripts and analysis, ConvAI agent configuration).",
   "type": "integration",
   "icon": "icon.svg",
   "category": "ai",
@@ -23,25 +23,98 @@
     "hidden": false,
     "role": "user"
   },
-  "systemSecrets": ["API_KEY"],
-  "userSecrets": [],
+  "systemSecrets": [],
+  "userSecrets": [
+    "API_KEY"
+  ],
   "auth": {
     "type": "api-key",
     "provider": "elevenlabs"
   },
-  "keywords": ["elevenlabs", "tts", "text-to-speech", "audio", "voice", "speech", "ai"],
+  "keywords": [
+    "elevenlabs",
+    "tts",
+    "text-to-speech",
+    "audio",
+    "voice",
+    "speech",
+    "ai",
+    "phone",
+    "calls",
+    "telephony",
+    "twilio",
+    "convai"
+  ],
   "layers": {
     "tools": true,
-    "events": false,
+    "events": true,
     "ui": false,
     "permissions": false,
     "auth": {
       "type": "api-key",
-      "systemSecrets": ["API_KEY"]
+      "systemSecrets": [],
+      "userSecrets": [
+        "API_KEY"
+      ]
     },
     "agent": false
   },
+  "events": [
+    {
+      "topic": "elevenlabs.post_call_transcription",
+      "description": "A voice call ended: post-call transcription webhook. Payload nested under `data` AND flattened to top-level aliases (conversationId, transcriptSummary, callSuccessful...) at dispatch. Signed with the workspace webhook secret.",
+      "payload": {
+        "type": "string (event type, e.g. post_call_transcription)",
+        "event_timestamp": "number (unix seconds)",
+        "data.conversation_id": "string",
+        "data.agent_id": "string",
+        "data.status": "string (done|failed|...)",
+        "data.transcript": "array of { role, message, time_in_call_secs }",
+        "data.analysis.transcript_summary": "string",
+        "data.analysis.call_successful": "string (success|failure|unknown)",
+        "data.metadata.call_duration_secs": "number",
+        "data.metadata.termination_reason": "string",
+        "data.metadata.cost": "number (credits)",
+        "conversationId": "string — flat alias of data.conversation_id (added by Teros at dispatch; use for subscription rules and Automate filters)",
+        "agentId": "string — flat alias of data.agent_id",
+        "status": "string — flat alias of data.status",
+        "transcriptSummary": "string — flat alias of data.analysis.transcript_summary",
+        "callSuccessful": "string — flat alias of data.analysis.call_successful",
+        "durationSecs": "number — flat alias of data.metadata.call_duration_secs",
+        "terminationReason": "string — flat alias of data.metadata.termination_reason",
+        "cost": "number — flat alias of data.metadata.cost",
+        "_webhook.appId": "string (Teros app installation id)",
+        "_webhook.mcaId": "string (mca.elevenlabs)",
+        "_webhook.eventType": "string",
+        "_webhook.receivedAt": "ISO date"
+      }
+    },
+    {
+      "topic": "elevenlabs.call.started",
+      "description": "An outbound call was just dispatched by the `outbound-call` tool. Emitted locally by the MCA (not by an ElevenLabs webhook) so subscribers can react before the post-call webhook arrives.",
+      "payload": {
+        "conversationId": "string (ElevenLabs conversation id)",
+        "callSid": "string|null (Twilio/SIP call sid when present)",
+        "toNumber": "string (E.164)",
+        "agentId": "string (ElevenLabs agent id)",
+        "phoneNumberId": "string (ElevenLabs phone_number_id)",
+        "initiatorChannelId": "string|null (Teros channel that triggered the call)",
+        "initiatorAgentId": "string|null (Teros agent that triggered the call)",
+        "occurredAt": "ISO date"
+      }
+    }
+  ],
   "changelog": [
+    {
+      "version": "1.1.1",
+      "date": "2026-11-05",
+      "notes": "Description now surfaces the phone-call capability (outbound calls, call transcripts, ConvAI agent config) so agents can discover calling from the app list — previously described as TTS-only"
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-11-05",
+      "notes": "New list-agents tool: discover the account ConvAI agents (id, name, phone numbers assigned) with optional search/limit filtering — no more reading secrets to find an agent ID"
+    },
     {
       "version": "1.0.0",
       "date": "2026-01-23",

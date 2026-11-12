@@ -9,6 +9,7 @@
 
 import type { BadgeVariant } from "../../components/mca/primitives"
 import { tokens } from "../../components/monitoring/colors"
+import type { BadgeTone } from "../../components/ui/ds"
 import type { BillingInfo, UsageFilter, UserRole, UserStatus } from "../../services/AdminApi"
 
 // ─── Plan badge ───────────────────────────────────────────────────────────────
@@ -45,6 +46,38 @@ export function planBadge(planId: string, planName?: string): { label: string; c
     if (key && key in PLAN_COLORS) return { label, color: PLAN_COLORS[key] }
   }
   return { label, color: tokens.textTertiary }
+}
+
+/**
+ * Plan → ds `Badge` tone (the OS prototype vocabulary): entry tiers neutral,
+ * growth violet (info), pro/team green, the top tiers amber. Same key
+ * resolution as `planBadge` so both never disagree.
+ */
+const PLAN_TONES: Record<string, BadgeTone> = {
+  starter: "neutral",
+  essential: "neutral",
+  basic: "neutral",
+  free: "neutral",
+  growth: "i",
+  pro: "g",
+  team: "g",
+  ultra: "a",
+  max: "a",
+  infinity: "a",
+  unlimited: "a",
+  enterprise: "a",
+}
+
+export function planTone(planId: string, planName?: string): BadgeTone {
+  const candidates = [
+    planName?.toLowerCase(),
+    planId?.toLowerCase(),
+    planId?.toLowerCase().replace(/^plan[_-]/, ""),
+  ]
+  for (const key of candidates) {
+    if (key && key in PLAN_TONES) return PLAN_TONES[key]
+  }
+  return "neutral"
 }
 
 // ─── Hours / quota usage ──────────────────────────────────────────────────────
@@ -88,6 +121,17 @@ export function hoursColor(pct: number | null, unmetered: boolean): string {
   return tokens.textSecondary
 }
 
+/**
+ * Quota tone for the ds vocabulary: `r` at/over the limit, `a` from 80%, else
+ * `i` (the violet usage bar); unmetered / no-billing stays `neutral`.
+ */
+export function hoursTone(pct: number | null, unmetered: boolean): "neutral" | "i" | "a" | "r" {
+  if (unmetered || pct == null) return "neutral"
+  if (pct >= 1) return "r"
+  if (pct >= 0.8) return "a"
+  return "i"
+}
+
 // ─── Status + role meta (colour + i18n key) ───────────────────────────────────
 
 /** User status → dot colour + i18n label key. (The monitoring `statusMeta` does
@@ -100,6 +144,46 @@ export function userStatusMeta(status: UserStatus): { color: string; labelKey: s
       return { color: tokens.error, labelKey: "windows.usersPanel.status.suspended" }
     case "pending_verification":
       return { color: tokens.warning, labelKey: "windows.usersPanel.status.pending" }
+  }
+}
+
+/** User status → ds `Badge` tone (g active · r suspended · a pending). */
+export function userStatusTone(status: UserStatus): BadgeTone {
+  switch (status) {
+    case "active":
+      return "g"
+    case "suspended":
+      return "r"
+    case "pending_verification":
+      return "a"
+  }
+}
+
+/** Role → ds `Badge` tone. `super` is highlighted (amber) so it stands out. */
+export function roleTone(role: UserRole): BadgeTone {
+  switch (role) {
+    case "super":
+      return "a"
+    case "admin":
+      return "i"
+    default:
+      return "neutral"
+  }
+}
+
+/** Legacy MCA Badge variant → ds `Badge` tone (for the boost-origin meta). */
+export function variantTone(variant: BadgeVariant): BadgeTone {
+  switch (variant) {
+    case "success":
+      return "g"
+    case "error":
+      return "r"
+    case "warning":
+      return "a"
+    case "info":
+      return "i"
+    default:
+      return "neutral"
   }
 }
 

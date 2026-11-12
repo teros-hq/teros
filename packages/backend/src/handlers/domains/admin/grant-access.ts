@@ -1,16 +1,21 @@
 /**
- * admin.grant-access — Grant platform access to a waitlisted user (admin/super only)
+ * admin.grant-access — Grant platform access to a waitlisted user (admin/super only, step-up required)
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { UserService } from '../../../auth/user-service'
+import type { SessionService } from '../../../auth/session-service'
+import { requireStepUp } from './require-step-up'
 
 interface GrantAccessData {
   targetUserId: string
 }
 
-export function createGrantAccessHandler(userService: UserService) {
+export function createGrantAccessHandler(
+  userService: UserService,
+  sessionService: SessionService,
+) {
   return async function grantAccess(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as GrantAccessData
 
@@ -23,6 +28,9 @@ export function createGrantAccessHandler(userService: UserService) {
     if (!targetUserId) {
       throw new HandlerError('MISSING_FIELDS', 'targetUserId is required')
     }
+
+    // Step-up auth: require recent re-authentication (Req 2.4.1)
+    await requireStepUp(ctx, sessionService)
 
     const target = await userService.getByUserId(targetUserId)
     if (!target) {

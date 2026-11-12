@@ -314,3 +314,21 @@ export class NetworkError extends AgentError {
     )
   }
 }
+
+/**
+ * Message Output Length Error — the model exhausted its output token budget
+ * on internal reasoning and produced no user-visible content, even after the
+ * TurnDriver's automatic budget retry (silent-turn guard, 2026-09-24).
+ *
+ * Thrown by TurnDriver's Fix B so handleAgentError renders the standard error
+ * card with a working Retry button. Before 2026-09-30 the error text was
+ * persisted as a plain assistant text bubble (masquerading as a normal reply)
+ * and could even be triggered by a user Stop aborting the retry — see the
+ * incident notes in TurnDriver.ts.
+ */
+export class MessageOutputLengthError extends AgentError {
+  constructor(userMessage: string, context: ErrorContext = {}) {
+    super("llm", userMessage, userMessage, context)
+    this.name = "MessageOutputLengthError"
+  }
+}

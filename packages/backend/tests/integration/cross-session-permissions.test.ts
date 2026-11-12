@@ -128,6 +128,9 @@ function createMockMcaService(): McaService {
     })),
     getApp: mock(async (_appId: string) => app),
     hasAccess: mock(async (_agentId: string, _appId: string) => true),
+    // MUW-REQ-12: no channel document behind these ids — a null viewer keeps
+    // the executor's own user context.
+    getChannelViewer: mock(async (_channelId: string) => null),
   } as unknown as McaService;
 }
 

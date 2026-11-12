@@ -5,28 +5,32 @@
  * Only visible in the navbar for users with role "admin" or "super".
  */
 
-import { Flag } from '@tamagui/lucide-icons';
-import i18n from '../../i18n';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { FeatureFlagsWindowContent } from './FeatureFlagsWindowContent';
+import { Flag } from "@tamagui/lucide-icons"
+import i18n from "../../i18n"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const FeatureFlagsWindowContent = lazyWithRetry(() =>
+  import("./FeatureFlagsWindowContent").then((m) => ({ default: m.FeatureFlagsWindowContent })),
+)
 
 export type FeatureFlagsWindowProps = {
   /** Optional initial search query */
-  search?: string;
-};
+  search?: string
+}
 
 export const featureFlagsWindowDefinition: WindowTypeDefinition<FeatureFlagsWindowProps> = {
-  type: 'feature-flags',
-  displayName: 'Feature Flags',
+  type: "feature-flags",
+  audience: "admin",
+  displayName: "Feature Flags",
   icon: Flag,
-  color: '#F59E0B',
+  phIcon: "flag",
+  color: "#6F27FF",
   component: FeatureFlagsWindowContent,
 
   defaultSize: { width: 900, height: 700 },
   minSize: { width: 500, height: 400 },
 
   isLauncher: true,
-  adminOnly: true,
 
   getTitle: () => i18n.t("windows.featureFlags"),
   getSubtitle: () => i18n.t("windows.featureFlagsSub"),
@@ -37,4 +41,4 @@ export const featureFlagsWindowDefinition: WindowTypeDefinition<FeatureFlagsWind
   deserialize: (data) => ({
     search: data.search,
   }),
-};
+}

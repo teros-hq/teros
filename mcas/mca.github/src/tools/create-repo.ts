@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertGitHubSegment, githubRequest } from '../lib';
 
 export const createRepo: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -27,6 +27,8 @@ export const createRepo: ToolConfig = {
       license_template?: string;
       org?: string;
     };
+    assertGitHubSegment(name, 'name');
+    assertGitHubSegment(org, 'org');
 
     const body = { name, description, private: isPrivate ?? false, auto_init, gitignore_template, license_template };
     const endpoint = org ? `/orgs/${org}/repos` : '/user/repos';

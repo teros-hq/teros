@@ -8,8 +8,12 @@
  */
 
 import { create } from "zustand"
-import { STORAGE_KEYS, storage, persistedDriver } from "../services/storage"
+import { STORAGE_KEYS, storage, persistedDriver, getCurrentWorkspaceId } from "../services/storage"
 import { windowRegistry } from "../services/windowRegistry"
+import { getResolvedFlag, useFeatureFlagsStore } from "./featureFlagsStore"
+import { preloadWindowChunks } from "../lib/preloadWindowChunks"
+import { getTerosClient } from "../services/terosClientSingleton"
+import { getActiveWorkspaceId } from "./workspaceStoreRef"
 
 // ============================================
 // TYPES
@@ -66,6 +70,42 @@ export interface TilingWindow {
   history: WindowHistoryEntry[]
   /** Current position in history (points to current type+props) */
   historyIndex: number
+  /**
+   * Preview tab (docs/specs/ui/preview-tabs.md): opening another window in
+   * preview mode into the same pane REUSES this tab (replaces its type/props)
+   * instead of adding one. Pinned (absent/false) by `pinWindow`.
+   */
+  preview?: boolean
+  /** The window that opened this one in preview mode (mobile "back" returns there). */
+  openerId?: string
+}
+
+/**
+ * Options for `openWindow` (the object form of its third argument).
+ * The positional form `openWindow(type, props, inNewTab?, sourceWindowId?)`
+ * keeps working.
+ */
+export interface OpenWindowOptions {
+  /**
+   * Add a tab instead of routing to the desktop's preview tab. Ctrl/cmd-click
+   * and explicit new-tab callers pass this — it bypasses preview routing.
+   */
+  inNewTab?: boolean
+  /** The caller window: keeps the focus when the open routes to a preview. */
+  sourceWindowId?: string
+  /**
+   * Open into the desktop's PREVIEW tab explicitly (the default for new
+   * content anyway — docs/specs/ui/preview-tabs.md). The desktop's existing
+   * preview tab is reused; without one the tab is created in the panel most
+   * to the right and top. An identical window that already exists is focused
+   * instead. On the compact shell the preview is pushed in the source pane.
+   */
+  preview?: boolean
+  /**
+   * With `preview`: open as a PINNED tab in the same target panel (or pin
+   * the identical window if it already exists) — the double-click gesture.
+   */
+  pin?: boolean
 }
 
 /** A virtual desktop (workspace) */
@@ -90,13 +130,17 @@ export interface SerializedWorkspaceState {
 // CONSTANTS
 // ============================================
 
-const DEFAULT_MAX_DESKTOPS = 3
+const DEFAULT_MAX_DESKTOPS = 1
+
+/** Hard limit of user-created desktops (dynamic desktops — one per physical
+ * screen; matches the backend's UI_MAX_DESKTOPS report cap). */
+export const MAX_DESKTOPS = 10
 
 // ============================================
 // STATE
 // ============================================
 
-interface TilingState {
+interface TilingState extends TilingDerivedState {
   /** Array of desktops */
   desktops: Desktop[]
 
@@ -111,6 +155,28 @@ interface TilingState {
 
   /** Counter for unique IDs */
   nextId: number
+
+  /** Whether the persisted layout has been restored from storage.
+   * False until restoreFromStorage completes (or finds no saved layout).
+   * Components should wait for this before opening windows to avoid
+   * the restored layout overwriting freshly-opened windows. */
+  layoutRestored: boolean
+
+  /** Monotonic counter of completed restores — incremented on every
+   * restoreFromStorage completion (restored layout, empty, or error).
+   * Lets consumers tell restores apart instead of latching on the first
+   * one in history (the workspace-switch restore race). */
+  restoreGeneration: number
+
+  /** The workspace whose layout the LAST completed restore loaded — the
+   * workspace active at completion time (the same source the PersistedDriver
+   * buckets state by). Consumers that must not judge the layout before THEIR
+   * workspace's restore lands gate on this equaling the workspace they
+   * care about. */
+  layoutRestoredForWorkspace: string | null
+
+  /** True while the compact (phone) shell is mounted (see setCompactShell). */
+  compactShell: boolean
 }
 
 /** Derived state computed from the active desktop */
@@ -139,6 +205,22 @@ interface TilingActions {
   /** Rename a desktop */
   renameDesktop: (index: number, name: string) => void
 
+  /**
+   * Create a new empty desktop at the end and switch to it (dynamic desktops).
+   * Hard-capped at MAX_DESKTOPS (10) — a no-op at the cap. Auto-named
+   * "Desktop N" (N = new length). Returns the new index, or null at the cap.
+   */
+  addDesktop: () => number | null
+
+  /**
+   * Remove a desktop by index (dynamic desktops). Never removes the last
+   * remaining desktop (no-op returning false). Windows on the removed desktop
+   * are MOVED to the previous desktop (index-1, falling back to the first) —
+   * never silently closed. Desktops after it shift down; every window's
+   * desktopIndex is reindexed; activeDesktopIndex follows the merged desktop.
+   */
+  removeDesktop: (index: number) => boolean
+
   /** Move window to another desktop */
   moveWindowToDesktop: (windowId: string, targetDesktopIndex: number) => void
 
@@ -163,16 +245,34 @@ interface TilingActions {
   // ========================================
 
   /**
-   * Open window - by default replaces the active tab, with inNewTab=true opens a new tab.
-   * Pass sourceWindowId to open in the same container as the caller window (avoids
-   * stealing focus from a different pane).
+   * Open window. NEW content routes to the desktop's PREVIEW tab by default
+   * (docs/specs/ui/preview-tabs.md): the desktop's preview tab is reused, or
+   * created in the rightmost+topmost panel. `inNewTab` bypasses that (a
+   * normal new tab); an identical open window is focused, never duplicated.
+   * Pass sourceWindowId to keep the focus on the caller (keyboard lists).
    */
   openWindow: (
     type: string,
     props: Record<string, any>,
-    inNewTab?: boolean,
+    inNewTabOrOptions?: boolean | OpenWindowOptions,
     sourceWindowId?: string,
   ) => string | null
+
+  /** Turn a preview tab into a normal (pinned) tab. No-op for pinned tabs. */
+  pinWindow: (windowId: string) => void
+
+  /**
+   * "New tab" (the + button): pin the desktop's current preview (temporary)
+   * tab, then open a fresh launcher tab that becomes the new preview. At most
+   * one preview exists at any time; with no preview nothing is pinned.
+   */
+  openNewTab: (sourceWindowId?: string) => string | null
+
+  /**
+   * Whether the shell is the compact (phone) layout — set by
+   * MobileTilingLayout. Preview windows are then pushed in the source pane.
+   */
+  setCompactShell: (compact: boolean) => void
 
   /** Close window */
   closeWindow: (windowId: string) => void
@@ -327,6 +427,17 @@ function createEmptyDesktops(count: number): Desktop[] {
   }))
 }
 
+/**
+ * Clamp an index into the desktops range (0..count-1). Guarantees the store
+ * invariant 0 <= activeDesktopIndex < desktops.length after any mutation or
+ * restore that can leave a stale index (per-tab sessionStorage from a session
+ * with more desktops, a removed desktop, a workspace-switch race).
+ */
+function clampDesktopIndex(index: number, desktopCount: number): number {
+  if (desktopCount <= 0) return 0
+  return Math.max(0, Math.min(index, desktopCount - 1))
+}
+
 /** Find a node in the tree */
 function findNode(layout: LayoutNode | null, id: string): LayoutNode | null {
   if (!layout) return null
@@ -424,6 +535,382 @@ function computeDerivedState(desktops: Desktop[], activeDesktopIndex: number): T
 }
 
 // ============================================
+// WORKSPACE BOUNDARY GUARD
+// ============================================
+
+/**
+ * Cache mapping channelId → workspaceId (or null for superagent channels).
+ * Populated lazily when a chat window is opened. Avoids repeated backend calls
+ * for channels the user has already opened in this session.
+ */
+const _channelWorkspaceCache = new Map<string, string | null>()
+
+/**
+ * Check if a channel belongs to the currently active workspace.
+ * Channels with no workspaceId (superagent channels) are always allowed.
+ * Returns true if the channel is in the active workspace or has no workspace.
+ */
+function _isChannelInActiveWorkspace(channelId: string, channelWorkspaceId: string | null): boolean {
+  // Superagent channels (no workspaceId) are always allowed
+  if (!channelWorkspaceId) return true
+
+  // Read through the cycle-breaker module — workspaceStore registers itself
+  // there at load time (a direct import would create a circular dependency,
+  // and the old lazy `require()` is not resolvable under ESM/vitest).
+  const activeWorkspaceId = getActiveWorkspaceId()
+
+  // If no active workspace, allow (shouldn't happen in practice, but fail-open for edge cases)
+  if (!activeWorkspaceId) return true
+
+  if (channelWorkspaceId !== activeWorkspaceId) {
+    console.warn(
+      `[TilingStore] Blocked opening conversation ${channelId}: belongs to workspace ${channelWorkspaceId}, active is ${activeWorkspaceId}`,
+    )
+    return false
+  }
+
+  return true
+}
+
+/**
+ * Async verification for cache-miss channels. Fetches the channel's workspaceId
+ * from the backend, caches it, and if it belongs to the active workspace,
+ * re-opens the window (this time with a cache hit → synchronous path).
+ */
+async function _verifyAndOpenChatWindow(
+  channelId: string,
+  type: string,
+  props: Record<string, any>,
+  options: OpenWindowOptions,
+  get: () => any,
+  set: (partial: any) => void,
+): Promise<void> {
+  try {
+    const client = getTerosClient()
+    const ch = (await client.channel.get(channelId)) as any
+    const wsId: string | null = ch?.workspaceId ?? null
+
+    // Cache the result
+    _channelWorkspaceCache.set(channelId, wsId)
+
+    if (_isChannelInActiveWorkspace(channelId, wsId)) {
+      // Workspace matches — re-open through the normal path (cache hit this time)
+      const state = get()
+      state.openWindow(type, props, options)
+    }
+    // If mismatch, the warning was already logged by _isChannelInActiveWorkspace
+  } catch (err) {
+    // On error (network, channel not found, etc.), allow opening — the ChatView
+    // will handle the error state (notFound, etc.)
+    console.warn(`[TilingStore] Could not verify workspace for channel ${channelId}:`, err)
+    const state = get()
+    state.openWindow(type, props, options)
+  }
+}
+
+/** Export for testing — allows tests to pre-populate the cache */
+export function _setChannelWorkspace(channelId: string, workspaceId: string | null): void {
+  _channelWorkspaceCache.set(channelId, workspaceId)
+}
+
+/** Export for testing — clear the cache between tests */
+export function _clearChannelWorkspaceCache(): void {
+  _channelWorkspaceCache.clear()
+}
+
+// ============================================
+// PREVIEW TABS (docs/specs/ui/preview-tabs.md)
+// ============================================
+
+/**
+ * The preview tab is GLOBAL per desktop (VS Code preview tabs, Pablo 2026-10-30):
+ * every NEW open lands in the desktop's preview tab — reused when one exists
+ * anywhere in the desktop, else created in the panel that is most to the
+ * RIGHT and, among those, most to the TOP. Pinning (pinWindow) turns it into
+ * a normal tab; the next open then creates a fresh preview tab.
+ */
+
+/**
+ * The pane a fresh preview tab opens in: the container whose rect is most to
+ * the right, and among ties most to the top — computed from the layout tree,
+ * no DOM. Geometry: walk the tree with the unit square [0,1]². A horizontal
+ * split (XStack) divides x: first gets [x, x + w·ratio], second the rest. A
+ * vertical split (YStack) divides y the same way, first on top. Every leaf
+ * ends with its normalized rect; we compare right edges (x+w), tie-break on
+ * top edges (y). Ties beyond that (same column, e.g. two stacked panes under
+ * one horizontal split with equal widths) resolve to the upper one — stable
+ * because findAllContainers order is deterministic.
+ *
+ * Nested-splits example: H(A, V(B, C)) with ratio 0.5 →
+ *   A = [0, 0, 0.5, 1] (right 0.5) · B = [0.5, 0, 1, 0.5] (right 1, top 0)
+ *   C = [0.5, 0.5, 1, 1] (right 1, top 0.5) → B wins (same right edge, higher).
+ */
+export function findRightmostTopmostContainer(layout: LayoutNode | null): string | null {
+  const all = findAllContainers(layout)
+  if (all.length === 0) return null
+
+  /** Rect of each container: [x, y, w, h] in normalized units. */
+  const rects = new Map<string, [number, number, number, number]>()
+  const walk = (node: LayoutNode, x: number, y: number, w: number, h: number): void => {
+    if (node.type === "container") {
+      rects.set(node.id, [x, y, w, h])
+      return
+    }
+    if (node.direction === "horizontal") {
+      walk(node.first, x, y, w * node.ratio, h)
+      walk(node.second, x + w * node.ratio, y, w * (1 - node.ratio), h)
+    } else {
+      walk(node.first, x, y, w, h * node.ratio)
+      walk(node.second, x, y + h * node.ratio, w, h * (1 - node.ratio))
+    }
+  }
+  if (layout) walk(layout, 0, 0, 1, 1)
+
+  let best: ContainerNode | null = null
+  let bestRight = -1
+  let bestTop = Infinity
+  for (const c of all) {
+    const r = rects.get(c.id)
+    if (!r) continue
+    const right = r[0] + r[2]
+    const top = r[1]
+    if (right > bestRight + 1e-9 || (Math.abs(right - bestRight) <= 1e-9 && top < bestTop - 1e-9)) {
+      best = c
+      bestRight = right
+      bestTop = top
+    }
+  }
+  return best?.id ?? null
+}
+
+/**
+ * The desktop's preview tab: the first window flagged `preview` whose
+ * container lives in that desktop's layout. Independent per desktop — each
+ * desktop keeps its own preview tab.
+ */
+export function findDesktopPreviewWindow(
+  desktops: Desktop[],
+  windows: Record<string, TilingWindow>,
+  desktopIndex: number,
+): TilingWindow | null {
+  const desktop = desktops[desktopIndex]
+  if (!desktop?.layout) return null
+  const paneIds = new Set(findAllContainers(desktop.layout).map((c) => c.id))
+  for (const w of Object.values(windows)) {
+    if (w.preview && w.desktopIndex === desktopIndex && paneIds.has(w.containerId)) return w
+  }
+  return null
+}
+
+/**
+ * At most ONE preview tab per desktop. Desktop merges (removeDesktop),
+ * cross-desktop moves and old persisted states can leave two; keep the
+ * rightmost-topmost one and pin the rest (they survive as normal tabs —
+ * nothing is lost, they just stop being transient).
+ */
+function normalizeDesktopPreviews(
+  desktops: Desktop[],
+  windows: Record<string, TilingWindow>,
+): Record<string, TilingWindow> {
+  let out = windows
+  desktops.forEach((desktop, desktopIndex) => {
+    if (!desktop.layout) return
+    const paneIds = new Set(findAllContainers(desktop.layout).map((c) => c.id))
+    const previews = Object.values(out).filter(
+      (w) => w.preview && w.desktopIndex === desktopIndex && paneIds.has(w.containerId),
+    )
+    if (previews.length <= 1) return
+    // Keep the one in the rightmost+topmost pane; when several share that
+    // pane (a merge), keep the first by window id — stable. The rest are
+    // pinned: they survive as normal tabs, nothing is lost.
+    const keep = findRightmostTopmostContainer(desktop.layout)
+    const doomed = previews.filter((w) => w.containerId !== keep)
+    const inKeep = previews.filter((w) => w.containerId === keep)
+    const toPin = doomed.length > 0 ? doomed : inKeep.slice(1)
+    if (toPin.length === 0) return
+    out = { ...out }
+    for (const w of toPin) out[w.id] = { ...w, preview: false }
+  })
+  return out
+}
+
+/**
+ * Make `windowId` the visible tab of its pane. On the desktop shell the focus
+ * stays on the caller's pane (selecting rows in a list keeps the keyboard
+ * there); on the compact shell the pane is focused (that is what shows it).
+ */
+function showTabInPlace(
+  get: () => TilingState & TilingActions,
+  set: (partial: Partial<TilingState>) => void,
+  windowId: string,
+  _sourceWindowId: string | undefined,
+): void {
+  const state = get()
+  const window = state.windows[windowId]
+  if (!window) return
+  if (state.compactShell) {
+    get().focusWindow(windowId)
+    return
+  }
+  const desktop = state.desktops[window.desktopIndex]
+  if (!desktop?.layout) return
+  const container = findNode(desktop.layout, window.containerId) as ContainerNode | null
+  if (!container || container.activeWindowId === windowId) return
+  const newDesktops = [...state.desktops]
+  newDesktops[window.desktopIndex] = {
+    ...desktop,
+    layout: replaceNode(desktop.layout, container.id, { ...container, activeWindowId: windowId }),
+  }
+  set({ desktops: newDesktops })
+}
+
+/**
+ * Open `type/props` into the desktop's PREVIEW tab (docs/specs/ui/preview-tabs.md):
+ *
+ * 1. The desktop already has a preview tab → REUSE it: replace its type/props
+ *    (pushing onto its history) and show it in its pane. It stays preview.
+ * 2. No preview tab → create one as a new tab in the desktop's RIGHTMOST +
+ *    TOPMOST panel (findRightmostTopmostContainer — an existing panel, no
+ *    split is created).
+ *
+ * With `pin` (the double-click gesture) the tab is opened PINNED in the same
+ * target panel instead — beside any preview, never replacing it.
+ *
+ * Focus: with a `sourceWindowId` the caller keeps the focus (keyboard lists);
+ * without one the preview tab is focused (VS Code's click-browse). On the
+ * compact shell the preview is pushed in the source pane with `openerId`
+ * for the bar's back caret.
+ */
+function openPreview(
+  get: () => TilingState & TilingActions,
+  set: (partial: Partial<TilingState>) => void,
+  type: string,
+  props: Record<string, any>,
+  sourceWindowId: string | undefined,
+  pin: boolean,
+): string | null {
+  const state = get()
+  // Defensive clamp: same invariant as openWindow (see note there).
+  const desktopIndex = clampDesktopIndex(state.activeDesktopIndex, state.desktops.length)
+  const desktop = state.desktops[desktopIndex]
+  let layout = desktop.layout
+
+  // Empty desktop: open as the first window, flagged as preview (unless pin).
+  if (!layout) {
+    const id = get().openWindow(type, props, { inNewTab: true, sourceWindowId })
+    if (id && !pin) {
+      set({ windows: { ...get().windows, [id]: { ...get().windows[id], preview: true } } })
+    }
+    return id
+  }
+
+  // The desktop's preview tab, wherever it lives: REUSE it (both shells:
+  // showTabInPlace focuses it on compact, shows it in place on desktop).
+  // Acting FROM the preview does NOT pin it (Pablo 2026-11-01): ONLY the pin
+  // click turns the preview tab into a fixed tab — every other open, from
+  // wherever it comes, replaces the preview's content. (The old "act from a
+  // preview pins it" rule opened the new content in a separate tab, which is
+  // exactly the bug this sweep fixes.) With `pin` (double-click) the tab is
+  // opened PINNED beside the preview instead.
+  const existing = findDesktopPreviewWindow(state.desktops, state.windows, desktopIndex)
+  if (existing && !pin) {
+    const w = state.windows[existing.id]
+    const history = w.history ?? [{ type: w.type, props: w.props }]
+    const index = w.historyIndex ?? history.length - 1
+    const nextHistory = [...history.slice(0, index + 1), { type, props }]
+    const capped =
+      nextHistory.length > MAX_HISTORY_LENGTH
+        ? nextHistory.slice(nextHistory.length - MAX_HISTORY_LENGTH)
+        : nextHistory
+    const windows = {
+      ...state.windows,
+      [existing.id]: {
+        ...w,
+        type,
+        props,
+        history: capped,
+        historyIndex: capped.length - 1,
+        openerId: sourceWindowId ?? w.openerId,
+      },
+    }
+    set({ windows })
+    showTabInPlace(get, set, existing.id, sourceWindowId)
+    return existing.id
+  }
+
+  // Compact (phone) shell, no preview yet: push a NEW preview tab into the
+  // SOURCE pane, focused, with openerId for the bar's back caret — there is
+  // no room for a side pane.
+  if (state.compactShell) {
+    const sourceContainerId =
+      (sourceWindowId && state.windows[sourceWindowId]?.containerId) ||
+      desktop.activeContainerId ||
+      findAllContainers(layout)[0]?.id
+    if (!sourceContainerId) return null
+    const target = findNode(layout, sourceContainerId) as ContainerNode | null
+    if (!target) return null
+    return insertIntoPane(get, set, desktopIndex, layout, target, type, props, sourceWindowId, pin, true)
+  }
+
+  // Desktop shell, no preview yet: a fresh preview tab (or a pinned tab with
+  // `pin`) in the RIGHTMOST+TOPMOST panel.
+  const targetId = findRightmostTopmostContainer(layout)
+  if (!targetId) return null
+  const target = findNode(layout, targetId) as ContainerNode
+  return insertIntoPane(get, set, desktopIndex, layout, target, type, props, sourceWindowId, pin, false)
+}
+
+/**
+ * Add `type/props` to `pane` as a new tab (preview unless `pin`) and make it
+ * the pane's active tab. `focusPane` also focuses the pane itself (compact
+ * shell / preview-without-caller); otherwise the caller's focus is kept.
+ */
+function insertIntoPane(
+  get: () => TilingState & TilingActions,
+  set: (partial: Partial<TilingState>) => void,
+  desktopIndex: number,
+  layout: LayoutNode,
+  pane: ContainerNode,
+  type: string,
+  props: Record<string, any>,
+  sourceWindowId: string | undefined,
+  pin: boolean,
+  focusPane: boolean,
+): string | null {
+  const state = get()
+  const desktop = state.desktops[desktopIndex]
+  const windowId = generateId("win", state.nextId)
+  const windows = {
+    ...state.windows,
+    [windowId]: {
+      id: windowId,
+      type,
+      props,
+      containerId: pane.id,
+      desktopIndex,
+      hasNotification: false,
+      history: [{ type, props }],
+      historyIndex: 0,
+      preview: !pin,
+      ...(sourceWindowId ? { openerId: sourceWindowId } : {}),
+    } as TilingWindow,
+  }
+  const newLayout = replaceNode(layout, pane.id, {
+    ...pane,
+    windowIds: [...pane.windowIds, windowId],
+    activeWindowId: windowId,
+  })
+  const newDesktops = [...state.desktops]
+  newDesktops[desktopIndex] = {
+    ...desktop,
+    layout: newLayout,
+    ...(focusPane || sourceWindowId === undefined ? { activeContainerId: pane.id } : {}),
+  }
+  set({ desktops: newDesktops, windows, nextId: state.nextId + 1 })
+  return windowId
+}
+
+// ============================================
 // STORE
 // ============================================
 
@@ -434,6 +921,14 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   activeDesktopIndex: 0,
   maxDesktops: DEFAULT_MAX_DESKTOPS,
   nextId: 1,
+  layoutRestored: false,
+  restoreGeneration: 0,
+  layoutRestoredForWorkspace: null,
+  compactShell: false,
+  // Derived state (TilingState extends TilingDerivedState): kept in sync by
+  // computeDerivedState on every desktops/activeDesktopIndex transition.
+  layout: null,
+  activeContainerId: null,
 
   // Global drag state
   globalDragWindowId: null,
@@ -480,6 +975,129 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
       newDesktops[index] = { ...newDesktops[index], name }
       return { desktops: newDesktops }
     })
+  },
+
+  addDesktop: () => {
+    const state = get()
+    // Hard cap (MAX_DESKTOPS = 10): a silent no-op at the limit — the UI
+    // disables the + button there, this guards every other entry point.
+    if (state.desktops.length >= MAX_DESKTOPS) return null
+
+    const newIndex = state.desktops.length
+    const newDesktop: Desktop = {
+      id: `desktop_${newIndex}_${Math.random().toString(36).slice(2, 6)}`,
+      name: `Desktop ${newIndex + 1}`,
+      layout: null,
+      activeContainerId: null,
+    }
+
+    const desktops = [...state.desktops, newDesktop]
+    set({
+      desktops,
+      activeDesktopIndex: newIndex,
+      ...computeDerivedState(desktops, newIndex),
+    })
+    // tab-state (sessionStorage): per-tab active desktop
+    storage.set(STORAGE_KEYS.ACTIVE_DESKTOP_INDEX, newIndex)
+    // ui-state (localStorage): fallback for new tabs / device-level last known
+    storage.set(STORAGE_KEYS.LAST_ACTIVE_DESKTOP_INDEX, newIndex).catch((err) =>
+      console.error('[TilingStore] Failed to persist lastActiveDesktopIndex:', err),
+    )
+    return newIndex
+  },
+
+  removeDesktop: (index) => {
+    const state = get()
+    // Never remove the last remaining desktop — minimum 1 always stands.
+    if (state.desktops.length <= 1) return false
+    if (index < 0 || index >= state.desktops.length) return false
+
+    // Merge target: the PREVIOUS desktop (index-1), falling back to the first
+    // when removing desktop 0. Chosen over "the first" so the merge lands on
+    // the desktop the user most likely came from (Pablo's per-screen setup).
+    const targetIndex = index > 0 ? index - 1 : 0
+    const target = state.desktops[targetIndex]
+
+    // ── 1. Move the removed desktop's windows into the target desktop ──────
+    // Same merge semantics as moveWindowToDesktop: into the target's active
+    // container (or a fresh container when the target is empty). Windows are
+    // NEVER closed — the desktop disappears, its content survives.
+    let newTargetLayout = target.layout
+    let targetContainerId: string | null
+    let nextId = state.nextId
+
+    const removedWindowIds = Object.values(state.windows)
+      .filter((w) => w.desktopIndex === index)
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((w) => w.id)
+
+    if (removedWindowIds.length > 0) {
+      if (!newTargetLayout) {
+        targetContainerId = generateId("container", nextId)
+        nextId += 1
+        newTargetLayout = {
+          type: "container",
+          id: targetContainerId,
+          windowIds: removedWindowIds,
+          activeWindowId: removedWindowIds[0],
+        }
+      } else {
+        targetContainerId =
+          target.activeContainerId || findAllContainers(newTargetLayout)[0]?.id
+        if (!targetContainerId) return false
+        const targetContainer = findNode(newTargetLayout, targetContainerId) as ContainerNode
+        newTargetLayout = replaceNode(newTargetLayout, targetContainerId, {
+          ...targetContainer,
+          windowIds: [...targetContainer.windowIds, ...removedWindowIds],
+          activeWindowId: targetContainer.activeWindowId ?? removedWindowIds[0],
+        })
+      }
+    } else {
+      targetContainerId = target.activeContainerId ?? null
+    }
+
+    // ── 2. Splice the desktop out; shift the ones after it down ────────────
+    const newDesktops = state.desktops.filter((_, i) => i !== index)
+    newDesktops[targetIndex] = {
+      ...target,
+      layout: newTargetLayout,
+      activeContainerId: targetContainerId ?? target.activeContainerId,
+    }
+
+    // ── 3. Reindex every window: merged windows point at the target, windows
+    // on desktops after the removed one shift down by one ────────────────────
+    const newWindows: Record<string, TilingWindow> = {}
+    for (const [id, win] of Object.entries(state.windows)) {
+      if (win.desktopIndex === index) {
+        newWindows[id] = { ...win, desktopIndex: targetIndex, containerId: targetContainerId ?? win.containerId }
+      } else if (win.desktopIndex > index) {
+        newWindows[id] = { ...win, desktopIndex: win.desktopIndex - 1 }
+      } else {
+        newWindows[id] = win
+      }
+    }
+
+    // ── 4. Active desktop follows the merge target (clamped to the new range) ──
+    const newActiveIndex = Math.max(0, Math.min(targetIndex, newDesktops.length - 1))
+
+    // Preview invariant: the merge can leave two preview tabs on the target
+    // desktop — keep the rightmost+topmost, pin the rest.
+    const mergedWindows = normalizeDesktopPreviews(newDesktops, newWindows)
+
+    set({
+      desktops: newDesktops,
+      windows: mergedWindows,
+      activeDesktopIndex: newActiveIndex,
+      nextId,
+      ...computeDerivedState(newDesktops, newActiveIndex),
+    })
+    // tab-state (sessionStorage) + ui-state (localStorage): keep per-tab and
+    // device-level index in sync — same pattern as switchToDesktop
+    storage.set(STORAGE_KEYS.ACTIVE_DESKTOP_INDEX, newActiveIndex)
+    storage.set(STORAGE_KEYS.LAST_ACTIVE_DESKTOP_INDEX, newActiveIndex).catch((err) =>
+      console.error('[TilingStore] Failed to persist lastActiveDesktopIndex:', err),
+    )
+    return true
   },
 
   moveWindowToDesktop: (windowId, targetDesktopIndex) => {
@@ -562,23 +1180,29 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
       activeContainerId: targetContainerId,
     }
 
+    // Preview invariant: a moved preview can meet the target desktop's own —
+    // keep the rightmost+topmost, pin the rest.
+    const movedWindows = normalizeDesktopPreviews(newDesktops, {
+      ...state.windows,
+      [windowId]: {
+        ...window,
+        containerId: targetContainerId,
+        desktopIndex: targetDesktopIndex,
+      },
+    })
+
     set({
       desktops: newDesktops,
-      windows: {
-        ...state.windows,
-        [windowId]: {
-          ...window,
-          containerId: targetContainerId,
-          desktopIndex: targetDesktopIndex,
-        },
-      },
+      windows: movedWindows,
       nextId: state.nextId + 1,
     })
   },
 
   getActiveDesktop: () => {
     const state = get()
-    return state.desktops[state.activeDesktopIndex]
+    // Clamp: the signature promises a Desktop — a stale index must never leak
+    // an undefined desktop to callers.
+    return state.desktops[clampDesktopIndex(state.activeDesktopIndex, state.desktops.length)]
   },
 
   restoreDesktops: (desktops, activeDesktopIndex, rawWindows) => {
@@ -621,6 +1245,8 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
           notificationCount: undefined,
           history,
           historyIndex: w.historyIndex ?? 0,
+          ...(w.preview ? { preview: true } : {}),
+          ...(typeof w.openerId === 'string' ? { openerId: w.openerId } : {}),
         }
       }
     }
@@ -634,9 +1260,13 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
         }))
       : desktops
 
+    // Preview invariant: at most one preview tab per desktop (old persisted
+    // states may carry more — keep the rightmost+topmost, pin the rest).
+    const normalizedWindows = normalizeDesktopPreviews(cleanedDesktops, restoredWindows)
+
     set({
       desktops: cleanedDesktops,
-      windows: restoredWindows,
+      windows: normalizedWindows,
       activeDesktopIndex: safeIndex,
       ...computeDerivedState(cleanedDesktops, safeIndex),
     })
@@ -660,11 +1290,69 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   // WINDOW MANAGEMENT
   // ========================================
 
-  openWindow: (type, props, inNewTab = false, sourceWindowId?: string) => {
+  openNewTab: (sourceWindowId) => {
+    const state = get()
+    const existing = findDesktopPreviewWindow(state.desktops, state.windows, state.activeDesktopIndex)
+    if (existing) get().pinWindow(existing.id)
+    const id = get().openWindow("launcher", {}, { inNewTab: true, sourceWindowId })
+    // Compact shell has no preview tabs (one pane, pushed in place).
+    if (id && !get().compactShell) {
+      const w = get().windows[id]
+      if (w) set({ windows: { ...get().windows, [id]: { ...w, preview: true } } })
+    }
+    return id
+  },
+
+  openWindow: (type, props, inNewTabOrOptions = false, positionalSourceWindowId?: string) => {
+    const options: OpenWindowOptions =
+      typeof inNewTabOrOptions === "object" && inNewTabOrOptions !== null
+        ? inNewTabOrOptions
+        : { inNewTab: Boolean(inNewTabOrOptions), sourceWindowId: positionalSourceWindowId }
+    const inNewTab = options.inNewTab ?? false
+    const sourceWindowId = options.sourceWindowId
     const definition = windowRegistry.get(type)
     if (!definition) {
       console.error(`[TilingStore] Unknown window type: ${type}`)
       throw new Error(`Unknown window type: ${type}`)
+    }
+
+    // Audience guard: admin / dev windows never open for a viewer outside
+    // their audience (the launcher hides them; this covers every other path).
+    if (!windowRegistry.canOpen(definition)) {
+      console.warn(`[TilingStore] Window type "${type}" is not available to this user (audience "${definition.audience}")`)
+      return null
+    }
+
+    // Feature flag guard: block opening windows whose flag is disabled
+    if (definition.featureFlag) {
+      const flagValue = getResolvedFlag<boolean>(
+        useFeatureFlagsStore.getState(),
+        definition.featureFlag,
+      )
+      if (!flagValue) {
+        console.warn(`[TilingStore] Window type "${type}" is disabled by feature flag "${definition.featureFlag}"`)
+        return null
+      }
+    }
+
+    // Workspace boundary guard: block opening conversations from a different workspace.
+    // Only applies to 'chat' windows that reference an existing channel (have channelId).
+    // Draft chats (no channelId) and non-conversation windows are not affected.
+    if (type === "chat" && props.channelId) {
+      const channelId = props.channelId as string
+      const cachedWs = _channelWorkspaceCache.get(channelId)
+
+      if (cachedWs !== undefined) {
+        // Cache hit — synchronous check
+        if (!_isChannelInActiveWorkspace(channelId, cachedWs)) {
+          return null
+        }
+      } else {
+        // Cache miss — fire async check, block for now.
+        // If the check passes, the window is opened asynchronously.
+        _verifyAndOpenChatWindow(channelId, type, props, options, get, set)
+        return null
+      }
     }
 
     const state = get()
@@ -695,11 +1383,48 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
       if (existingWindow.desktopIndex !== state.activeDesktopIndex) {
         get().switchToDesktop(existingWindow.desktopIndex)
       }
+      if (options.preview) {
+        // Preview: show it in its pane without moving the focus off the caller.
+        if (options.pin) get().pinWindow(existingWindow.id)
+        showTabInPlace(get, set, existingWindow.id, sourceWindowId)
+        return existingWindow.id
+      }
       get().focusWindow(existingWindow.id)
       return existingWindow.id
     }
 
-    const desktopIndex = state.activeDesktopIndex
+    if (options.preview) {
+      return openPreview(get, set, type, props, sourceWindowId, Boolean(options.pin))
+    }
+
+    // ── GLOBAL PREVIEW ROUTING (docs/specs/ui/preview-tabs.md) ─────────────
+    // Every NEW open (no identical window exists) lands in the desktop's
+    // preview tab — VS Code preview tabs, per desktop. Opt-outs:
+    //   · inNewTab (ctrl/cmd-click and explicit new-tab callers) — untouched
+    //   · launcher — a working surface, always fresh tabs
+    //   · definition.noPreview — live views & editors (terminal, browser…)
+    //   · the compact shell — one pane, the preview pushes in place there
+    // Draft chats are NOT an opt-out (Pablo 2026-11-01, configure agent →
+    // Chat): a draft is new content like any other — it reuses the desktop's
+    // preview tab. Writing in it pins it (the composer calls pinWindow),
+    // which is exactly the VS Code gesture: browse → pin on edit.
+    // Opt-outs (and inNewTab) open a NEW NORMAL TAB: with the preview tab as
+    // the replace target, silently swapping a working surface for something
+    // else is no longer the default anywhere.
+    const previewable =
+      !inNewTab &&
+      !isLauncher &&
+      !definition.noPreview &&
+      !state.compactShell &&
+      state.desktops[state.activeDesktopIndex]?.layout != null
+    if (previewable) {
+      return openPreview(get, set, type, props, sourceWindowId, false)
+    }
+
+    // Defensive clamp: an out-of-range activeDesktopIndex (stale restore,
+    // workspace-switch race) must not crash on `desktop.layout` — resolve to a
+    // valid desktop instead.
+    const desktopIndex = clampDesktopIndex(state.activeDesktopIndex, state.desktops.length)
     const desktop = state.desktops[desktopIndex]
 
     let newLayout = desktop.layout
@@ -736,17 +1461,10 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
     }
 
     const container = findNode(newLayout, containerId) as ContainerNode
-    const activeWindowId = container.activeWindowId
-    const activeWindow = activeWindowId ? state.windows[activeWindowId] : null
 
-    // DEFAULT BEHAVIOR: Replace active tab (unless inNewTab=true or no active window)
-    if (!inNewTab && activeWindow && activeWindowId) {
-      // Use replaceWindow to swap the content
-      get().replaceWindow(activeWindowId, type, props)
-      return activeWindowId
-    }
-
-    // NEW TAB BEHAVIOR: Create new window and add to container
+    // NEW TAB BEHAVIOR: Create new window and add to container. (The old
+    // "replace the active tab" default is gone — the desktop's preview tab
+    // is the replace target now; everything else is a new tab.)
     const windowId = generateId("win", state.nextId)
 
     // Create the window
@@ -783,6 +1501,18 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
     })
 
     return windowId
+  },
+
+  pinWindow: (windowId) => {
+    const window = get().windows[windowId]
+    if (!window || !window.preview) return
+    set((state) => ({
+      windows: { ...state.windows, [windowId]: { ...state.windows[windowId], preview: false } },
+    }))
+  },
+
+  setCompactShell: (compact) => {
+    if (get().compactShell !== compact) set({ compactShell: compact })
   },
 
   closeWindow: (windowId) => {
@@ -904,6 +1634,18 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
       return
     }
 
+    // Feature flag guard: block replacing with a window type whose flag is disabled
+    if (definition.featureFlag) {
+      const flagValue = getResolvedFlag<boolean>(
+        useFeatureFlagsStore.getState(),
+        definition.featureFlag,
+      )
+      if (!flagValue) {
+        console.warn(`[TilingStore] Window type "${newType}" is disabled by feature flag "${definition.featureFlag}"`)
+        return
+      }
+    }
+
     // Build new history: truncate any forward entries, then push new entry
     const currentHistory = window.history ?? [{ type: window.type, props: window.props }]
     const currentIndex = window.historyIndex ?? currentHistory.length - 1
@@ -989,6 +1731,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   focusContainer: (containerId) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     const newDesktops = [...state.desktops]
     newDesktops[state.activeDesktopIndex] = {
       ...desktop,
@@ -1000,6 +1743,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   setActiveTab: (containerId, windowId) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.layout) return
 
     const container = findNode(desktop.layout, containerId) as ContainerNode | null
@@ -1025,6 +1769,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   reorderTabs: (containerId, fromIndex, toIndex) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.layout) return
 
     const container = findNode(desktop.layout, containerId) as ContainerNode | null
@@ -1055,6 +1800,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   splitActive: (direction) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.activeContainerId) return
     get().splitContainer(desktop.activeContainerId, direction)
   },
@@ -1062,6 +1808,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   splitContainer: (containerId, direction) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.layout) return
 
     const container = findNode(desktop.layout, containerId) as ContainerNode | null
@@ -1106,6 +1853,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   setRatio: (splitId, ratio) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.layout) return
 
     const split = findNode(desktop.layout, splitId) as SplitNode | null
@@ -1130,6 +1878,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   closeContainer: (containerId) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.layout) return
 
     const container = findNode(desktop.layout, containerId) as ContainerNode | null
@@ -1179,6 +1928,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   swapWindows: (windowId, targetContainerId) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.layout) return
 
     const window = state.windows[windowId]
@@ -1250,6 +2000,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   moveWindowsToContainer: (windowIds, targetContainerId) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.layout || windowIds.length === 0) return
 
     // Get the source container (we assume all windows come from the same one)
@@ -1313,6 +2064,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   moveWindowsToNewSplit: (windowIds, targetContainerId, direction, position = "after") => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.layout || windowIds.length === 0) return
 
     const firstWindow = state.windows[windowIds[0]]
@@ -1396,6 +2148,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   swapContainerWindows: (sourceContainerId, targetContainerId) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.layout || sourceContainerId === targetContainerId) return
 
     const sourceContainer = findNode(desktop.layout, sourceContainerId) as ContainerNode | null
@@ -1449,6 +2202,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   moveWindowToContainer: (windowId, targetContainerId, insertIndex) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.layout) return
 
     const window = state.windows[windowId]
@@ -1548,6 +2302,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   moveWindowToNewSplit: (windowId, targetContainerId, direction, position = "after") => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return
     if (!desktop.layout) return
 
     const window = state.windows[windowId]
@@ -1676,6 +2431,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   getContainer: (containerId) => {
     const state = get()
     const desktop = state.desktops[state.activeDesktopIndex]
+    if (!desktop) return null
     if (!desktop?.layout) return null
     return findNode(desktop.layout, containerId) as ContainerNode | null
   },
@@ -1694,6 +2450,16 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   // ========================================
 
   restoreFromStorage: async () => {
+    // Stamp this completion: monotonic generation + the workspace active at
+    // completion time (the same source the PersistedDriver buckets by).
+    // Consumers gate on "THIS workspace's restore has landed" instead of
+    // latching on the first restore in history (workspace-switch race).
+    const completeRestore = () => ({
+      layoutRestored: true,
+      restoreGeneration: get().restoreGeneration + 1,
+      layoutRestoredForWorkspace: getCurrentWorkspaceId(),
+    })
+
     try {
       // Restore active desktop index: sessionStorage (per-tab) first, then localStorage fallback
       let savedIndex = await storage.get<number>(STORAGE_KEYS.ACTIVE_DESKTOP_INDEX)
@@ -1705,7 +2471,13 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
       if (!saved) {
         console.log("[TilingStore] No saved layout found — resetting to empty")
         get().resetState()
-        if (savedIndex !== null) set({ activeDesktopIndex: savedIndex })
+        // Clamp the restored per-tab index to the fresh desktops range: a stale
+        // sessionStorage/localStorage index from a session with more desktops
+        // must never leave activeDesktopIndex out of range (openWindow crash).
+        if (savedIndex !== null) {
+          set({ activeDesktopIndex: clampDesktopIndex(savedIndex, get().desktops.length) })
+        }
+        set({ ...completeRestore() })
         return
       }
 
@@ -1746,11 +2518,23 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
         activeDesktopIndex,
         maxDesktops: saved.maxDesktops ?? DEFAULT_MAX_DESKTOPS,
         nextId: saved.nextId,
+        ...completeRestore(),
       })
 
       console.log("[TilingStore] Layout restored:", Object.keys(validWindows).length, "windows")
+
+      // Preload the JS chunks for all restored window types so they're
+      // ready (or at least fetching) before the user interacts with them.
+      // This makes cold loads after reconnect much smoother and reduces
+      // the window where a stalled import could show an eternal spinner.
+      const windowTypes = new Set<string>()
+      for (const w of Object.values(validWindows)) {
+        windowTypes.add(w.type)
+      }
+      preloadWindowChunks(Array.from(windowTypes))
     } catch (error) {
       console.error("[TilingStore] Failed to restore layout:", error)
+      set({ ...completeRestore() })
     }
   },
 
@@ -1858,6 +2642,8 @@ export function serializeWindowsForPersistence(
       desktopIndex: win.desktopIndex,
       history: truncatedHistory,
       historyIndex: Math.min(win.historyIndex ?? truncatedHistory.length - 1, truncatedHistory.length - 1),
+      ...(win.preview ? { preview: true } : {}),
+      ...(win.openerId ? { openerId: win.openerId } : {}),
     }
   }
 

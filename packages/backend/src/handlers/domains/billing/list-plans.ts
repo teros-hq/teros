@@ -33,6 +33,7 @@ export function createListPlansHandler(db: Db) {
         postBetaPrice: p.postBetaPrice ?? null,
         currency: p.currency,
         agentHoursLimit: p.agentHoursLimit,
+        automateDailyExecutionLimit: p.automateDailyExecutionLimit ?? 0,
         terosModel: p.features.terosModel,
         highlights: p.highlights ?? [],
         popular: p.popular ?? false,

@@ -9,6 +9,7 @@
  */
 
 import { create } from 'zustand';
+import type { BoardFeedEvent } from '../services/BoardApi';
 
 // ============================================================================
 // TYPES
@@ -35,6 +36,16 @@ export interface ProgressNote {
   timestamp: string;
 }
 
+/** A typed value attached to a task: its input or its deliverable. */
+export interface TaskArtifact {
+  /** Artifact type id — null when untyped; "markdown" is the built-in free-text type. */
+  schemaId: string | null;
+  /** Snapshot of the artifact schema (form-first) taken when the task was created. */
+  schema?: Record<string, unknown>;
+  /** The value. */
+  data?: unknown;
+}
+
 export interface Task {
   taskId: string;
   boardId: string;
@@ -58,8 +69,17 @@ export interface Task {
    * Empty array means no dependencies (task is unblocked).
    */
   dependencies: string[];
-  progressNotes: ProgressNote[];
-  activity: Array<{
+  /**
+   * Progress notes. NOTE: board list payloads (board.get / board.list-tasks)
+   * strip these via TASK_LIST_PROJECTION — they are only present after the
+   * detail hydration (board.get-task) or in full-doc responses.
+   */
+  progressNotes?: ProgressNote[];
+  /**
+   * Activity log. Same as progressNotes: stripped from list payloads by the
+   * large-board projection; present after detail hydration.
+   */
+  activity?: Array<{
     eventType: string;
     actor: string;
     timestamp: string;
@@ -68,6 +88,20 @@ export interface Task {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  // Artifacts (docs/specs/tasks/artifacts.md) — owned by the task
+  /** What the task receives (event payload, upstream flow data, …) */
+  input?: TaskArtifact;
+  /** What the task delivers (form answers, report, structured output, …) */
+  output?: TaskArtifact;
+  // Workflow linkage — only present when created by the workflow engine
+  /** Input gate from the workflow node (routing metadata) */
+  workflowInputGate?: Record<string, unknown>;
+  /** Output gate from the workflow node (routing metadata) */
+  workflowOutputGate?: Record<string, unknown>;
+  /** Reference to the workflow execution that created this task */
+  workflowExecutionId?: string;
+  /** Reference to the workflow node that created this task */
+  workflowNodeId?: string;
 }
 
 export interface Project {
@@ -95,6 +129,8 @@ interface BoardState {
   projects: Project[];
   board: Board | null;
   tasks: Task[];
+  /** Activity feed events from board_events collection (null = not loaded, undefined = loading) */
+  boardFeed: BoardFeedEvent[] | null;
 
   // UI state
   isLoadingProjects: boolean;
@@ -110,9 +146,19 @@ interface BoardState {
   setProjects: (projects: Project[]) => void;
   setBoard: (board: Board | null) => void;
   setTasks: (tasks: Task[]) => void;
+  setBoardFeed: (feed: BoardFeedEvent[] | null) => void;
   addTask: (task: Task) => void;
   addTasks: (tasks: Task[]) => void;
   updateTaskInStore: (task: Task) => void;
+  /**
+   * Merge a hydrated (full) task doc into the list. Board list payloads strip
+   * detail-only fields (instructions, progressNotes, activity, input/output —
+   * TASK_LIST_PROJECTION); the detail panel fetches the full doc via
+   * board.get-task and merges it here. Only fills in missing heavy fields —
+   * it never overwrites fields already present, so live updates (which carry
+   * full docs) are preserved.
+   */
+  hydrateTask: (task: Task) => void;
   removeTask: (taskId: string) => void;
   setSelectedTask: (taskId: string | null) => void;
   setDraggedTask: (taskId: string | null) => void;
@@ -131,6 +177,7 @@ const initialState = {
   projects: [],
   board: null,
   tasks: [],
+  boardFeed: null,
   isLoadingProjects: false,
   isLoadingBoard: false,
   isCreatingProject: false,
@@ -158,6 +205,7 @@ function createBoardStore() {
     setProjects: (projects) => set({ projects }),
     setBoard: (board) => set({ board }),
     setTasks: (tasks) => set({ tasks }),
+    setBoardFeed: (feed) => set({ boardFeed: feed }),
 
     addTask: (task) =>
       set((state) => {
@@ -178,6 +226,35 @@ function createBoardStore() {
         tasks: state.tasks.map((t) =>
           t.taskId === updatedTask.taskId ? updatedTask : t,
         ),
+      })),
+
+    hydrateTask: (fullTask) =>
+      set((state) => ({
+        tasks: state.tasks.map((t) => {
+          if (t.taskId !== fullTask.taskId) return t;
+          // Fill in only fields missing from the light list doc — never
+          // overwrite what's already there (live updates carry fresh values).
+          const merged: Task = { ...t };
+          const heavyFields = [
+            "instructions",
+            "progressNotes",
+            "activity",
+            "input",
+            "output",
+            "workflowInputData",
+            "workflowOutputData",
+          ] as const;
+          for (const f of heavyFields) {
+            const current = (t as unknown as Record<string, unknown>)[f];
+            if (current === undefined || current === null) {
+              const incoming = (fullTask as unknown as Record<string, unknown>)[f];
+              if (incoming !== undefined) {
+                (merged as unknown as Record<string, unknown>)[f] = incoming;
+              }
+            }
+          }
+          return merged;
+        }),
       })),
 
     removeTask: (taskId) =>

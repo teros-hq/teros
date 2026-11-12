@@ -28,6 +28,20 @@ function makeMcaManager(): McaManager {
     registerApp: mock(async () => undefined),
     executeTool: mock(async () => ({ output: 'ok', isError: false })),
     getMcaIdForTool: mock(() => 'mca.teros.filesystem'),
+    // updateToolCache() re-derives the app set from getAgentApps() and pulls
+    // tools per app (app-registry self-heal, incident 2026-10-31). Return a
+    // tool that is NOT the one under test so the "tool does not exist"
+    // contract still holds after the rebuild: write-file stays missing.
+    getToolsForApp: mock(async () => ({
+      tools: [
+        {
+          name: 'fs_read-file',
+          description: 'Read a file',
+          input_schema: { type: 'object', properties: {} },
+        },
+      ],
+      status: 'standby' as const,
+    })),
   } as unknown as McaManager
 }
 
@@ -44,10 +58,18 @@ function makeMcaService(opts: {
   }
   return {
     getAgentApps: mock(async () => ({
-      apps: [{ app, permissions: { tools: [{ name: TOOL, permission }] } }],
+      apps: [
+        {
+          app: { ...app, mca: { mcaId: 'mca.teros.filesystem', description: 'Filesystem' } },
+          permissions: { tools: [{ name: TOOL, permission }] },
+        },
+      ],
     })),
     getApp: mock(async () => app),
     hasAccess: mock(async () => opts.hasAccessResult ?? true),
+    // MUW-REQ-12: no channel document behind CHANNEL here — a null viewer keeps
+    // the executor's own user context.
+    getChannelViewer: mock(async () => null),
     getAgentAppAccess: mock(async () => ({
       appId: APP,
       permissions: { tools: [{ name: TOOL, permission }] },

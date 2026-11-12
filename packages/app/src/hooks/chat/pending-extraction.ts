@@ -10,6 +10,7 @@
  * the hook needs to populate its in-memory ref.
  */
 
+import { parsePermissionMarker } from '../../lib/permission-marker'
 import type { Message } from '../../store/chatStore'
 
 export interface PendingEntry {
@@ -25,8 +26,16 @@ export interface PendingEntry {
  * `pendingPermissions.current`. Requires `permissionRequestId` + `toolCallId`
  * + `appId` persisted (TER-340 backend).
  *
+ * Also rehydrates the fallback shape for rows written before PERMB 1.0.0: a
+ * `completed` card whose `output` is the `permission_requested` marker, with
+ * the request id and appId read from the marker. Without the entry,
+ * `resolvePendingLocally` is a no-op for that row and a decided request would
+ * stay in the grouped panel until the server's status update.
+ *
  * Pure function: no side effects, no React, no chatStore — testable with a
  * static fixture.
+ *
+ * @spec PERMB-REQ-4
  */
 export function extractPendingFromMessages(
   messageIds: ReadonlyArray<string>,
@@ -36,12 +45,11 @@ export function extractPendingFromMessages(
   for (const msgId of messageIds) {
     const m = messagesById[msgId]
     const content = m?.content as any
+    if (content?.type !== 'tool_execution' || !content?.toolCallId) continue
     if (
-      content?.type === 'tool_execution' &&
-      content?.status === 'pending_permission' &&
-      content?.permissionRequestId &&
-      content?.toolCallId &&
-      content?.appId
+      content.status === 'pending_permission' &&
+      content.permissionRequestId &&
+      content.appId
     ) {
       out.push({
         requestId: content.permissionRequestId,
@@ -50,6 +58,20 @@ export function extractPendingFromMessages(
         appId: content.appId,
         toolName: content.toolName ?? 'unknown',
       })
+      continue
+    }
+    if (content.status === 'completed' && typeof content.output === 'string') {
+      const marker = parsePermissionMarker(content.output)
+      const appId = content.appId ?? marker?.appId
+      if (marker && appId) {
+        out.push({
+          requestId: marker.permissionRequestId,
+          messageId: msgId,
+          toolCallId: content.toolCallId,
+          appId,
+          toolName: content.toolName ?? 'unknown',
+        })
+      }
     }
   }
   return out

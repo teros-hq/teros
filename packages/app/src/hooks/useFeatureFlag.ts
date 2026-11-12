@@ -10,7 +10,7 @@
  *   const maxFileSize = useFeatureFlag<number>('files.max-size-mb')
  *   const onboardingFlow = useFeatureFlag<string>('onboarding.flow')
  *
-
+ * @spec docs/specs/core/feature-flags.md §8 (Integration Frontend)
  */
 
 import { useMemo } from "react"

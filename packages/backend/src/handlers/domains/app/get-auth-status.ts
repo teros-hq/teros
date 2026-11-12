@@ -3,6 +3,7 @@
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
+import { assertAppVisible, assertAppManageable } from './app-visibility'
 import type { WsHandlerContext } from '@teros/shared'
 import type { McaService } from '../../../services/mca-service'
 import type { McaOAuth } from '../../../auth/mca-oauth'
@@ -27,6 +28,7 @@ export function createGetAuthStatusHandler(mcaService: McaService, mcaOAuth: Mca
     if (!app) {
       throw new HandlerError('APP_NOT_FOUND', `App ${appId} not found`)
     }
+    assertAppVisible(mcaService, app, ctx.userId)
 
     const mca = await mcaService.getMcaFromCatalog(app.mcaId)
     if (!mca) {

@@ -5,7 +5,7 @@ import { assertBackendConnected, resolveFields, withRetry, withTimeout } from '.
 
 export const getMyTask: ToolConfig = {
   description:
-    'Get the task linked to the current conversation (fast path). Returns: { channelId, task: { taskId, title, columnName, columnSlug, running, stopRequested, projectName, progressNotes } | null }. Check stopRequested at every turn; if true, finish current step, add a progress note, call block-my-task, and stop.',
+    'Get the task linked to the current conversation (fast path). Returns: { channelId, task: { taskId, title, description, instructions, columnName, columnSlug, running, stopRequested, projectName, progressNotes, input, output } | null }. Check stopRequested at every turn; if true, finish current step, add a progress note, call block-my-task, and stop.',
   annotations: { readOnlyHint: true, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',

@@ -7,6 +7,7 @@ import {
   runGit,
 } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { agentGitTool } from './_locked';
 
 /**
  * Show differences between the working tree, the staged area, or two commits.
@@ -19,7 +20,7 @@ import { throwClassifiedGitError } from './_git-error';
  * Returns `{ files: [{ path, additions, deletions, patch }] }`. `patch` is the
  * unified diff text; `parseStats` aggregates per-file numbers from `--numstat`.
  */
-export const gitDiff: ToolConfig = {
+export const gitDiff: ToolConfig = agentGitTool({
   annotations: { readOnlyHint: false },
   description:
     'Show differences as unified diff + numstat. Defaults to working tree vs HEAD. `from: staged` for index vs HEAD; pass `from`+`to` commit SHAs for arbitrary diffs.',
@@ -65,9 +66,9 @@ export const gitDiff: ToolConfig = {
     const targetArgs: string[] =
       from === 'working' ? [] : from === 'staged' ? ['--cached'] : [from, a.to ?? 'HEAD'];
 
-    const patchResult = runGit(repoPath, ['diff', contextFlag, ...targetArgs, ...pathArg]);
+    const patchResult = await runGit(repoPath, ['diff', contextFlag, ...targetArgs, ...pathArg]);
     if (patchResult.code !== 0) throwClassifiedGitError(patchResult);
-    const numstatResult = runGit(repoPath, ['diff', '--numstat', ...targetArgs, ...pathArg]);
+    const numstatResult = await runGit(repoPath, ['diff', '--numstat', ...targetArgs, ...pathArg]);
     if (numstatResult.code !== 0) throwClassifiedGitError(numstatResult);
 
     const stats: GitDiffStat[] = parseGitDiffNumstat(numstatResult.stdout);
@@ -90,4 +91,4 @@ export const gitDiff: ToolConfig = {
       patch: patchResult.stdout,
     };
   },
-};
+});

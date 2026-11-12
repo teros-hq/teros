@@ -1,16 +1,22 @@
-import { ScrollText } from '@tamagui/lucide-icons';
-import i18n from '../../i18n';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { BillingAuditWindowContent, type BillingAuditWindowProps } from './BillingAuditWindowContent';
+import { ScrollText } from "@tamagui/lucide-icons"
+import i18n from "../../i18n"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+import type { BillingAuditWindowProps } from "./BillingAuditWindowContent"
+const BillingAuditWindowContent = lazyWithRetry(() =>
+  import("./BillingAuditWindowContent").then((m) => ({ default: m.BillingAuditWindowContent })),
+)
 
 export const billingAuditWindowDefinition: WindowTypeDefinition<BillingAuditWindowProps> = {
-  type: 'billing-audit',
-  displayName: i18n.t('windows.billingAudit'),
-  getTitle: () => i18n.t('windows.billingAudit'),
+  type: "billing-audit",
+  audience: "admin",
+  displayName: i18n.t("windows.billingAudit"),
+  getTitle: () => i18n.t("windows.billingAudit"),
   component: BillingAuditWindowContent,
   defaultProps: {},
   icon: ScrollText as any,
-  color: '#06B6D4',
+  phIcon: "receipt",
+  color: "#6F27FF",
   defaultSize: { width: 720, height: 600 },
   minSize: { width: 480, height: 360 },
   // Persists which user is being audited so the tab restores after reload.
@@ -24,4 +30,4 @@ export const billingAuditWindowDefinition: WindowTypeDefinition<BillingAuditWind
     subscriptionId: data.subscriptionId,
     userName: data.userName,
   }),
-} as any;
+} as any

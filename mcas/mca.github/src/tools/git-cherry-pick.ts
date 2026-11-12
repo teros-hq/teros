@@ -1,13 +1,14 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
+import { assertIsRepo, assertSafeRef, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Cherry-pick one or more commits onto the current branch. Supports
  * `continue/skip/abort` for in-progress cherry-picks that paused on
  * conflict, and `noCommit:true` to stage changes without committing.
  */
-export const gitCherryPick: ToolConfig = {
+export const gitCherryPick: ToolConfig = lockedGitTool('git-cherry-pick', {
   annotations: { readOnlyHint: false },
   description:
     'Cherry-pick commits onto the current branch. Pass `commits: ["sha", ...]` or drive an in-progress pick with `mode: continue/skip/abort`.',
@@ -45,17 +46,24 @@ export const gitCherryPick: ToolConfig = {
       if (!a.commits || a.commits.length === 0) {
         throw new Error('[GIT_INVALID_INPUT] `commits` array is required for `mode: start`.');
       }
+      // Validate every agent-supplied ref/rev (SHAs, branch names, and ranges
+      // `A..B` all match REF_RE — `.` is allowed).
+      for (const c of a.commits) assertSafeRef(c, 'commits[]');
       const flags: string[] = [];
       if (a.noCommit) flags.push('-n');
       if (typeof a.mainline === 'number') flags.push('-m', String(a.mainline));
-      argv = ['cherry-pick', ...flags, ...a.commits];
+      // `--` separates the agent-supplied refs from the flag section so a
+      // dash-leading value can never be parsed as an option (verified: `git
+      // cherry-pick <flags> -- <revs>` keeps normal pick semantics, including
+      // `A..B` ranges).
+      argv = ['cherry-pick', ...flags, '--', ...a.commits];
     }
 
-    const result = runGit(repoPath, argv);
+    const result = await runGit(repoPath, argv);
     if (result.code !== 0) throwClassifiedGitError(result);
 
-    const headResult = runGit(repoPath, ['rev-parse', 'HEAD']);
-    const branchResult = runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const headResult = await runGit(repoPath, ['rev-parse', 'HEAD']);
+    const branchResult = await runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
 
     return {
       repoPath,
@@ -66,4 +74,4 @@ export const gitCherryPick: ToolConfig = {
       details: result.stdout.trim() || result.stderr.trim(),
     };
   },
-};
+});

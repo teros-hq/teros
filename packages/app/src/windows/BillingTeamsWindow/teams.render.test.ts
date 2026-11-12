@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest"
 import type { TeamMember } from "../../services/AdminApi"
+import { colors as semanticColors } from "../../components/mca/primitives/colors"
 import {
   buildTeamSettingsPayload,
   filterMembers,
@@ -76,13 +77,13 @@ describe("filterMembers", () => {
 
 describe("usageColor", () => {
   it("maps the threshold bands", () => {
-    expect(usageColor(null)).toBe("#52525B")
-    expect(usageColor(0)).toBe("#5E6AD2")
-    expect(usageColor(79)).toBe("#5E6AD2")
-    expect(usageColor(80)).toBe("#F59E0B") // MUST BITE: an off-by-one band shows indigo
-    expect(usageColor(99)).toBe("#F59E0B")
-    expect(usageColor(100)).toBe("#EF4444")
-    expect(usageColor(140)).toBe("#EF4444")
+    expect(usageColor(null)).toBe(semanticColors.text3)
+    expect(usageColor(0)).toBe(semanticColors.indigo)
+    expect(usageColor(79)).toBe(semanticColors.indigo)
+    expect(usageColor(80)).toBe(semanticColors.amber) // MUST BITE: an off-by-one band shows indigo
+    expect(usageColor(99)).toBe(semanticColors.amber)
+    expect(usageColor(100)).toBe(semanticColors.red)
+    expect(usageColor(140)).toBe(semanticColors.red)
   })
 })
 

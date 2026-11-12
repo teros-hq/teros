@@ -36,6 +36,8 @@ import type { StripePaymentService } from "./stripe-payment-service.js"
 export interface BillingReconciliationCronOptions {
   /** How often to reconcile (default: 24h). */
   intervalMs: number
+  /** Delay of the first pass after start() (default: 30s). 0 runs on the next tick. */
+  initialDelayMs?: number
   /** Leader lock TTL (default: 60s). Refreshed via heartbeat during long runs. */
   leaderLockTtlMs: number
 }
@@ -52,6 +54,7 @@ export const DRIFT_PCT = 0.1
 /** Unbilled rollups older than this mean the tracker's cutoff is stuck. */
 export const STUCK_LAG_MS = 24 * 60 * 60 * 1000
 
+const DEFAULT_INITIAL_DELAY_MS = 30_000
 const HOUR_MS = 3_600_000
 /** Window of recent Stripe-charged invoices reconciled against Stripe (60 days). */
 export const STRIPE_RECONCILE_WINDOW_MS = 60 * 24 * HOUR_MS
@@ -79,6 +82,7 @@ export interface BillingReconciliationMetrics {
 
 export class BillingReconciliationCron {
   private timer: NodeJS.Timeout | null = null
+  private initialTimer: NodeJS.Timeout | null = null
   private running = false
 
   private reconciliation_runs = 0
@@ -112,15 +116,27 @@ export class BillingReconciliationCron {
 
   start(): void {
     if (this.timer !== null) return
-    this.timer = setInterval(() => {
+    const run = () => {
       this.tick().catch((err) => {
         this.log.error({ err }, "billing-reconciliation-cron: tick failed")
       })
-    }, this.opts.intervalMs)
+    }
+    // First pass shortly after boot (not only after a full interval): a backend
+    // that restarts more often than the interval would otherwise never run it.
+    this.initialTimer = setTimeout(() => {
+      this.initialTimer = null
+      run()
+    }, this.opts.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS)
+    if (typeof this.initialTimer.unref === "function") this.initialTimer.unref()
+    this.timer = setInterval(run, this.opts.intervalMs)
     if (typeof this.timer.unref === "function") this.timer.unref()
   }
 
   stop(): void {
+    if (this.initialTimer) {
+      clearTimeout(this.initialTimer)
+      this.initialTimer = null
+    }
     if (this.timer) {
       clearInterval(this.timer)
       this.timer = null
@@ -267,6 +283,9 @@ export class BillingReconciliationCron {
 
           // ── Drift: re-sum what SHOULD be in agentHoursUsed (rollups in this
           //    period, up to the billed cursor) and compare to the counter. ────
+          //    MUST aggregate the same metric the tracker bills (decision #29:
+          //    userWorkMs with userActiveMs fallback) or every parallel-work
+          //    hour reads as drift.
           let expected = 0
           if (cutoff) {
             const agg = (await this.rollupsCol
@@ -277,7 +296,7 @@ export class BillingReconciliationCron {
                     hourBucket: { $gt: anchor, $lte: cutoff },
                   },
                 },
-                { $group: { _id: null, totalMs: { $sum: "$userActiveMs" } } },
+                { $group: { _id: null, totalMs: { $sum: { $ifNull: ["$userWorkMs", "$userActiveMs"] } } } },
               ])
               .toArray()) as Array<{ totalMs: number }>
             expected = (agg[0]?.totalMs ?? 0) / HOUR_MS
@@ -431,6 +450,16 @@ export class BillingReconciliationCron {
           captureMessage("billing/stripe_drift", "warning", {
             invoiceId: inv._id,
             kind: "healed_missed_webhook",
+            stripeInvoiceId: inv.externalReference,
+          })
+        } else if (stripePaid && inv.status === "held") {
+          // A one-off charge (boost / upgrade proration) that failed in-app was
+          // later paid in Stripe (e.g. via the hosted page): the user paid but
+          // was never granted what they bought (BIL-5). Not auto-granted — ops
+          // decide (grant or refund).
+          stripeDrift++
+          captureMessage("billing/one_off_paid_not_granted", "error", {
+            invoiceId: inv._id,
             stripeInvoiceId: inv.externalReference,
           })
         } else if (terosPaid && !stripePaid) {

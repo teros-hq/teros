@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test';
 import { type Db, MongoClient } from 'mongodb';
 import { AgentProvisioningService } from '../../src/services/agent-provisioning-service';
 import { McaService } from '../../src/services/mca-service';
-import { handleAgentCreate } from '../../src/routes/mca-resources-handlers';
+import { handleAgentCreate, handleAgentUpdate } from '../../src/routes/mca-resources-handlers';
 
 const URI = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27019';
 const DB_NAME = `teros_test_dualpath_${Date.now()}`;
@@ -152,6 +152,56 @@ describe('dual-path core assignment is symmetric', () => {
     expect(userEvent.agent.workspaceId).toBeUndefined();
   });
 
+  // Regression for TER-644: the MCA resource UPDATE path (rename / avatar via
+  // the `core_update-agent` tool) must emit `agent.updated` so connected navbars
+  // refresh in realtime — same class of bug as TER-611 was for creation. Delete
+  // the broadcast block in handleAgentUpdate and these go red.
+  it('MCA callback path broadcasts agent.updated scoped by membership', async () => {
+    if (!available) return;
+    const ctx: any = { userId: 'u1', channelId: 'ch_1' };
+
+    // Workspace-scoped agent → broadcastToWorkspace(workspaceId, event).
+    const wsAgent = await provisioning.createAgentFromCore({
+      ownerId: 'u1',
+      workspaceId: 'work_1',
+      profile: profile('UpdBroadcastWs'),
+    });
+    const wsPubSub = makePubSub();
+    await handleAgentUpdate(makeRes(), ctx, db, wsAgent.agentId, { name: 'UpdBroadcastWs2' }, wsPubSub);
+    expect(wsPubSub.broadcastToUser).not.toHaveBeenCalled();
+    expect(wsPubSub.broadcastToWorkspace).toHaveBeenCalledTimes(1);
+    const [wsId, wsEvent] = wsPubSub.broadcastToWorkspace.mock.calls[0];
+    expect(wsId).toBe('work_1');
+    expect(wsEvent.type).toBe('agent.updated');
+    expect(wsEvent.agent.agentId).toBe(wsAgent.agentId);
+    expect(wsEvent.agent.name).toBe('UpdBroadcastWs2');
+    expect(wsEvent.agent.workspaceId).toBe('work_1');
+
+    // Global agent (no workspaceId) → broadcastToUser(userId, event).
+    const globalAgent = await provisioning.createAgentFromCore({
+      ownerId: 'u1',
+      profile: profile('UpdBroadcastGlobal'),
+    });
+    const userPubSub = makePubSub();
+    await handleAgentUpdate(
+      makeRes(),
+      ctx,
+      db,
+      globalAgent.agentId,
+      { name: 'UpdBroadcastGlobal2' },
+      userPubSub,
+    );
+    expect(userPubSub.broadcastToWorkspace).not.toHaveBeenCalled();
+    expect(userPubSub.broadcastToUser).toHaveBeenCalledTimes(1);
+    const [userId, userEvent] = userPubSub.broadcastToUser.mock.calls[0];
+    expect(userId).toBe('u1');
+    expect(userEvent.type).toBe('agent.updated');
+    expect(userEvent.agent.name).toBe('UpdBroadcastGlobal2');
+    // Global agent re-read from Mongo carries workspaceId=null (vs undefined on
+    // the in-memory create path); either way it's falsy → broadcastToUser scope.
+    expect(userEvent.agent.workspaceId).toBeFalsy();
+  });
+
   it('both paths agree for the same scope', async () => {
     if (!available) return;
     expect(await coreOf('WsGlobal')).toBe(await coreOf('McaGlobal')); // super-agent
@@ -176,7 +226,8 @@ describe('dual-path core assignment is symmetric', () => {
       'status',
       'ownerId',
       'workspaceId',
-      'availableProviders',
+      // availableProviders was removed (2026-10-21): agents are created WITHOUT
+      // it now — a missing field is the expected shape, not a dropped one.
       'selectedProviderId',
       'selectedModelId',
       'createdAt',
@@ -184,8 +235,11 @@ describe('dual-path core assignment is symmetric', () => {
     ];
 
     const keys = (doc: any) => Object.keys(doc).filter((k) => k !== '_id').sort();
+    // avatarUrl is per-creation since 118f5829f: the least-used default portrait
+    // among the creator's agents, ties broken at random — the second agent
+    // deliberately gets a different one. Its presence is checked via keys().
     const stripVolatile = (doc: any) => {
-      const { _id, agentId, createdAt, updatedAt, name, fullName, ...rest } = doc;
+      const { _id, agentId, createdAt, updatedAt, name, fullName, avatarUrl, ...rest } = doc;
       return rest;
     };
 
@@ -203,6 +257,7 @@ describe('dual-path core assignment is symmetric', () => {
     expect(stripVolatile(mcaAgent)).toEqual(stripVolatile(wsAgent));
     expect(wsAgent!.status).toBe('active');
     expect(wsAgent!.selectedProviderId).toBeNull();
-    expect(wsAgent!.availableProviders).toEqual([]);
+    // The field no longer exists on new agents (2026-10-21).
+    expect(wsAgent!.availableProviders).toBeUndefined();
   });
 });

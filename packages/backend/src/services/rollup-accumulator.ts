@@ -10,7 +10,7 @@
  * the rollup job orchestration. The job now sees a typed object with a
  * single mutation entry point rather than a free-form record.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §9 — Job de rollup horario
  */
 
 import type { AgentUsageRollupHourly, AgentUsageSession } from "../types/database.js"

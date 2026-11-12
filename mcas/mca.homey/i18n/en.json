@@ -10,7 +10,17 @@
     },
     "homey-list-devices": {
       "name": "homey-list-devices",
-      "description": "List all devices connected to Homey with their zone, class, capabilities, and availability status"
+      "description": "List all devices connected to Homey with their zone, class, capabilities, and availability status",
+      "params": {
+        "detailed": "Include full capabilitiesObj with values, timestamps, etc. Default: false (compact mode).",
+        "zone": "Filter by zone name (case-insensitive substring match) or zone ID.",
+        "class": "Filter by device class (e.g. \"windowcoverings\", \"sensor\", \"light\", \"socket\").",
+        "capability": "Filter to devices that have this capability (e.g. \"windowcoverings_set\", \"onoff\", \"dim\").",
+        "available": "Filter by availability: true = only available devices, false = only unavailable.",
+        "search": "Search device names (case-insensitive substring).",
+        "limit": "Max devices to return (default 200).",
+        "offset": "Skip first N devices for pagination (default 0)."
+      }
     },
     "homey-get-device": {
       "name": "homey-get-device",
@@ -30,7 +40,18 @@
     },
     "homey-list-flows": {
       "name": "homey-list-flows",
-      "description": "List all flows (automations) configured in Homey"
+      "description": "List all flows (automations) configured in Homey",
+      "params": {
+        "enabled": "Filter by enabled state.",
+        "search": "Search flow names (case-insensitive substring)."
+      }
+    },
+    "homey-get-flow": {
+      "name": "homey-get-flow",
+      "description": "Get detailed information about a specific Homey flow by ID, including full triggers, conditions, and actions.",
+      "params": {
+        "flow_id": "Flow ID"
+      }
     },
     "homey-trigger-flow": {
       "name": "homey-trigger-flow",

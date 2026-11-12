@@ -7,65 +7,65 @@ import {
   ToggleRight,
   UserMinus,
   UserPlus,
-} from './icons';
-import type React from 'react';
-import { Text, XStack, YStack } from 'tamagui';
-import { colors } from './colors';
-import { useColors } from './useColors';
+} from "./icons"
+import type React from "react"
+import { XStack, YStack } from "tamagui"
+import { T } from "../../ui/ds/Text"
+import { colors } from "./colors"
+import { useColors } from "./useColors"
 
 export type DualAction =
-  | 'grant' // add access (agent ↔ resource)
-  | 'revoke' // remove access
-  | 'add-member' // workspace member joins
-  | 'remove-member' // workspace member leaves
-  | 'role-change' // update member role
-  | 'transfer' // ownership / scope change
-  | 'enable' // skill enabled on agent
-  | 'disable'; // skill disabled on agent
+  | "grant" // add access (agent ↔ resource)
+  | "revoke" // remove access
+  | "add-member" // workspace member joins
+  | "remove-member" // workspace member leaves
+  | "role-change" // update member role
+  | "transfer" // ownership / scope change
+  | "enable" // skill enabled on agent
+  | "disable" // skill disabled on agent
 
 interface EntitySlot {
   /** Slot visual (Avatar, IconTile, …). */
-  visual: React.ReactNode;
+  visual: React.ReactNode
   /** Nombre humano del recurso. */
-  title: string;
+  title: string
   /** Subtítulo corto (rol, id truncado, categoría…). */
-  subtitle?: string;
+  subtitle?: string
 }
 
 interface DualEntityProps {
   /** Entidad sujeto (habitualmente el agente o el user). */
-  left: EntitySlot;
+  left: EntitySlot
   /** Entidad objeto (app, skill, workspace afectado). */
-  right: EntitySlot;
+  right: EntitySlot
   /** Tipo de acción — determina icono y color del conector. */
-  action: DualAction;
+  action: DualAction
   /** Texto opcional bajo el conector (p.ej. role after change). */
-  meta?: string;
+  meta?: string
 }
 
 interface ActionVisual {
-  Icon: React.ComponentType<{ size?: number; color?: string }>;
-  color: string;
-  connectorStyle: 'solid' | 'dashed' | 'dotted';
+  Icon: React.ComponentType<{ size?: number; color?: string }>
+  color: string
+  connectorStyle: "solid" | "dashed" | "dotted"
 }
 
 /**
  * Visuales por acción. Los colores son semantic theme-agnostic (green/red/
- * amber/indigo/orange) — la guía §5 dice que el color semántico es el
- * mismo en light y dark.
+ * amber/purple) — la guía §5 dice que el color semántico es el mismo en
+ * light y dark.
  *
- * El único color que necesita ser theme-aware es `disable` (gris muted),
- * que se inyecta dinámicamente desde `useColors()` en el componente.
+ * El único color que necesita ser theme-aware es `disable` (gris muted) y
+ * el accent de `transfer`, que se inyectan desde `useColors()`.
  */
-const ACTION_VISUAL: Record<Exclude<DualAction, 'disable'>, ActionVisual> = {
-  grant: { Icon: Link2, color: colors.green, connectorStyle: 'solid' },
-  revoke: { Icon: Link2Off, color: colors.red, connectorStyle: 'dashed' },
-  'add-member': { Icon: UserPlus, color: colors.green, connectorStyle: 'solid' },
-  'remove-member': { Icon: UserMinus, color: colors.red, connectorStyle: 'dashed' },
-  'role-change': { Icon: ShieldCheck, color: colors.amber, connectorStyle: 'dotted' },
-  transfer: { Icon: ArrowRightLeft, color: colors.indigo, connectorStyle: 'dotted' },
-  enable: { Icon: ToggleRight, color: colors.green, connectorStyle: 'solid' },
-};
+const ACTION_VISUAL: Record<Exclude<DualAction, "disable" | "transfer">, ActionVisual> = {
+  grant: { Icon: Link2, color: colors.green, connectorStyle: "solid" },
+  revoke: { Icon: Link2Off, color: colors.red, connectorStyle: "dashed" },
+  "add-member": { Icon: UserPlus, color: colors.green, connectorStyle: "solid" },
+  "remove-member": { Icon: UserMinus, color: colors.red, connectorStyle: "dashed" },
+  "role-change": { Icon: ShieldCheck, color: colors.amber, connectorStyle: "dotted" },
+  enable: { Icon: ToggleRight, color: colors.green, connectorStyle: "solid" },
+}
 
 /**
  * Primitivo para operaciones que involucran 2 entidades relacionadas:
@@ -87,11 +87,13 @@ const ACTION_VISUAL: Record<Exclude<DualAction, 'disable'>, ActionVisual> = {
  * testeable.
  */
 export function DualEntity({ left, right, action, meta }: DualEntityProps): React.ReactNode {
-  const c = useColors();
+  const c = useColors()
   const visual: ActionVisual =
-    action === 'disable'
-      ? { Icon: ToggleLeft, color: c.text3, connectorStyle: 'dashed' }
-      : ACTION_VISUAL[action];
+    action === "disable"
+      ? { Icon: ToggleLeft, color: c.text3, connectorStyle: "dashed" }
+      : action === "transfer"
+        ? { Icon: ArrowRightLeft, color: c.accent, connectorStyle: "dotted" }
+        : ACTION_VISUAL[action]
 
   // Grid de 3 columnas con proporciones fijas (42% / 16% / 42%). Garantiza
   // que el conector central queda SIEMPRE en la misma coordenada horizontal
@@ -101,10 +103,10 @@ export function DualEntity({ left, right, action, meta }: DualEntityProps): Reac
   return (
     <XStack
       alignItems="center"
-      paddingHorizontal={10}
-      paddingVertical={10}
-      backgroundColor={c.bgInner}
-      borderRadius={6}
+      paddingHorizontal={12}
+      paddingVertical={12}
+      backgroundColor={c.bgStep}
+      borderRadius={10}
       borderWidth={1}
       borderColor={c.border}
     >
@@ -118,7 +120,7 @@ export function DualEntity({ left, right, action, meta }: DualEntityProps): Reac
         <EntityHalf slot={right} align="right" />
       </XStack>
     </XStack>
-  );
+  )
 }
 
 /**
@@ -129,12 +131,11 @@ export function DualEntity({ left, right, action, meta }: DualEntityProps): Reac
  * renderiza inconsistente entre plataformas y con guiones demasiado largos.
  */
 function Connector({ visual, meta }: { visual: ActionVisual; meta?: string }) {
-  const c = useColors();
-  const { Icon, color } = visual;
+  const { Icon, color } = visual
   const lineOpacity =
-    visual.connectorStyle === 'solid' ? 0.6 : visual.connectorStyle === 'dashed' ? 0.35 : 0.2;
+    visual.connectorStyle === "solid" ? 0.6 : visual.connectorStyle === "dashed" ? 0.35 : 0.2
   return (
-    <YStack alignItems="center" gap={3}>
+    <YStack alignItems="center" gap={4}>
       <XStack alignItems="center" gap={0}>
         <ConnectorLine color={color} opacity={lineOpacity} />
         <XStack
@@ -144,22 +145,18 @@ function Connector({ visual, meta }: { visual: ActionVisual; meta?: string }) {
           backgroundColor={`${color}26`}
           alignItems="center"
           justifyContent="center"
-          shadowColor={color}
-          shadowOpacity={0.4}
-          shadowRadius={8}
-          shadowOffset={{ width: 0, height: 0 }}
         >
-          <Icon size={16} color={color} />
+          <Icon size={15} color={color} />
         </XStack>
         <ConnectorLine color={color} opacity={lineOpacity} />
       </XStack>
       {meta && (
-        <Text color={c.text2} fontSize={9} fontFamily="$mono" numberOfLines={1}>
+        <T step="code" tone="text3" numberOfLines={1} style={{ fontSize: 10, lineHeight: 12 }}>
           {meta}
-        </Text>
+        </T>
       )}
     </YStack>
-  );
+  )
 }
 
 function ConnectorLine({ color, opacity }: { color: string; opacity: number }) {
@@ -171,45 +168,43 @@ function ConnectorLine({ color, opacity }: { color: string; opacity: number }) {
       borderBottomColor={color}
       opacity={opacity}
     />
-  );
+  )
 }
 
-function EntityHalf({ slot, align = 'left' }: { slot: EntitySlot; align?: 'left' | 'right' }) {
-  const c = useColors();
+function EntityHalf({ slot, align = "left" }: { slot: EntitySlot; align?: "left" | "right" }) {
+  const textAlign = align === "right" ? "right" : "left"
   return (
     <XStack
       flex={1}
       gap={8}
       alignItems="center"
-      justifyContent={align === 'right' ? 'flex-end' : 'flex-start'}
+      justifyContent={align === "right" ? "flex-end" : "flex-start"}
       minWidth={0}
     >
-      {align === 'left' && slot.visual}
-      <YStack flex={1} gap={2} alignItems={align === 'right' ? 'flex-end' : 'flex-start'} minWidth={0}>
-        <Text
-          color={c.text}
-          fontSize={11}
-          fontWeight="600"
-          numberOfLines={1}
-          textAlign={align === 'right' ? 'right' : 'left'}
-        >
+      {align === "left" && slot.visual}
+      <YStack
+        flex={1}
+        gap={2}
+        alignItems={align === "right" ? "flex-end" : "flex-start"}
+        minWidth={0}
+      >
+        <T step="sm" numberOfLines={1} style={{ textAlign }}>
           {slot.title}
-        </Text>
+        </T>
         {slot.subtitle && (
-          <Text
-            color={c.text2}
-            fontSize={9}
-            fontFamily="$mono"
+          <T
+            step="code"
+            tone="text3"
             numberOfLines={1}
-            textAlign={align === 'right' ? 'right' : 'left'}
+            style={{ fontSize: 11, lineHeight: 14, textAlign }}
           >
             {slot.subtitle}
-          </Text>
+          </T>
         )}
       </YStack>
-      {align === 'right' && slot.visual}
+      {align === "right" && slot.visual}
     </XStack>
-  );
+  )
 }
 
 /**
@@ -218,13 +213,13 @@ function EntityHalf({ slot, align = 'left' }: { slot: EntitySlot; align?: 'left'
  * tablas. Exportado aparte para no forzar a los consumidores a usarlo.
  */
 export function dualActionForVerb(
-  verb: 'granted' | 'revoked' | 'added' | 'removed' | 'enabled' | 'disabled' | 'updated',
+  verb: "granted" | "revoked" | "added" | "removed" | "enabled" | "disabled" | "updated",
 ): DualAction {
-  if (verb === 'granted') return 'grant';
-  if (verb === 'revoked') return 'revoke';
-  if (verb === 'added') return 'add-member';
-  if (verb === 'removed') return 'remove-member';
-  if (verb === 'enabled') return 'enable';
-  if (verb === 'disabled') return 'disable';
-  return 'role-change';
+  if (verb === "granted") return "grant"
+  if (verb === "revoked") return "revoke"
+  if (verb === "added") return "add-member"
+  if (verb === "removed") return "remove-member"
+  if (verb === "enabled") return "enable"
+  if (verb === "disabled") return "disable"
+  return "role-change"
 }

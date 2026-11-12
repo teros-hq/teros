@@ -4,9 +4,11 @@
  * File Processor MCA
  *
  * Provides tools to convert various file types:
- * - PDFs to Markdown (with intelligent chunking for large files)
+ * - PDFs to Markdown (digital: local extraction; scanned: local OCR via @teros/ocr)
+ * - Images to Markdown (local OCR via @teros/ocr — png, jpg, tiff, webp, gif, bmp)
  * - Audio to text (transcription via OpenAI Whisper)
  * - SVG to PNG conversion
+ * - OCR extraction with confidence metadata (ocr-extract tool)
  * - Async job processing with progress tracking
  *
  * Uses McaServer from @teros/mca-sdk for automatic transport detection.
@@ -14,9 +16,9 @@
 
 import { Resvg } from '@resvg/resvg-js';
 import { HealthCheckBuilder, McaServer } from '@teros/mca-sdk';
-import { createReadStream, existsSync, readFileSync, writeFileSync } from 'fs';
+import { createReadStream, existsSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { OpenAI } from 'openai';
-import { join } from 'path';
+import { join, extname } from 'path';
 import { JobManager } from './job-manager.js';
 import { JobWorker } from './job-worker.js';
 import { createProcessor } from './processors/factory.js';
@@ -76,6 +78,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies API keys and connectivity.',
   parameters: {
     type: 'object',
@@ -100,9 +103,11 @@ server.tool('-health-check', {
 // =============================================================================
 
 server.tool('file-to-markdown', {
-  annotations: { readOnlyHint: false },
+  // safeWriteHint: local file transformation — writes only to the caller's
+  // workspace volume, reversible (the output file is deletable), private.
+  annotations: { readOnlyHint: false, safeWriteHint: true },
   description:
-    'Convert a file to text/Markdown (synchronous). PDF and Word .docx are extracted locally; scanned PDFs fall back to LLM OCR if a system key is set. Use file-to-markdown-async for long-running jobs.',
+    'Convert a file to text/Markdown (synchronous). Best for DIGITAL documents: PDFs with a real text layer and Word .docx are extracted exactly and instantly. For scans, photos, handwriting, stamps or ID cards, if you can see images use pdf-to-images instead and read the pages yourself — local OCR (used here as a fallback) is slower and less reliable. Use file-to-markdown-async for long-running jobs.',
   parameters: {
     type: 'object',
     properties: {
@@ -172,9 +177,11 @@ server.tool('file-to-markdown', {
 // =============================================================================
 
 server.tool('file-to-markdown-async', {
-  annotations: { readOnlyHint: false },
+  // safeWriteHint: local file transformation — writes only to the caller's
+  // workspace volume, reversible (the output file is deletable), private.
+  annotations: { readOnlyHint: false, safeWriteHint: true },
   description:
-    'Convert a file to Markdown asynchronously (non-blocking). Supports PDF and Word .docx. Returns a job ID immediately. Use get-job-status to check progress.',
+    'Convert a file to Markdown asynchronously (non-blocking). Supports PDF, Word .docx, and images (png/jpg/tiff/webp/gif/bmp). Returns a job ID immediately. Use get-job-status to check progress. For scans/photos/handwriting prefer pdf-to-images if you can see images.',
   parameters: {
     type: 'object',
     properties: {
@@ -330,7 +337,9 @@ server.tool('list-jobs', {
 // =============================================================================
 
 server.tool('cancel-job', {
-  annotations: { readOnlyHint: false, irreversible: true },
+  // safeWriteHint: cancels the caller's own job — reversible (the job can be
+  // re-run), private. `irreversible` only drives the UI badge, not the seed.
+  annotations: { readOnlyHint: false, safeWriteHint: true, irreversible: true },
   description: 'Cancel a queued or processing job. Cannot cancel completed/failed jobs.',
   parameters: {
     type: 'object',
@@ -367,7 +376,9 @@ server.tool('cancel-job', {
 // =============================================================================
 
 server.tool('audio-to-text', {
-  annotations: { readOnlyHint: false },
+  // safeWriteHint: local file transformation — writes only to the caller's
+  // workspace volume, reversible (the output file is deletable), private.
+  annotations: { readOnlyHint: false, safeWriteHint: true },
   description:
     'Transcribe audio files to text using OpenAI Whisper API. Supports .m4a, .mp3, .wav, .ogg, .webm, .opus and other audio formats.',
   parameters: {
@@ -380,7 +391,7 @@ server.tool('audio-to-text', {
       language: {
         type: 'string',
         description:
-          "Optional: Language code (e.g., 'es' for Spanish, 'en' for English). Auto-detected if not provided.",
+          "Optional: Language code (e.g., 'es' for Spanish, 'en' for English). Defaults to 'es' (Spanish) to prevent auto-detection from misidentifying Spanish as Catalan/Galician/Portuguese.",
       },
     },
     required: ['inputPath'],
@@ -412,14 +423,21 @@ server.tool('audio-to-text', {
 
     const openai = new OpenAI({ apiKey });
 
+    // Default to Spanish ("es") when no language is specified.
+    // Whisper's auto-detection frequently misidentifies Spanish as Catalan,
+    // Galician, or Portuguese due to phonetic similarity. Since Pablo always
+    // speaks Spanish, forcing "es" eliminates the misidentification.
+    // Callers can still override by passing an explicit language parameter.
+    const effectiveLanguage = language || 'es';
+
     const transcription = await openai.audio.transcriptions.create({
       file: createReadStream(inputPath) as any,
       model: 'whisper-1',
-      language: language || undefined,
+      language: effectiveLanguage,
       response_format: 'verbose_json',
     });
 
-    console.error(`✅ Transcription complete: ${transcription.text.substring(0, 100)}...`);
+    console.error(`✅ Transcription complete (language=${effectiveLanguage}): ${transcription.text.substring(0, 100)}...`);
 
     return {
       success: true,
@@ -434,8 +452,113 @@ server.tool('audio-to-text', {
 // SVG TO PNG
 // =============================================================================
 
+/**
+ * Collect font file paths from a directory recursively.
+ * Returns absolute paths to .ttf and .otf files.
+ */
+function collectFontFiles(dir: string): string[] {
+  const fonts: string[] = [];
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        fonts.push(...collectFontFiles(fullPath));
+      } else {
+        const ext = extname(entry.name).toLowerCase();
+        if (ext === '.ttf' || ext === '.otf') {
+          fonts.push(fullPath);
+        }
+      }
+    }
+  } catch {
+    // directory doesn't exist or isn't readable — skip silently
+  }
+  return fonts;
+}
+
+/**
+ * Build font configuration for Resvg.
+ *
+ * Loads system fonts + any .ttf/.otf found in /workspace (so user-uploaded
+ * fonts or design-system fonts are available without installing them
+ * system-wide). This ensures SVG <text> elements render correctly when
+ * converted to PNG, regardless of which fonts the SVG references.
+ */
+function buildFontConfig(): { font: { fontFiles: string[]; fontDirs: string[]; defaultFontFamily: string }; loadSystemFonts: boolean } {
+  const fontDirs = ['/usr/share/fonts'];
+  const fontFiles: string[] = [];
+
+  // Collect system fonts
+  for (const dir of fontDirs) {
+    fontFiles.push(...collectFontFiles(dir));
+  }
+
+  // Collect workspace fonts (user-uploaded, design-system, etc.)
+  const workspaceFontDirs = [
+    '/workspace/fonts',
+    '/workspace/design-system',
+  ];
+  for (const dir of workspaceFontDirs) {
+    fontFiles.push(...collectFontFiles(dir));
+  }
+
+  // Also scan /workspace recursively for fonts, but limit depth to avoid
+  // scanning huge node_modules trees
+  try {
+    const wsEntries = readdirSync('/workspace', { withFileTypes: true });
+    for (const entry of wsEntries) {
+      if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== '.git') {
+        const subDir = join('/workspace', entry.name);
+        // Only go 2 levels deep
+        try {
+          const subEntries = readdirSync(subDir, { withFileTypes: true });
+          for (const subEntry of subEntries) {
+            if (subEntry.isDirectory()) {
+              const fontSubDir = join(subDir, subEntry.name);
+              // Check if this directory or its immediate children contain fonts
+              try {
+                const fontEntries = readdirSync(fontSubDir, { withFileTypes: true });
+                for (const fe of fontEntries) {
+                  if (fe.isDirectory() && fe.name.toLowerCase().includes('font')) {
+                    fontFiles.push(...collectFontFiles(join(fontSubDir, fe.name)));
+                  } else {
+                    const ext = extname(fe.name).toLowerCase();
+                    if (ext === '.ttf' || ext === '.otf') {
+                      fontFiles.push(join(fontSubDir, fe.name));
+                    }
+                  }
+                }
+              } catch {}
+            } else {
+              const ext = extname(subEntry.name).toLowerCase();
+              if (ext === '.ttf' || ext === '.otf') {
+                fontFiles.push(join(subDir, subEntry.name));
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+
+  // Deduplicate
+  const uniqueFonts = [...new Set(fontFiles)];
+
+  return {
+    loadSystemFonts: true,
+    font: {
+      fontFiles: uniqueFonts,
+      fontDirs,
+      defaultFontFamily: 'DejaVu Sans',
+    },
+  };
+}
+
 server.tool('svg-to-png', {
-  annotations: { readOnlyHint: false },
+  // safeWriteHint: local file transformation — writes only to the caller's
+  // workspace volume, reversible (the output file is deletable), private.
+  annotations: { readOnlyHint: false, safeWriteHint: true },
   description: 'Convert SVG files to PNG with optional width/height constraints',
   parameters: {
     type: 'object',
@@ -476,12 +599,16 @@ server.tool('svg-to-png', {
 
     const svg = readFileSync(inputPath, 'utf-8');
 
-    const resvgOpts: any = {};
+    const resvgOpts: any = {
+      ...buildFontConfig(),
+    };
 
-    if (width) {
-      resvgOpts.fitTo = { mode: 'width' as const, value: width };
+    if (width && height) {
+      resvgOpts.fitTo = { mode: "width" as const, value: Math.min(width, height) };
+    } else if (width) {
+      resvgOpts.fitTo = { mode: "width" as const, value: width };
     } else if (height) {
-      resvgOpts.fitTo = { mode: 'height' as const, value: height };
+      resvgOpts.fitTo = { mode: "height" as const, value: height };
     }
 
     const resvg = new Resvg(svg, resvgOpts);
@@ -498,6 +625,231 @@ server.tool('svg-to-png', {
       width: pngData.width,
       height: pngData.height,
       size: pngBuffer.length,
+    };
+  },
+});
+
+// =============================================================================
+// OCR EXTRACT
+// =============================================================================
+
+server.tool('ocr-extract', {
+  annotations: { readOnlyHint: true },
+  description:
+    'FALLBACK ONLY — local OCR (tesseract.js) of an image or PDF. If you can see images, use pdf-to-images instead: reading the pages with vision is faster and far more accurate on scans, handwriting, pen corrections and stamps. Use this only when images are reported as not shown (model without vision). Returns per-page confidence scores and low-confidence word markers. Supports: png, jpg, jpeg, tiff, webp, gif, bmp, pdf.',
+  parameters: {
+    type: 'object',
+    properties: {
+      inputPath: {
+        type: 'string',
+        description: 'Path to the image or PDF file',
+      },
+      languages: {
+        type: 'array',
+        items: { type: 'string', enum: ['spa', 'eng'] },
+        description: "OCR languages (default: ['spa', 'eng'])",
+      },
+      pages: {
+        type: 'string',
+        description: "Pages to process, e.g. '1-3,5' (default: all). Only for PDFs.",
+      },
+      format: {
+        type: 'string',
+        enum: ['markdown', 'text', 'json'],
+        description: "Output format (default: 'markdown')",
+      },
+    },
+    required: ['inputPath'],
+  },
+  handler: async (args) => {
+    const { inputPath, languages, pages, format } = args as {
+      inputPath: string;
+      languages?: string[];
+      pages?: string;
+      format?: 'markdown' | 'text' | 'json';
+    };
+
+    if (!inputPath) throw new Error('inputPath is required');
+    if (!existsSync(inputPath)) throw new Error(`File not found: ${inputPath}`);
+
+    const buffer = readFileSync(inputPath);
+    const { extractText: ocrExtract, formatResult } = await import('./vendor/teros-ocr/index.js');
+
+    // Parse pages spec (e.g. "1-3,5") into number array
+    let pagesArray: number[] | 'all' = 'all';
+    if (pages) {
+      const pageSet = new Set<number>();
+      for (const part of pages.split(',')) {
+        const m = part.trim().match(/^(\d+)(?:-(\d+))?$/);
+        if (!m) throw new Error(`Invalid pages spec: "${part}" (use e.g. 1-3,5)`);
+        const from = parseInt(m[1], 10);
+        const to = m[2] ? parseInt(m[2], 10) : from;
+        for (let p = from; p <= to; p++) pageSet.add(p);
+      }
+      pagesArray = [...pageSet].sort((a, b) => a - b);
+    }
+
+    const result = await ocrExtract(buffer, {
+      languages: (languages || ['spa', 'eng']) as Array<'spa' | 'eng'>,
+      pages: pagesArray,
+    });
+
+    const outputFormat = format || 'markdown';
+    const output = formatResult(result, outputFormat);
+
+    return {
+      success: true,
+      text: output,
+      // Agents whose skills still say "use the OCR" get steered back to vision.
+      hint: 'If you can see images, prefer pdf-to-images for this file: reading the pages with vision is faster and more accurate than this OCR (especially handwriting and stamps).',
+      metadata: {
+        inputFile: inputPath,
+        inputType: result.inputType,
+        engine: result.engine,
+        pages: result.pages.length,
+        meanConfidence: result.meanConfidence,
+        totalDurationMs: result.totalDurationMs,
+        warnings: result.warnings,
+      },
+    };
+  },
+});
+
+// =============================================================================
+// PDF/IMAGE → IMAGES IN THE MODEL'S CONTEXT (vision)
+// =============================================================================
+
+/** Parse a pages spec like "1-3,5" into sorted page numbers. */
+function parsePagesSpec(spec: string): number[] {
+  const pageSet = new Set<number>();
+  for (const part of spec.split(',')) {
+    const m = part.trim().match(/^(\d+)(?:-(\d+))?$/);
+    if (!m) throw new Error(`Invalid pages spec: "${part}" (use e.g. 1-3,5)`);
+    const from = parseInt(m[1], 10);
+    const to = m[2] ? parseInt(m[2], 10) : from;
+    for (let p = from; p <= to; p++) pageSet.add(p);
+  }
+  return [...pageSet].sort((a, b) => a - b);
+}
+
+const VISION_MAX_PAGES = 10;
+
+server.tool('pdf-to-images', {
+  annotations: { readOnlyHint: true },
+  description:
+    'Show a PDF or an image file to YOU (the model) as images in your context, so you can read it with vision — scans, handwriting, pen corrections, stamps, ID cards, forms. Each PDF page is rendered in colour and attached to the result like an image the user pasted in chat. Use it whenever you need to actually look at a document (e.g. a PDF downloaded from an email); prefer it over ocr-extract when you can see images, and fall back to ocr-extract if the images are reported as not shown. Supports pdf, png, jpg, jpeg, webp, gif, tiff, bmp. Max 10 pages per call — use `pages` for the rest.',
+  parameters: {
+    type: 'object',
+    properties: {
+      inputPath: {
+        type: 'string',
+        description: 'Path to the PDF or image file (e.g. /workspace/inbox/acta.pdf)',
+      },
+      pages: {
+        type: 'string',
+        description: "PDF pages to show, e.g. '1-3,5' (default: the first 10). Ignored for images.",
+      },
+      dpi: {
+        type: 'number',
+        description: 'PDF render resolution (default 150; 200 for small print). Ignored for images.',
+      },
+      maxDimension: {
+        type: 'number',
+        description: 'Longest side of each attached image in px (default 1568, 512–2048).',
+      },
+      autoRotate: {
+        type: 'boolean',
+        description:
+          'Straighten sideways/upside-down pages (scanned IDs…) before attaching them (default true). Upright pages cost one quick check; only rotated ones take longer.',
+      },
+    },
+    required: ['inputPath'],
+  },
+  handler: async (args, context) => {
+    const { inputPath, pages, dpi, maxDimension, autoRotate } = args as {
+      inputPath: string;
+      pages?: string;
+      dpi?: number;
+      maxDimension?: number;
+      autoRotate?: boolean;
+    };
+    if (!inputPath) throw new Error('inputPath is required');
+    if (!existsSync(inputPath)) throw new Error(`File not found: ${inputPath}`);
+    if (!context.objects) {
+      throw new Error('Object storage is not available, so images cannot be attached to the context.');
+    }
+
+    const buffer = readFileSync(inputPath);
+    const { createOrientationDetector, detectInputType, renderPdfPages } = await import(
+      './vendor/teros-ocr/index.js'
+    );
+    const sharp = (await import('sharp')).default;
+    const inputType = detectInputType(buffer);
+    const name = inputPath.split('/').pop() || 'document';
+    const maxSide = Math.min(2048, Math.max(512, Math.round(maxDimension ?? 1568)));
+
+    let sources: Array<{ label: string; png: Buffer }>;
+    let totalPages = 1;
+    let omitted = 0;
+    if (inputType === 'pdf') {
+      const rendered = await renderPdfPages(buffer, {
+        pages: pages ? parsePagesSpec(pages) : 'all',
+        dpi: Math.min(300, Math.max(72, Math.round(dpi ?? 150))),
+        maxPages: VISION_MAX_PAGES,
+      });
+      totalPages = rendered.totalPages;
+      omitted = rendered.omitted;
+      sources = rendered.pages.map((p) => ({ label: `p${p.pageNumber}`, png: p.png }));
+      if (sources.length === 0) throw new Error(`No pages to show (the PDF has ${totalPages} page(s)).`);
+    } else if (inputType === 'image') {
+      sources = [{ label: 'img', png: buffer }];
+    } else {
+      throw new Error('Unsupported file: pdf-to-images accepts PDFs and images (png, jpg, webp, gif, tiff, bmp).');
+    }
+
+    const attachments: Array<{ url: string; mime: string; filename: string }> = [];
+    const shown: string[] = [];
+    const rotated: string[] = [];
+    // One tesseract worker for the whole call, only to check orientation.
+    const detector = autoRotate === false ? null : await createOrientationDetector({ languages: ['spa', 'eng'] });
+    try {
+      for (const src of sources) {
+        const label = src.label === 'img' ? 'image' : `page ${src.label.slice(1)}`;
+        // EXIF orientation first (camera photos), then content orientation.
+        let png = await sharp(src.png, { failOn: 'none' }).rotate().png().toBuffer();
+        const angle = detector ? await detector.detect(png) : 0;
+        if (angle) {
+          png = await sharp(png).rotate(angle).png().toBuffer();
+          rotated.push(`${label} ${angle}°`);
+        }
+        // Flatten transparency onto white, fit the longest side, JPEG.
+        const jpeg = await sharp(png)
+          .flatten({ background: '#ffffff' })
+          .resize({ width: maxSide, height: maxSide, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 82 })
+          .toBuffer();
+        const filename = `${name.replace(/\.[^.]+$/, '')}-${src.label}.jpg`;
+        const put = await context.objects.put(jpeg, 'image/jpeg', {
+          source: 'mca.teros.file-processor',
+          tool: 'pdf-to-images',
+          filename,
+        });
+        if (!put.success) throw new Error(`Could not store ${filename}: ${put.error ?? 'unknown error'}`);
+        attachments.push({ url: put.url, mime: 'image/jpeg', filename });
+        shown.push(label);
+      }
+    } finally {
+      await detector?.dispose();
+    }
+
+    const scope =
+      inputType === 'pdf'
+        ? `${shown.length} of ${totalPages} page(s) (${shown.join(', ')})${omitted > 0 ? `; ${omitted} more requested page(s) not shown — call again with \`pages\`` : ''}`
+        : 'the image';
+    const straightened = rotated.length ? ` Straightened automatically: ${rotated.join(', ')}.` : '';
+    return {
+      output: `Attached ${scope} of ${inputPath} as image(s) in your context.${straightened} Read them visually; if they are reported as not shown, use ocr-extract instead.`,
+      attachments,
     };
   },
 });

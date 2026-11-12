@@ -79,15 +79,15 @@ export async function searchKnowledge(
     : undefined;
 
   try {
-    const results = await qdrant.search(collectionName, {
-      vector,
+    const results = await qdrant.query(collectionName, {
+      query: vector,
       limit,
       filter,
       with_payload: true,
     });
 
     // Update last_accessed timestamp
-    for (const result of results) {
+    for (const result of results.points) {
       await qdrant.setPayload(collectionName, {
         points: [result.id],
         payload: {
@@ -96,7 +96,7 @@ export async function searchKnowledge(
       });
     }
 
-    return results.map((result) => ({
+    return results.points.map((result) => ({
       id: result.id,
       score: result.score,
       payload: result.payload as unknown as KnowledgeMemory,

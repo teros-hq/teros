@@ -1,0 +1,64 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.microsoft.onenote",
+  "name": "OneNote",
+  "version": "1.0.0",
+  "description": "Microsoft OneNote automation — browse notebooks and sections, read and write pages as markdown, and search notes via the Microsoft Graph OneNote API",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "microsoft",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "microsoft",
+      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URIS"],
+      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN", "EMAIL", "EXPIRY_DATE"],
+      "authorizeUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      "tokenUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      "scopes": [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        "User.Read",
+        "Notes.Read",
+        "Notes.ReadWrite",
+        "Notes.Read.All",
+        "Notes.ReadWrite.All",
+        "Notes.Create"
+      ],
+      "pkce": false
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": ["onenote", "notes", "notebook", "microsoft", "office365", "markdown"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-09-15",
+      "notes": "Initial release — read, write, and search OneNote notebooks, sections, and pages"
+    }
+  ]
+}

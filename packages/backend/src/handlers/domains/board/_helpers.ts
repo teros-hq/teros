@@ -79,6 +79,10 @@ export async function enrichTasksAcrossBoards<T extends { boardId: string; colum
 /**
  * Computes per-project stats (taskCount, activeAgentCount).
  * activeAgentCount = distinct assignedAgentId across non-archived tasks.
+ *
+ * Projects only the fields this function reads (archived, assignedAgentId) —
+ * list-projects runs it for EVERY project in a workspace, and full task
+ * documents on large boards made that response huge too.
  */
 export async function computeProjectStats(
   projects: Project[],
@@ -86,7 +90,9 @@ export async function computeProjectStats(
 ): Promise<Array<Project & { taskCount: number; activeAgentCount: number }>> {
   const results: Array<Project & { taskCount: number; activeAgentCount: number }> = [];
   for (const project of projects) {
-    const allTasks = await boardService.listTasks(project.boardId, {});
+    const allTasks = await boardService.listTasks(project.boardId, {
+      projection: { _id: 0, archived: 1, assignedAgentId: 1 },
+    });
     const active = allTasks.filter((t: Task) => !t.archived);
     const agents = new Set(
       active

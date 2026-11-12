@@ -62,5 +62,8 @@
       "did_not_follow_instructions": "No siguió las instrucciones",
       "other": "Otro"
     }
+  },
+  "windows": {
+    "flowEditor": "Editor de Flujos"
   }
 }

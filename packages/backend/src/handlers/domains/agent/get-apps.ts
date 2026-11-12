@@ -24,7 +24,8 @@ export function createGetAppsHandler(mcaService: McaService, db: Db) {
 
     console.log(`[agent.get-apps] Getting apps for agent: ${agentId}`)
 
-    const agentApps = await mcaService.getAgentApps(agentId, workspaceId)
+    // MUW-REQ-13: the caller sees shared apps plus their own personal apps.
+    const agentApps = await mcaService.getAgentApps(agentId, workspaceId, { userId: ctx.userId })
     console.log(`[agent.get-apps] Got ${agentApps.apps.length} apps for agent ${agentId}`)
 
     const apps = await Promise.all(

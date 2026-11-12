@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 export const createIssue: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -20,6 +20,7 @@ export const createIssue: ToolConfig = {
     const { owner, repo, title, body, labels, assignees } = args as {
       owner: string; repo: string; title: string; body?: string; labels?: string[]; assignees?: string[];
     };
+    assertOwnerRepo(owner, repo);
     return await githubRequest(context, `/repos/${owner}/${repo}/issues`, {
       method: 'POST',
       body: { title, body, labels, assignees },

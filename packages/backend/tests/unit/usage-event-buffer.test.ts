@@ -54,7 +54,7 @@ describe('UsageEventBuffer', () => {
     const inserted: AgentUsageEvent[][] = []
     const applied: AgentUsageEvent[][] = []
     const repo = { bulkInsert: mock(async (e: AgentUsageEvent[]) => (inserted.push(e), e.length)) }
-    const applier = { applyBatch: mock(async (e: AgentUsageEvent[]) => (applied.push(e), e.length)) }
+    const applier = { applyAll: mock(async (e: AgentUsageEvent[]) => (applied.push(e), e.length)) }
     const buffer = new UsageEventBuffer(repo as any, applier as any, stubLogger, {
       ...DEFAULT_BUFFER_OPTS,
       deadLetterDir: dir,
@@ -74,7 +74,7 @@ describe('UsageEventBuffer', () => {
         throw new Error('mongo down')
       }),
     }
-    const applier = { applyBatch: mock(async () => 0) }
+    const applier = { applyAll: mock(async () => 0) }
     const buffer = new UsageEventBuffer(repo as any, applier as any, stubLogger, {
       ...DEFAULT_BUFFER_OPTS,
       deadLetterDir: dir,
@@ -99,7 +99,7 @@ describe('UsageEventBuffer', () => {
         throw new Error('mongo down')
       }),
     }
-    const applier = { applyBatch: mock(async () => 0) }
+    const applier = { applyAll: mock(async () => 0) }
     const buffer = new UsageEventBuffer(repo as any, applier as any, stubLogger, {
       ...DEFAULT_BUFFER_OPTS,
       deadLetterDir: dir,
@@ -119,7 +119,7 @@ describe('UsageEventBuffer', () => {
     // bulkInsert never resolves (server-selection stuck). Without the Promise.race
     // budget, shutdown would hang forever and PM2 would SIGKILL past kill_timeout.
     const repo = { bulkInsert: mock(() => new Promise<number>(() => {})) }
-    const applier = { applyBatch: mock(async () => 0) }
+    const applier = { applyAll: mock(async () => 0) }
     const buffer = new UsageEventBuffer(repo as any, applier as any, stubLogger, {
       ...DEFAULT_BUFFER_OPTS,
       deadLetterDir: dir,
@@ -135,7 +135,7 @@ describe('UsageEventBuffer', () => {
 
   it('counts dropped events when the queue is saturated and the event is non-critical', async () => {
     const repo = { bulkInsert: mock(async () => 0) }
-    const applier = { applyBatch: mock(async () => 0) }
+    const applier = { applyAll: mock(async () => 0) }
     const buffer = new UsageEventBuffer(repo as any, applier as any, stubLogger, {
       ...DEFAULT_BUFFER_OPTS,
       deadLetterDir: dir,
@@ -152,7 +152,7 @@ describe('UsageEventBuffer', () => {
 
   it('exposes counters via getMetrics()', async () => {
     const repo = { bulkInsert: mock(async (e: AgentUsageEvent[]) => e.length) }
-    const applier = { applyBatch: mock(async (e: AgentUsageEvent[]) => e.length) }
+    const applier = { applyAll: mock(async (e: AgentUsageEvent[]) => e.length) }
     const buffer = new UsageEventBuffer(repo as any, applier as any, stubLogger, {
       ...DEFAULT_BUFFER_OPTS,
       deadLetterDir: dir,
@@ -167,7 +167,7 @@ describe('UsageEventBuffer', () => {
 
   it('drops events emitted after shutdown() (N2 fix)', async () => {
     const repo = { bulkInsert: mock(async (e: AgentUsageEvent[]) => e.length) }
-    const applier = { applyBatch: mock(async (e: AgentUsageEvent[]) => e.length) }
+    const applier = { applyAll: mock(async (e: AgentUsageEvent[]) => e.length) }
     const buffer = new UsageEventBuffer(repo as any, applier as any, stubLogger, {
       ...DEFAULT_BUFFER_OPTS,
       deadLetterDir: dir,
@@ -190,7 +190,7 @@ describe('UsageEventBuffer', () => {
       }),
     }
     const applier = {
-      applyBatch: mock(async (e: AgentUsageEvent[]) => {
+      applyAll: mock(async (e: AgentUsageEvent[]) => {
         applied.push(e)
         return e.length
       }),
@@ -220,7 +220,7 @@ describe('UsageEventBuffer', () => {
         throw new Error('mongo down')
       }),
     }
-    const applier = { applyBatch: mock(async () => 0) }
+    const applier = { applyAll: mock(async () => 0) }
     const buffer = new UsageEventBuffer(repo as any, applier as any, stubLogger, {
       ...DEFAULT_BUFFER_OPTS,
       deadLetterDir: dir,

@@ -13,26 +13,26 @@
  *  - .md files: calls openFile() from fileOpener; shows toast if no handler registered
  *  - other files: shows toast "Opening this file type is not supported yet."
  *
- * Migrated to the Design System:
- * - Uses `useColors()` for theme-adaptive surface/border/text tokens.
- * - Uses `semanticColors` for error/warning accents (red, amber).
- * - Uses Tamagui font tokens (`$body`).
+ * Look: the OS prototype's file list — a breadcrumb strip on the sheet, a
+ * mono column header and an LGroup of rows (folder/file glyph, name, size,
+ * date, download IconBtn).
  */
 
-import { AlertCircle, RefreshCw } from '@tamagui/lucide-icons'
-import React, { useCallback, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { Button, Text, XStack, YStack } from 'tamagui'
-import { useToast } from '../../components/Toast'
-import { openFile } from '../../services/fileOpener'
-import type { FileEntry } from '../../services/FileBrowserApi'
-import { useWorkspaceStore } from '../../store/workspaceStore'
-import { colors as semanticColors } from '../../components/mca/primitives/colors'
-import { useColors } from '../../components/mca/primitives/useColors'
-import { FileBrowserBreadcrumb } from './FileBrowserBreadcrumb'
-import { FileBrowserEntry } from './FileBrowserEntry'
-import { useFileListing } from './useFileListing'
-import type { FileBrowserWindowProps } from './definition'
+import React, { useCallback, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { ScrollView, View } from "react-native"
+import { useToast } from "../../components/Toast"
+import { openFile } from "../../services/fileOpener"
+import type { FileEntry } from "../../services/FileBrowserApi"
+import { getTerosClient } from "../../services/terosClientSingleton"
+import { useWorkspaceStore } from "../../store/workspaceStore"
+import { useColors } from "../../components/mca/primitives/useColors"
+import { AppSpinner } from "../../components/ui"
+import { Btn, EmptyState, LGroup, T, usePagePadding } from "../../components/ui/ds"
+import { FileBrowserBreadcrumb } from "./FileBrowserBreadcrumb"
+import { FileBrowserEntry } from "./FileBrowserEntry"
+import { useFileListing } from "./useFileListing"
+import type { FileBrowserWindowProps } from "./definition"
 
 // ============================================================================
 // Types
@@ -46,17 +46,22 @@ interface Props extends FileBrowserWindowProps {
 // Main component
 // ============================================================================
 
-export function FileBrowserWindowContent({ windowId, workspaceId: propWorkspaceId, initialPath }: Props) {
+export function FileBrowserWindowContent({
+  windowId,
+  workspaceId: propWorkspaceId,
+  initialPath,
+}: Props) {
   const { t } = useTranslation()
   const toast = useToast()
   const c = useColors()
+  const pad = usePagePadding()
 
   // Use the prop workspaceId if provided; otherwise fall back to the active workspace from the store
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
-  const effectiveWorkspaceId = propWorkspaceId ?? activeWorkspaceId ?? ''
+  const effectiveWorkspaceId = propWorkspaceId ?? activeWorkspaceId ?? ""
 
   // Navigation state
-  const [currentPath, setCurrentPath] = useState(initialPath ?? '/workspace')
+  const [currentPath, setCurrentPath] = useState(initialPath ?? "/workspace")
   const [history, setHistory] = useState<string[]>([])
 
   // Directory listing for the current path (only active when we have a workspaceId)
@@ -67,10 +72,13 @@ export function FileBrowserWindowContent({ windowId, workspaceId: propWorkspaceI
 
   // ── Navigation ──────────────────────────────────────────────────────────────
 
-  const navigateTo = useCallback((path: string) => {
-    setHistory((prev) => [...prev, currentPath])
-    setCurrentPath(path)
-  }, [currentPath])
+  const navigateTo = useCallback(
+    (path: string) => {
+      setHistory((prev) => [...prev, currentPath])
+      setCurrentPath(path)
+    },
+    [currentPath],
+  )
 
   const navigateBack = useCallback(() => {
     if (history.length === 0) return
@@ -81,144 +89,165 @@ export function FileBrowserWindowContent({ windowId, workspaceId: propWorkspaceI
 
   // ── File opening ────────────────────────────────────────────────────────────
 
-  const handleOpenFile = useCallback((entry: FileEntry) => {
-    const handled = openFile(entry.path, effectiveWorkspaceId)
-    if (!handled) {
-      toast.info('No viewer available for this file type.')
-    }
-  }, [effectiveWorkspaceId, toast])
+  const handleOpenFile = useCallback(
+    (entry: FileEntry) => {
+      const handled = openFile(entry.path, effectiveWorkspaceId)
+      if (!handled) {
+        toast.info("No viewer available for this file type.")
+      }
+    },
+    [effectiveWorkspaceId, toast],
+  )
 
+  // ── File download ───────────────────────────────────────────────────────────
 
+  const handleDownloadFile = useCallback(
+    async (entry: FileEntry) => {
+      const client = getTerosClient()
+      if (!client) {
+        toast.error("Not connected")
+        return
+      }
+      try {
+        await client.fileBrowser.downloadFile(effectiveWorkspaceId, entry.path)
+      } catch (err: any) {
+        toast.error(err?.message ?? "Download failed")
+      }
+    },
+    [effectiveWorkspaceId, toast],
+  )
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  const folders = entries.filter((e) => e.type === "directory").length
+  const files = entries.length - folders
+
   return (
-    <YStack flex={1} backgroundColor={c.bgPage}>
+    <View style={{ flex: 1, backgroundColor: c.bgSheet }}>
       {/* Breadcrumb */}
       <FileBrowserBreadcrumb
         currentPath={currentPath}
         canGoBack={history.length > 0}
         onNavigate={navigateTo}
         onBack={navigateBack}
+        summary={
+          status === "success"
+            ? t("fileBrowser.summary", {
+                defaultValue: "{{folders}} carpetas · {{files}} archivos",
+                folders,
+                files,
+              })
+            : undefined
+        }
       />
 
-      {/* Column header */}
-      <XStack
-        paddingHorizontal={16}
-        paddingVertical={6}
-        borderBottomWidth={1}
-        borderBottomColor={c.border}
-        backgroundColor={c.bgInner}
-      >
-        <Text
-          flex={1}
-          fontSize={10}
-          color={c.text3}
-          fontFamily="$body"
-          fontWeight="600"
-          textTransform="uppercase"
-          letterSpacing={0.5}
-        >
-          Name
-        </Text>
-        <Text
-          fontSize={10}
-          color={c.text3}
-          fontFamily="$body"
-          fontWeight="600"
-          textTransform="uppercase"
-          letterSpacing={0.5}
-          width={64}
-          textAlign="right"
-        >
-          Size
-        </Text>
-        <Text
-          fontSize={10}
-          color={c.text3}
-          fontFamily="$body"
-          fontWeight="600"
-          textTransform="uppercase"
-          letterSpacing={0.5}
-          width={90}
-          textAlign="right"
-        >
-          Modified
-        </Text>
-      </XStack>
-
       {/* Loading state */}
-      {status === 'loading' && (
-        <YStack flex={1} alignItems="center" justifyContent="center" gap={12}>
-          <Text color={c.text3} fontSize={13} fontFamily="$body">
-            Loading…
-          </Text>
-        </YStack>
+      {status === "loading" && (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12 }}>
+          <AppSpinner size="sm" variant="brand" />
+          <T step="sm" tone="text3">
+            {t("fileBrowser.loading", { defaultValue: "Loading…" })}
+          </T>
+        </View>
       )}
 
       {/* Error state */}
-      {status === 'error' && (
-        <YStack flex={1} alignItems="center" justifyContent="center" padding={24} gap={12}>
-          <AlertCircle size={32} color={semanticColors.red} />
-          <Text color={semanticColors.red} fontSize={13} fontFamily="$body" textAlign="center" maxWidth={320}>
-            {error ?? t('errors.fileBrowser.loadFailed')}
-          </Text>
-          <Button
-            size="$3"
-            onPress={retry}
-            icon={<RefreshCw size={13} />}
-            backgroundColor={c.badges.err.bg}
-            borderColor={c.badges.err.border}
-            color={semanticColors.red}
-          >
-            Retry
-          </Button>
-        </YStack>
+      {status === "error" && (
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <EmptyState
+            icon="warning-circle"
+            title={t("fileBrowser.errorTitle", { defaultValue: "No se pudo leer la carpeta" })}
+            text={error ?? t("errors.fileBrowser.loadFailed")}
+            action={
+              <Btn
+                variant="sec"
+                icon="arrows-clockwise"
+                onPress={retry}
+                testID="file-browser-retry"
+              >
+                {t("fileBrowser.retry", { defaultValue: "Retry" })}
+              </Btn>
+            }
+          />
+        </View>
       )}
 
       {/* Empty state */}
-      {status === 'success' && entries.length === 0 && (
-        <YStack flex={1} alignItems="center" justifyContent="center" padding={24}>
-          <Text color={c.text3} fontSize={13} fontFamily="$body">
-            This folder is empty.
-          </Text>
-        </YStack>
+      {status === "success" && entries.length === 0 && (
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <EmptyState
+            icon="folder-open"
+            title={t("fileBrowser.empty", { defaultValue: "This folder is empty." })}
+          />
+        </View>
       )}
 
       {/* Entries */}
-      {status === 'success' && entries.length > 0 && (
-        <YStack
-          flex={1}
-          // minHeight: 0 is required for flex children in web to scroll correctly.
-          // Without it, the YStack expands to fit all content instead of scrolling.
-          // @ts-ignore — web-only CSS property
-          style={{ overflowY: 'auto', minHeight: 0 }}
+      {status === "success" && entries.length > 0 && (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: pad.h, paddingTop: 12, paddingBottom: pad.b }}
         >
-          {entries.map((entry) => (
-            <FileBrowserEntry
-              key={entry.path}
-              entry={entry}
-              onNavigate={navigateTo}
-              onOpenFile={handleOpenFile}
-            />
-          ))}
+          {/* Column header */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 14,
+              paddingBottom: 8,
+              gap: 10,
+            }}
+          >
+            <View style={{ width: 20 }} />
+            <T step="codenote" tone="text3" style={{ flex: 1 }}>
+              {t("fileBrowser.colName", { defaultValue: "Name" })}
+            </T>
+            <T step="codenote" tone="text3" style={{ width: 64, textAlign: "right" }}>
+              {t("fileBrowser.colSize", { defaultValue: "Size" })}
+            </T>
+            <T step="codenote" tone="text3" style={{ width: 96, textAlign: "right" }}>
+              {t("fileBrowser.colModified", { defaultValue: "Modified" })}
+            </T>
+            {/* Spacer for download button column */}
+            <View style={{ width: 28 }} />
+          </View>
+
+          <View testID="file-browser-list">
+            <LGroup>
+              {entries.map((entry) => (
+                <FileBrowserEntry
+                  key={entry.path}
+                  entry={entry}
+                  onNavigate={navigateTo}
+                  onOpenFile={handleOpenFile}
+                  onDownloadFile={handleDownloadFile}
+                />
+              ))}
+            </LGroup>
+          </View>
 
           {/* Truncation notice */}
           {truncated && (
-            <XStack
-              paddingHorizontal={16}
-              paddingVertical={10}
-              backgroundColor={c.badges.warn.bg}
-              borderTopWidth={1}
-              borderTopColor={c.badges.warn.border}
+            <View
+              style={{
+                marginTop: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderRadius: 10,
+                backgroundColor: c.tint.a.bg,
+                borderWidth: 1,
+                borderColor: c.tint.a.bd,
+              }}
             >
-              <Text fontSize={11} color={c.badges.warn.text} fontFamily="$body" textAlign="center" flex={1}>
-                Showing first 1,000 entries. The directory contains more files.
-              </Text>
-            </XStack>
+              <T step="12" color={c.tint.a.tx} center>
+                {t("fileBrowser.truncated", {
+                  defaultValue: "Showing first 1,000 entries. The directory contains more files.",
+                })}
+              </T>
+            </View>
           )}
-        </YStack>
+        </ScrollView>
       )}
-    </YStack>
+    </View>
   )
 }

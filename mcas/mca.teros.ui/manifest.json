@@ -1,0 +1,73 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.ui",
+  "name": "UI Control",
+  "version": "1.3.0",
+  "description": "See what the user is seeing right now — their open windows (chats, terminal sessions, boards…), layout, focus and devices — and drive their interface in real time: open, close, update, focus windows, switch desktops, split panes, toggle navbar/theme. Browser tabs: view and act on the page the user is viewing (get-state/click/type/screenshot) via request-response, with consent OFF by default and a take-over fence. Tabs: open/close tabs in a pane beside the user, scroll and press keys.",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Nira Solana",
+    "email": "nira@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": true,
+    "role": "user",
+    "defaultEnabled": false
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "ui",
+    "windows",
+    "desktop",
+    "tiling",
+    "screen",
+    "focus",
+    "interface",
+    "presence"
+  ],
+  "backend": {
+    "actions": [
+      "ui.*"
+    ]
+  },
+  "dependencies": [],
+  "changelog": [
+    {
+      "version": "1.3.0",
+      "date": "2026-10-31",
+      "notes": "Browser tabs and more inputs (spec DBAC, docs/specs/20261031_desktop-browser-agent-control.md): browser-open-tab (opens a browser window in a pane — right by default — on the user's desktop app, waits for the device to report it and returns its tabId), browser-list-tabs (tabId/url/title/focused per device), browser-close-tab, browser-scroll (trusted wheel, direction + amount, optional ref) and browser-press-key (named key or one character with Alt/Control/Meta/Shift). Two new ui.command kinds: browser.scroll and browser.press-key. The desktop shell (teros-desktop) now ships the main-process executor (CDP) with the consent toggle in the tab's toolbar (OFF by default) and the take-over fence — the F3 loop is closed end to end."
+    },
+    {
+      "version": "1.2.0",
+      "date": "2026-10-31",
+      "notes": "Browser control (Teros Desktop F3, task tn_Q9fbZS5wwxWiYRPl): six new tools — browser-get-state (a11y tree with [ref=eNN] + page info, optional screenshot attachment), browser-click (trusted input by ref or x,y), browser-type (trusted text input, optional clear/submit), browser-screenshot (downscaled JPEG attachment), browser-open-url (top-level navigation), browser-control (consent + fence status, advisory take/release). Request-response over the existing UI channel (correlationId + ui.command-result, 25s timeout) — no new MCA, no pairing, no tunnel (decision Pablo 31-oct). Consent 'the agent may handle my browser' OFF by default; take-over fence blocks agent inputs while the user interacts (human_has_control). Six new ui.command kinds: browser.open-url/get-state/click/type/screenshot/control — single-device, single-session delivery."
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-10-30",
+      "notes": "Full agent UI control (task tn_BGpRYoeD7HdoziO5): ui-open gains desktopId (targeted open — the user's view switches to that desktop; unknown desktopId is a clear UI_UNKNOWN_DESKTOP error) and pane (left/right/top/bottom — the window lands in its own split pane; an empty desktop absorbs the first window). New tools: ui-create-desktop (cap 10, optional name), ui-remove-desktop (windows migrate to the previous desktop, never the last one), ui-set-navbar (collapse/expand/toggle), ui-set-theme (dark/light/toggle). Four new ui.command kinds: create-desktop, remove-desktop, set-navbar-collapsed, set-theme — all frontend actions (target 'active')."
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-10-23",
+      "notes": "Initial release (spec 20261022_ui-state-mca.md, REQ-5) — ui-state reads the user's live desktop per device (windows, layout, focus, dynamic window-type catalog, enriched names); ui-open / ui-close / ui-update-props broadcast window changes to all devices; ui-focus / ui-set-desktop are frontend actions on the active device. Thin wrapper over the backend ui.* domain via the admin_request bridge."
+    }
+  ]
+}

@@ -1,6 +1,5 @@
 /**
- * Mongo-side helpers for the agent-usage sessions + scheduler recurring tasks
- * (TER-650). Specs run in the Playwright Node process, so we talk to Mongo
+ * Mongo-side helpers for the agent-usage sessions (TER-650). Specs run in the Playwright Node process, so we talk to Mongo
  * directly through the memoized client in db.ts.
  *
  * Used to assert the true `triggerKind` a session records: the phantom-session
@@ -87,18 +86,6 @@ export async function waitForUsageSessionByAgent(
   return null
 }
 
-/** Count scheduler recurring tasks bound to a channel (TER-650/G7 cleanup). */
-export async function getRecurringTaskCount(channelId: string): Promise<number> {
-  const db = await getMongoDb()
-  return db.collection("scheduler_recurring_tasks").countDocuments({ channel_id: channelId })
-}
-
-/** Count scheduler reminders bound to a channel (TER-650/G7 cleanup). */
-export async function getReminderCount(channelId: string): Promise<number> {
-  const db = await getMongoDb()
-  return db.collection("scheduler_reminders").countDocuments({ channel_id: channelId })
-}
-
 /** All agent_usage_sessions for a channel, newest first. */
 export async function getUsageSessionsByChannel(channelId: string): Promise<UsageSessionLite[]> {
   const db = await getMongoDb()
@@ -127,52 +114,4 @@ export async function waitForUsageSession(
     await new Promise((r) => setTimeout(r, pollMs))
   }
   return null
-}
-
-/**
- * Subscribe a channel to a scheduler topic in `wake` mode so the dispatch
- * (`dispatchToChannelSubscriptions`) matches and wakes the agent. The WS action
- * `scheduler.create-recurring-task` does NOT create this subscription (the MCA
- * scheduler flow does); the scheduler re-creates it via `ensureSubscriptionForChannel`
- * on the first empty dispatch, but creating it upfront makes the test
- * deterministic on the first tick. Verified end-to-end (TER-650).
- */
-export async function subscribeChannelToScheduler(
-  channelId: string,
-  topic = "scheduler.recurring_task",
-): Promise<void> {
-  const db = await getMongoDb()
-  await db.collection("channel_event_subscriptions").insertOne({
-    id: `sub_${Math.random().toString(36).slice(2, 10)}`,
-    topic,
-    channelId,
-    rules: [{ channelId }],
-    mode: "wake",
-    createdAt: new Date(),
-    lastActivityAt: new Date(),
-  })
-}
-
-/**
- * Force any recurring task on a channel to be due now so the next scheduler
- * tick (every ~30s) dispatches it. Returns how many tasks were marked due.
- */
-export async function forceRecurringTaskDue(channelId: string): Promise<number> {
-  const db = await getMongoDb()
-  const res = await db
-    .collection("scheduler_recurring_tasks")
-    .updateMany({ channel_id: channelId }, { $set: { next_run: Date.now() - 1000 } })
-  return res.modifiedCount
-}
-
-/** Remove recurring tasks for a channel (test cleanup). */
-export async function deleteRecurringTasksForChannel(channelId: string): Promise<void> {
-  const db = await getMongoDb()
-  await db.collection("scheduler_recurring_tasks").deleteMany({ channel_id: channelId })
-}
-
-/** Remove reminders for a channel (test cleanup — symmetric to the recurring-task helper). */
-export async function deleteRemindersForChannel(channelId: string): Promise<void> {
-  const db = await getMongoDb()
-  await db.collection("scheduler_reminders").deleteMany({ channel_id: channelId })
 }

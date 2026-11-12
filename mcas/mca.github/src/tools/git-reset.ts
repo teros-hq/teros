@@ -1,6 +1,7 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
+import { assertIsRepo, assertSafeRef, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Reset HEAD (and optionally the index/working tree) to a given ref.
@@ -13,7 +14,7 @@ import { throwClassifiedGitError } from './_git-error';
  *  - `hard`: HEAD + index + working tree. **Destructive** — discards any
  *    uncommitted change.
  */
-export const gitReset: ToolConfig = {
+export const gitReset: ToolConfig = lockedGitTool('git-reset', {
   description:
     'Reset HEAD to `target`. `mode: soft` keeps staging; `mode: mixed` (default) keeps working tree; `mode: hard` discards everything (destructive).',
   parameters: {
@@ -39,12 +40,16 @@ export const gitReset: ToolConfig = {
 
     const target = a.target ?? 'HEAD';
     const mode = a.mode ?? 'mixed';
+    // Ref validation: `--` cannot be used before the ref positional here (it
+    // switches `git reset` into pathspec mode), so the charset check is the
+    // defense against git-option injection (audit 2026-10-01).
+    assertSafeRef(target, 'target');
 
-    const result = runGit(repoPath, ['reset', `--${mode}`, target]);
+    const result = await runGit(repoPath, ['reset', `--${mode}`, target]);
     if (result.code !== 0) throwClassifiedGitError(result);
 
-    const headResult = runGit(repoPath, ['rev-parse', 'HEAD']);
-    const branchResult = runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const headResult = await runGit(repoPath, ['rev-parse', 'HEAD']);
+    const branchResult = await runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
 
     return {
       repoPath,
@@ -61,4 +66,4 @@ export const gitReset: ToolConfig = {
     idempotentHint: false,
     openWorldHint: false,
   },
-};
+});

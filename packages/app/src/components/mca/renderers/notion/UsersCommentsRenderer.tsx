@@ -11,6 +11,7 @@ import type React from 'react';
 import { useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Image, Text, XStack, YStack } from 'tamagui';
+import { useImageWithFallback } from '../../../../hooks/useImageWithFallback';
 
 import { countBadgeVariant, Empty, formatCountBadge } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
@@ -27,6 +28,56 @@ import {
   truncate,
   useNotionColors,
 } from './shared';
+
+// ── Notion user avatar sub-component (per-item hook state for onError fallback) ──
+
+function NotionUserAvatar({ user, size, borderRadius, colors }: {
+  user: NotionUser;
+  size: number;
+  borderRadius: number;
+  colors: ReturnType<typeof useNotionColors>;
+}) {
+  // avatarUrl can be null on the Notion type — normalize to undefined for the hook
+  const avatarUrl = user.avatarUrl ?? undefined;
+  const { showImage, onError } = useImageWithFallback(avatarUrl);
+  if (showImage) {
+    return (
+      <Image
+        source={{ uri: avatarUrl }}
+        width={size}
+        height={size}
+        borderRadius={borderRadius}
+        onError={onError}
+      />
+    );
+  }
+  if (user.type === 'bot') {
+    return (
+      <XStack
+        width={size}
+        height={size}
+        borderRadius={borderRadius}
+        backgroundColor={colors.badges.info.bg}
+        alignItems="center"
+        justifyContent="center"
+      >
+        <Bot size={Math.round(size * 0.6)} color={colors.badges.info.text} />
+      </XStack>
+    );
+  }
+  return (
+    <XStack
+      width={size}
+      height={size}
+      borderRadius={borderRadius}
+      backgroundColor={colors.badges.gray.bg}
+      alignItems="center"
+      justifyContent="center"
+    >
+      <User size={Math.round(size * 0.6)} color={colors.badges.gray.text} />
+    </XStack>
+  );
+}
 
 // ============================================================================
 // Content Blocks
@@ -56,17 +107,12 @@ function UserListBlock({ users }: UserListBlockProps) {
             borderBottomColor={c.border}
           >
             {user.avatarUrl ? (
-              <Image
-                source={{ uri: user.avatarUrl }}
-                width={20}
-                height={20}
-                borderRadius={10}
-              />
+              <NotionUserAvatar user={user} size={20} borderRadius={5} colors={c} />
             ) : user.type === 'bot' ? (
               <XStack
                 width={20}
                 height={20}
-                borderRadius={10}
+                borderRadius={5}
                 backgroundColor={c.badges.info.bg}
                 alignItems="center"
                 justifyContent="center"
@@ -77,7 +123,7 @@ function UserListBlock({ users }: UserListBlockProps) {
               <XStack
                 width={20}
                 height={20}
-                borderRadius={10}
+                borderRadius={5}
                 backgroundColor={c.badges.gray.bg}
                 alignItems="center"
                 justifyContent="center"
@@ -125,17 +171,12 @@ function UserDetailBlock({ user }: UserDetailBlockProps) {
     >
       <XStack alignItems="center" gap={12}>
         {user.avatarUrl ? (
-          <Image
-            source={{ uri: user.avatarUrl }}
-            width={32}
-            height={32}
-            borderRadius={16}
-          />
+          <NotionUserAvatar user={user} size={32} borderRadius={8} colors={c} />
         ) : user.type === 'bot' ? (
           <XStack
             width={32}
             height={32}
-            borderRadius={16}
+            borderRadius={8}
             backgroundColor={c.badges.info.bg}
             alignItems="center"
             justifyContent="center"
@@ -146,7 +187,7 @@ function UserDetailBlock({ user }: UserDetailBlockProps) {
           <XStack
             width={32}
             height={32}
-            borderRadius={16}
+            borderRadius={8}
             backgroundColor={c.badges.gray.bg}
             alignItems="center"
             justifyContent="center"

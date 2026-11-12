@@ -109,8 +109,8 @@ describe("MessageSenderSchema", () => {
         avatarUrl: "https://x/a.png",
       }).success,
     ).toBe(true)
-    expect(MessageSenderSchema.safeParse({ type: "system", id: "x", name: "X" }).success).toBe(
-      false,
+    expect(MessageSenderSchema.safeParse({ type: "system", id: "teros", name: "Teros" }).success).toBe(
+      true,
     )
   })
 })

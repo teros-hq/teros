@@ -14,25 +14,28 @@ import {
   KeyValueGrid,
   type KeyValueRow,
   ResourceCard,
-  colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
   GITHUB_PALETTE,
   type GitHubBranch,
   GitHubToolShell,
+  actionLabel,
   branchChipProps,
   scrollStyle,
   shortSha,
+  listItems,
+  noun,
 } from './shared';
 
 // list-branches
 export function ListBranchesRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
-  const parsed = output ? parseOutput<GitHubBranch[]>(output) : null;
-  const branches = Array.isArray(parsed) ? parsed : [];
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const branches = listItems<GitHubBranch>(parsed);
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={`${branches.length} branch${branches.length === 1 ? '' : 'es'}`}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, noun('branches'), `${branches.length}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && branches.length === 0 && <Empty message="No branches." />}
       {!error && status === 'completed' && branches.length > 0 && (
@@ -68,7 +71,7 @@ export function GetBranchRenderer({ toolName, status, output, error, duration }:
   if (typeof branch?.protected === 'boolean') rows.push({ key: 'protected', value: branch.protected ? 'yes' : 'no' });
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} description={branch ? actionLabel(toolName, status, branch.name) : actionLabel(toolName, status, 'rama')}>
       {error && <ErrorBlock error={error} />}
       {!error && branch && (
         <ResourceCard
@@ -89,12 +92,13 @@ interface CreateBranchResult {
 }
 
 export function CreateBranchRenderer({ toolName, status, output, error, duration, input }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<CreateBranchResult>(output) : null;
   const result = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as CreateBranchResult) : null;
   const branchName = (input?.branch as string | undefined) ?? result?.ref?.replace(/^refs\/heads\//, '');
   const fromBranch = (input?.from_branch as string | undefined) ?? 'main';
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, branchName ?? 'rama', `from ${fromBranch}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && result && (
         <ResourceCard
@@ -104,7 +108,7 @@ export function CreateBranchRenderer({ toolName, status, output, error, duration
           verb="created"
         >
           {result.object?.sha && (
-            <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+            <Text color={c.text2} fontSize={9} fontFamily="$mono">
               sha {shortSha(result.object.sha)}
             </Text>
           )}

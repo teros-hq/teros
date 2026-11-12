@@ -28,17 +28,26 @@ export function createOnboardingStatusHandler(db: Db, userService: UserService) 
   const providers = db.collection('user_providers')
   const credentials = db.collection('user_credentials')
   const agentAppAccess = db.collection('agent_app_access')
-  const messages = db.collection('messages')
+  const agents = db.collection('agents')
+  // Live messages are in channel_messages (`messages` is the legacy collection — MOD-1)
+  const messages = db.collection('channel_messages')
 
   return async function onboardingStatus(ctx: WsHandlerContext): Promise<OnboardingStatus> {
+    // agent_app_access has no ownerId: resolve the user's agents first (MOD-1)
+    const ownAgentIds = (
+      await agents.find({ ownerId: ctx.userId }).project<{ agentId: string }>({ agentId: 1, _id: 0 }).toArray()
+    ).map((a) => a.agentId)
+
     const [user, providerCount, credentialCount, accessCount, messageCount] = await Promise.all([
       userService.getByUserId(ctx.userId),
-      providers.countDocuments({ userId: ctx.userId, status: 'active' }),
-      credentials.countDocuments({ userId: ctx.userId }),
-      // agent_app_access: check agents owned by this user
-      agentAppAccess.countDocuments({ ownerId: ctx.userId }),
-      // messages sent by the user (role: 'user') in any channel they own
-      messages.countDocuments({ userId: ctx.userId, role: 'user' }),
+      providers.countDocuments({ userId: ctx.userId, status: 'active' }, { limit: 1 }),
+      credentials.countDocuments({ userId: ctx.userId }, { limit: 1 }),
+      // apps assigned to any agent this user owns
+      ownAgentIds.length > 0
+        ? agentAppAccess.countDocuments({ agentId: { $in: ownAgentIds } }, { limit: 1 })
+        : Promise.resolve(0),
+      // messages sent by the user (role: 'user') in any channel
+      messages.countDocuments({ userId: ctx.userId, role: 'user' }, { limit: 1 }),
     ])
 
     return {

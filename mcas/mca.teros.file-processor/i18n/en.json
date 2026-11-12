@@ -6,7 +6,7 @@
     },
     "file-to-markdown": {
       "name": "file-to-markdown",
-      "description": "Convert a file to text/Markdown (synchronous). PDF and Word .docx are extracted locally; scanned PDFs fall back to LLM OCR if a system key is set. Use file-to-markdown-async for long-running jobs.",
+      "description": "Convert a file to text/Markdown (synchronous). PDFs and Word .docx are extracted locally; scanned PDFs and images are OCR'd locally via @teros/ocr (no API key needed). Use file-to-markdown-async for long-running jobs.",
       "params": {
         "inputPath": "Path to the file to convert",
         "outputPath": "Optional output path (defaults to input path with .md extension)",
@@ -17,7 +17,7 @@
     },
     "file-to-markdown-async": {
       "name": "file-to-markdown-async",
-      "description": "Convert a file to Markdown asynchronously (non-blocking). Supports PDF and Word .docx. Returns a job ID immediately. Use get-job-status to check progress.",
+      "description": "Convert a file to Markdown asynchronously (non-blocking). Supports PDF, Word .docx, and images (png/jpg/tiff/webp/gif/bmp). Returns a job ID immediately. Use get-job-status to check progress.",
       "params": {
         "inputPath": "Path to the file to convert",
         "outputPath": "Optional output path (defaults to input path with .md extension)",
@@ -53,7 +53,7 @@
       "description": "Transcribe audio files to text using OpenAI Whisper API. Supports .m4a, .mp3, .wav, .ogg, .webm, .opus and other audio formats.",
       "params": {
         "inputPath": "Path to the audio file to transcribe",
-        "language": "Optional: Language code (e.g., 'es' for Spanish, 'en' for English). Auto-detected if not provided."
+        "language": "Optional: Language code (e.g., 'es' for Spanish, 'en' for English). Defaults to 'es' (Spanish) to prevent auto-detection from misidentifying Spanish as Catalan/Galician/Portuguese."
       }
     },
     "svg-to-png": {
@@ -65,11 +65,35 @@
         "width": "Optional: Target width in pixels",
         "height": "Optional: Target height in pixels"
       }
+    },
+    "ocr-extract": {
+      "name": "ocr-extract",
+      "description": "Extract text from an image or PDF using local OCR (@teros/ocr — tesseract.js WASM). No API key needed. Returns structured result with per-page confidence scores and low-confidence word markers. Supports: png, jpg, jpeg, tiff, webp, gif, bmp, pdf.",
+      "params": {
+        "inputPath": "Path to the image or PDF file",
+        "languages": "OCR languages (default: ['spa', 'eng'])",
+        "pages": "Pages to process, e.g. '1-3,5' (default: all). Only for PDFs.",
+        "format": "Output format (default: 'markdown')"
+      }
+    },
+    "pdf-to-images": {
+      "name": "pdf-to-images",
+      "description": "Show a PDF or image to the agent as images in its context, so it can read it with vision (scans, handwriting, stamps, IDs)",
+      "params": {
+        "inputPath": "Path to the PDF or image file",
+        "pages": "PDF pages to show, e.g. '1-3,5' (default: the first 10)",
+        "dpi": "PDF render resolution (default 150)",
+        "maxDimension": "Longest side of each image in px (default 1568)",
+        "autoRotate": "Straighten sideways/upside-down pages before attaching them (default true)"
+      }
     }
   },
   "name": "File Processor",
-  "description": "Convert files to Markdown, transcribe audio, convert Markdown to PDF",
+  "description": "Convert files to Markdown with local OCR (PDF, images, DOCX), transcribe audio, convert SVG to PNG",
   "changelog": [
+    {
+      "notes": "Local OCR via @teros/ocr (tesseract.js WASM) — scanned PDFs and images are now OCR'd locally without API keys. New ocr-extract tool for structured OCR output with confidence scores. Image support: png, jpg, tiff, webp, gif, bmp."
+    },
     {
       "notes": "Initial release — convert documents to Markdown, transcribe audio to text, and turn SVGs into PNG images"
     }

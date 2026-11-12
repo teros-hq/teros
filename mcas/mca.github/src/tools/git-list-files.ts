@@ -1,13 +1,14 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { agentGitTool } from './_locked';
 
 /**
  * List files in the repo, respecting `.gitignore`. Categorises into
  * `tracked` (in the index), `untracked` (not in index, not ignored), and
  * `ignored` (matching `.gitignore`).
  */
-export const gitListFiles: ToolConfig = {
+export const gitListFiles: ToolConfig = agentGitTool({
   annotations: { readOnlyHint: true },
   description:
     'List files in the repo, respecting `.gitignore`. Returns `{ tracked, untracked, ignored }` arrays. Optionally filter by `pattern` (glob, relative to repo root).',
@@ -34,10 +35,10 @@ export const gitListFiles: ToolConfig = {
 
     const patternArgs = a.pattern ? ['--', a.pattern] : [];
 
-    const trackedResult = runGit(repoPath, ['ls-files', ...patternArgs]);
+    const trackedResult = await runGit(repoPath, ['ls-files', ...patternArgs]);
     if (trackedResult.code !== 0) throwClassifiedGitError(trackedResult);
 
-    const untrackedResult = runGit(repoPath, [
+    const untrackedResult = await runGit(repoPath, [
       'ls-files',
       '--others',
       '--exclude-standard',
@@ -50,7 +51,7 @@ export const gitListFiles: ToolConfig = {
 
     let ignored: string[] = [];
     if (a.includeIgnored) {
-      const ignoredResult = runGit(repoPath, [
+      const ignoredResult = await runGit(repoPath, [
         'ls-files',
         '--others',
         '--ignored',
@@ -69,4 +70,4 @@ export const gitListFiles: ToolConfig = {
       totals: { tracked: tracked.length, untracked: untracked.length, ignored: ignored.length },
     };
   },
-};
+});

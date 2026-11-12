@@ -2,33 +2,46 @@
  * Sentry Error Tracking for React Native/Expo
  *
  * Centralized Sentry configuration for the mobile/web app.
+ *
+ * The SDK (~1 MB minified) is NOT in the entry bundle: `initSentry()` schedules a
+ * dynamic import for when the browser is idle after the first screen, and every
+ * call made before the SDK arrives is queued and replayed. Errors thrown while it
+ * loads are caught by two tiny window listeners and replayed too. Without a DSN
+ * the SDK is never fetched.
+ *
+ * @spec LOADP-REQ-3
  */
 
-import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
+import type * as SentryNamespace from '@sentry/react-native';
 
+type Sdk = typeof SentryNamespace;
+type SeverityLevel = SentryNamespace.SeverityLevel;
+type Breadcrumb = SentryNamespace.Breadcrumb;
+
+const MAX_QUEUE = 50;
+
+let sdk: Sdk | null = null;
+let started = false;
 let initialized = false;
+const queue: Array<(s: Sdk) => void> = [];
 
-/**
- * Initialize Sentry error tracking
- * Should be called as early as possible in the app lifecycle
- */
-export function initSentry(): void {
-  const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
+function hasDsn(): boolean {
+  return !!process.env.EXPO_PUBLIC_SENTRY_DSN;
+}
 
-  if (!dsn) {
-    console.log('[Sentry] No DSN configured, error tracking disabled');
-    return;
-  }
+/** Run now when the SDK is loaded, otherwise once it is (bounded queue, oldest dropped). */
+function whenReady<T>(fn: (s: Sdk) => T): T | undefined {
+  if (sdk) return fn(sdk);
+  queue.push(fn as (s: Sdk) => void);
+  if (queue.length > MAX_QUEUE) queue.shift();
+  return undefined;
+}
 
-  if (initialized) {
-    console.log('[Sentry] Already initialized');
-    return;
-  }
-
+function init(s: Sdk, dsn: string): void {
   const isProduction = process.env.NODE_ENV === 'production';
 
-  Sentry.init({
+  s.init({
     dsn,
     environment: isProduction ? 'production' : 'development',
     release: Constants.expoConfig?.version || '1.0.0',
@@ -67,10 +80,58 @@ export function initSentry(): void {
   });
 
   initialized = true;
-  console.log(
-    '[Sentry] Initialized with environment:',
-    isProduction ? 'production' : 'development',
-  );
+  console.log('[Sentry] Initialized with environment:', isProduction ? 'production' : 'development');
+}
+
+/** Web: capture what throws before the SDK is here; the SDK's own handlers take over after. */
+function listenEarly(): () => void {
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return () => {};
+  const onError = (e: ErrorEvent) => whenReady((s) => s.captureException(e.error ?? e.message));
+  const onRejection = (e: PromiseRejectionEvent) => whenReady((s) => s.captureException(e.reason));
+  window.addEventListener('error', onError);
+  window.addEventListener('unhandledrejection', onRejection);
+  return () => {
+    window.removeEventListener('error', onError);
+    window.removeEventListener('unhandledrejection', onRejection);
+  };
+}
+
+function whenIdle(fn: () => void): void {
+  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => void })
+    .requestIdleCallback;
+  if (ric) ric(fn, { timeout: 4000 });
+  else setTimeout(fn, 1500);
+}
+
+/**
+ * Start error tracking. Call as early as possible; the SDK itself loads when the
+ * browser is idle (LOADP-REQ-3).
+ */
+export function initSentry(): void {
+  const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
+
+  if (!dsn) {
+    console.log('[Sentry] No DSN configured, error tracking disabled');
+    return;
+  }
+
+  if (started) {
+    console.log('[Sentry] Already initialized');
+    return;
+  }
+  started = true;
+
+  const stopEarly = listenEarly();
+  whenIdle(() => {
+    import('@sentry/react-native')
+      .then((loaded) => {
+        sdk = loaded;
+        stopEarly();
+        init(loaded, dsn);
+        for (const fn of queue.splice(0)) fn(loaded);
+      })
+      .catch((err) => console.warn('[Sentry] SDK failed to load, error tracking off:', err));
+  });
 }
 
 /**
@@ -80,14 +141,12 @@ export function captureException(
   error: Error | unknown,
   context?: Record<string, any>,
 ): string | undefined {
-  if (!initialized) {
+  if (!hasDsn()) {
     console.error('[Sentry] Not initialized, logging error:', error);
     return undefined;
   }
 
-  return Sentry.captureException(error, {
-    extra: context,
-  });
+  return whenReady((s) => s.captureException(error, { extra: context }));
 }
 
 /**
@@ -95,39 +154,40 @@ export function captureException(
  */
 export function captureMessage(
   message: string,
-  level: Sentry.SeverityLevel = 'info',
+  level: SeverityLevel = 'info',
   context?: Record<string, any>,
+  tags?: Record<string, string>,
 ): string | undefined {
-  if (!initialized) {
+  if (!hasDsn()) {
     console.log('[Sentry] Not initialized, logging message:', message);
     return undefined;
   }
 
-  return Sentry.captureMessage(message, {
-    level,
-    extra: context,
-  });
+  return whenReady((s) => s.captureMessage(message, { level, extra: context, tags }));
 }
 
 /**
  * Set user context for all subsequent events
  */
 export function setUser(user: { id: string; email?: string; username?: string } | null): void {
-  Sentry.setUser(user);
+  if (!hasDsn()) return;
+  whenReady((s) => s.setUser(user));
 }
 
 /**
  * Set custom tags for all subsequent events
  */
 export function setTag(key: string, value: string): void {
-  Sentry.setTag(key, value);
+  if (!hasDsn()) return;
+  whenReady((s) => s.setTag(key, value));
 }
 
 /**
  * Add breadcrumb for debugging
  */
-export function addBreadcrumb(breadcrumb: Sentry.Breadcrumb): void {
-  Sentry.addBreadcrumb(breadcrumb);
+export function addBreadcrumb(breadcrumb: Breadcrumb): void {
+  if (!hasDsn()) return;
+  whenReady((s) => s.addBreadcrumb(breadcrumb));
 }
 
 /**
@@ -136,6 +196,3 @@ export function addBreadcrumb(breadcrumb: Sentry.Breadcrumb): void {
 export function isInitialized(): boolean {
   return initialized;
 }
-
-// Re-export Sentry for advanced usage (e.g., ErrorBoundary)
-export { Sentry };

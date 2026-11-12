@@ -1,0 +1,1499 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.intuit.quickbooks",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies QuickBooks OAuth credentials and connectivity by querying the CompanyInfo endpoint.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-company-info",
+      "description": "Retrieve QuickBooks Online company information — company name, legal name, country, currency, fiscal year start, tax form, address, email, phone, and website.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-customers",
+      "description": "List QuickBooks Online customers with optional filters. Search by name/email, filter by active status, and paginate with limit/offset. Returns key customer fields (Id, DisplayName, Active, Email, Balance, TotalRevenue).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Optional search term to filter customers by DisplayName (LIKE match). Case-insensitive."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Filter by active status. true = active only, false = inactive only, omit = all."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 50, max: 100).",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "number",
+            "description": "Starting position for pagination (1-based, default: 1).",
+            "default": 1,
+            "minimum": 1
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-customer",
+      "description": "Retrieve a single QuickBooks Online customer by ID. Returns the full customer object with all fields including SyncToken (needed for updates).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "description": "The QuickBooks customer ID."
+          }
+        },
+        "required": [
+          "customerId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-customer",
+      "description": "Create a new QuickBooks Online customer. Returns the created customer with Id and SyncToken. At minimum, a DisplayName is required.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "description": "Customer display name (required). Must be unique across all customers."
+          },
+          "email": {
+            "type": "string",
+            "description": "Primary email address for the customer."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Primary phone number (free-form)."
+          },
+          "companyName": {
+            "type": "string",
+            "description": "Company or organization name."
+          },
+          "givenName": {
+            "type": "string",
+            "description": "Given (first) name — use for individual customers."
+          },
+          "familyName": {
+            "type": "string",
+            "description": "Family (last) name — use for individual customers."
+          },
+          "billAddr": {
+            "type": "object",
+            "description": "Billing address.",
+            "properties": {
+              "Line1": {
+                "type": "string",
+                "description": "Street address line 1."
+              },
+              "City": {
+                "type": "string",
+                "description": "City name."
+              },
+              "CountrySubDivisionCode": {
+                "type": "string",
+                "description": "State or province code (e.g. \"TX\", \"CO\")."
+              },
+              "PostalCode": {
+                "type": "string",
+                "description": "ZIP or postal code."
+              },
+              "Country": {
+                "type": "string",
+                "description": "Country code (e.g. \"US\")."
+              }
+            }
+          },
+          "notes": {
+            "type": "string",
+            "description": "Free-form notes about this customer."
+          }
+        },
+        "required": [
+          "displayName"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-customer",
+      "description": "Update an existing QuickBooks Online customer. Requires customerId and syncToken (obtain syncToken via get-customer first). Only provided fields are updated; omitted fields remain unchanged. To deactivate a customer, set active=false.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "description": "The QuickBooks customer ID to update."
+          },
+          "syncToken": {
+            "type": "string",
+            "description": "The current SyncToken of the customer. Required for optimistic concurrency. Get it via get-customer."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Updated display name."
+          },
+          "email": {
+            "type": "string",
+            "description": "Updated primary email address."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Updated primary phone number."
+          },
+          "companyName": {
+            "type": "string",
+            "description": "Updated company name."
+          },
+          "givenName": {
+            "type": "string",
+            "description": "Updated given (first) name."
+          },
+          "familyName": {
+            "type": "string",
+            "description": "Updated family (last) name."
+          },
+          "billAddr": {
+            "type": "object",
+            "description": "Updated billing address.",
+            "properties": {
+              "Line1": {
+                "type": "string"
+              },
+              "City": {
+                "type": "string"
+              },
+              "CountrySubDivisionCode": {
+                "type": "string"
+              },
+              "PostalCode": {
+                "type": "string"
+              },
+              "Country": {
+                "type": "string"
+              }
+            }
+          },
+          "notes": {
+            "type": "string",
+            "description": "Updated notes."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Set to false to deactivate (make inactive) the customer. QuickBooks prefers deactivation over deletion."
+          }
+        },
+        "required": [
+          "customerId",
+          "syncToken"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-vendors",
+      "description": "List QuickBooks Online vendors with optional filters. Search by name, filter by active status, and paginate with limit/offset. Returns key vendor fields (Id, DisplayName, Active, Email, Balance).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Optional search term to filter vendors by DisplayName (LIKE match). Case-insensitive."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Filter by active status. true = active only, false = inactive only, omit = all."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 50, max: 100).",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "number",
+            "description": "Starting position for pagination (1-based, default: 1).",
+            "default": 1,
+            "minimum": 1
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-vendor",
+      "description": "Retrieve a single QuickBooks Online vendor by ID. Returns the full vendor object with all fields including SyncToken (needed for updates).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "vendorId": {
+            "type": "string",
+            "description": "The QuickBooks vendor ID."
+          }
+        },
+        "required": [
+          "vendorId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-vendor",
+      "description": "Create a new QuickBooks Online vendor. Returns the created vendor with Id and SyncToken. At minimum, a DisplayName is required.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "description": "Vendor display name (required). Must be unique across all vendors."
+          },
+          "email": {
+            "type": "string",
+            "description": "Primary email address for the vendor."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Primary phone number (free-form)."
+          },
+          "companyName": {
+            "type": "string",
+            "description": "Company or organization name."
+          },
+          "givenName": {
+            "type": "string",
+            "description": "Given (first) name."
+          },
+          "familyName": {
+            "type": "string",
+            "description": "Family (last) name."
+          },
+          "billAddr": {
+            "type": "object",
+            "description": "Billing address.",
+            "properties": {
+              "Line1": {
+                "type": "string",
+                "description": "Street address line 1."
+              },
+              "City": {
+                "type": "string",
+                "description": "City name."
+              },
+              "CountrySubDivisionCode": {
+                "type": "string",
+                "description": "State or province code (e.g. \"CO\")."
+              },
+              "PostalCode": {
+                "type": "string",
+                "description": "ZIP or postal code."
+              },
+              "Country": {
+                "type": "string",
+                "description": "Country code (e.g. \"US\")."
+              }
+            }
+          },
+          "webAddr": {
+            "type": "string",
+            "description": "Vendor website URL."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Free-form notes about this vendor."
+          }
+        },
+        "required": [
+          "displayName"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-vendor",
+      "description": "Update an existing QuickBooks Online vendor. Requires vendorId and syncToken (obtain syncToken via get-vendor first). Only provided fields are updated; omitted fields remain unchanged. To deactivate a vendor, set active=false.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "vendorId": {
+            "type": "string",
+            "description": "The QuickBooks vendor ID to update."
+          },
+          "syncToken": {
+            "type": "string",
+            "description": "The current SyncToken of the vendor. Required for optimistic concurrency. Get it via get-vendor."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Updated display name."
+          },
+          "email": {
+            "type": "string",
+            "description": "Updated primary email address."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Updated primary phone number."
+          },
+          "companyName": {
+            "type": "string",
+            "description": "Updated company name."
+          },
+          "givenName": {
+            "type": "string",
+            "description": "Updated given (first) name."
+          },
+          "familyName": {
+            "type": "string",
+            "description": "Updated family (last) name."
+          },
+          "billAddr": {
+            "type": "object",
+            "description": "Updated billing address.",
+            "properties": {
+              "Line1": {
+                "type": "string"
+              },
+              "City": {
+                "type": "string"
+              },
+              "CountrySubDivisionCode": {
+                "type": "string"
+              },
+              "PostalCode": {
+                "type": "string"
+              },
+              "Country": {
+                "type": "string"
+              }
+            }
+          },
+          "webAddr": {
+            "type": "string",
+            "description": "Updated website URL."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Updated notes."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Set to false to deactivate (make inactive) the vendor. QuickBooks prefers deactivation over deletion."
+          }
+        },
+        "required": [
+          "vendorId",
+          "syncToken"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-invoices",
+      "description": "List QuickBooks Online invoices with optional filters. Filter by customer, status (open/paid/void/all), and date range. Returns key invoice fields (Id, DocNumber, TxnDate, CustomerRef, TotalAmt, Balance, DueDate).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "description": "Filter invoices by customer ID."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "paid",
+              "void",
+              "all"
+            ],
+            "description": "Filter by invoice status: \"open\" (Balance > 0), \"paid\" (Balance = 0), \"void\" (voided), \"all\" (no status filter). Default: \"all\"."
+          },
+          "dateFrom": {
+            "type": "string",
+            "description": "Filter invoices from this date (ISO format, e.g. \"2026-01-01\")."
+          },
+          "dateTo": {
+            "type": "string",
+            "description": "Filter invoices up to this date (ISO format, e.g. \"2026-12-31\")."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 50, max: 100).",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "number",
+            "description": "Starting position for pagination (1-based, default: 1).",
+            "default": 1,
+            "minimum": 1
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-invoice",
+      "description": "Retrieve a single QuickBooks Online invoice by ID. Returns the full invoice object with line items, customer reference, totals, and SyncToken (needed for updates/void).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "invoiceId": {
+            "type": "string",
+            "description": "The QuickBooks invoice ID."
+          }
+        },
+        "required": [
+          "invoiceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-invoice",
+      "description": "Create a new QuickBooks Online invoice with line items. Returns the created invoice with Id, DocNumber, TotalAmt, and Balance. Each line item requires an itemId (ItemRef), quantity, and unitPrice.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "description": "The QuickBooks customer ID to bill."
+          },
+          "txnDate": {
+            "type": "string",
+            "description": "Transaction date (ISO format, e.g. \"2026-09-20\"). Defaults to today."
+          },
+          "lineItems": {
+            "type": "array",
+            "description": "Line items for the invoice. Each item requires itemId, quantity, and unitPrice.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "itemId": {
+                  "type": "string",
+                  "description": "QuickBooks Item ID (ItemRef value)."
+                },
+                "quantity": {
+                  "type": "number",
+                  "description": "Quantity for this line item."
+                },
+                "unitPrice": {
+                  "type": "number",
+                  "description": "Unit price for this line item."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Optional description for this line item."
+                }
+              },
+              "required": [
+                "itemId",
+                "quantity",
+                "unitPrice"
+              ]
+            }
+          },
+          "billEmail": {
+            "type": "string",
+            "description": "Billing email address for the invoice."
+          },
+          "customerMemo": {
+            "type": "string",
+            "description": "Memo visible to the customer on the invoice."
+          }
+        },
+        "required": [
+          "customerId",
+          "lineItems"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-invoice",
+      "description": "Update an existing QuickBooks Online invoice. Requires invoiceId and syncToken (obtain syncToken via get-invoice first). Only provided fields are updated; omitted fields remain unchanged.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "invoiceId": {
+            "type": "string",
+            "description": "The QuickBooks invoice ID to update."
+          },
+          "syncToken": {
+            "type": "string",
+            "description": "The current SyncToken of the invoice. Required for optimistic concurrency. Get it via get-invoice."
+          },
+          "txnDate": {
+            "type": "string",
+            "description": "Updated transaction date (ISO format)."
+          },
+          "dueDate": {
+            "type": "string",
+            "description": "Updated due date (ISO format)."
+          },
+          "billEmail": {
+            "type": "string",
+            "description": "Updated billing email address."
+          },
+          "customerMemo": {
+            "type": "string",
+            "description": "Updated memo visible to the customer."
+          },
+          "privateNote": {
+            "type": "string",
+            "description": "Updated private note (not visible to customer)."
+          },
+          "lineItems": {
+            "type": "array",
+            "description": "Updated line items. Replaces all existing line items.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "itemId": {
+                  "type": "string",
+                  "description": "QuickBooks Item ID (ItemRef value)."
+                },
+                "quantity": {
+                  "type": "number",
+                  "description": "Quantity for this line item."
+                },
+                "unitPrice": {
+                  "type": "number",
+                  "description": "Unit price for this line item."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Optional description for this line item."
+                }
+              },
+              "required": [
+                "itemId",
+                "quantity",
+                "unitPrice"
+              ]
+            }
+          }
+        },
+        "required": [
+          "invoiceId",
+          "syncToken"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "void-invoice",
+      "description": "Void a QuickBooks Online invoice. The invoice record is preserved but marked as voided (Balance and TotalAmt set to 0). Requires invoiceId and syncToken. Use get-invoice to obtain the current syncToken.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "invoiceId": {
+            "type": "string",
+            "description": "The QuickBooks invoice ID to void."
+          },
+          "syncToken": {
+            "type": "string",
+            "description": "The current SyncToken of the invoice. Get it via get-invoice."
+          }
+        },
+        "required": [
+          "invoiceId",
+          "syncToken"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "send-invoice",
+      "description": "Send a QuickBooks Online invoice to the customer via email. If no email address is provided, uses the BillEmail stored on the invoice. Returns the delivery status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "invoiceId": {
+            "type": "string",
+            "description": "The QuickBooks invoice ID to send."
+          },
+          "email": {
+            "type": "string",
+            "description": "Email address to send the invoice to. If omitted, uses the invoice BillEmail."
+          }
+        },
+        "required": [
+          "invoiceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-payments",
+      "description": "List QuickBooks Online payments with optional filters. Filter by customer and date range. Returns key payment fields (Id, TxnDate, CustomerRef, TotalAmt, PaymentMethod).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "description": "Filter payments by customer ID."
+          },
+          "dateFrom": {
+            "type": "string",
+            "description": "Filter payments from this date (ISO format, e.g. \"2026-01-01\")."
+          },
+          "dateTo": {
+            "type": "string",
+            "description": "Filter payments up to this date (ISO format, e.g. \"2026-12-31\")."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 50, max: 100).",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "number",
+            "description": "Starting position for pagination (1-based, default: 1).",
+            "default": 1,
+            "minimum": 1
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-payment",
+      "description": "Retrieve a single QuickBooks Online payment by ID. Returns the full payment object with line items (linked transactions), customer reference, and SyncToken (needed for deletes).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "paymentId": {
+            "type": "string",
+            "description": "The QuickBooks payment ID."
+          }
+        },
+        "required": [
+          "paymentId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-payment",
+      "description": "Create a new QuickBooks Online payment. If invoiceId is provided, the payment is linked to that invoice via LinkedTxn. Returns the created payment with Id. Supports payment methods: cash, check, credit_card, bank_transfer.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "description": "The QuickBooks customer ID making the payment."
+          },
+          "totalAmt": {
+            "type": "number",
+            "description": "Total payment amount."
+          },
+          "invoiceId": {
+            "type": "string",
+            "description": "Optional invoice ID to link this payment to. Creates a LinkedTxn on the payment line."
+          },
+          "txnDate": {
+            "type": "string",
+            "description": "Transaction date (ISO format, e.g. \"2026-09-20\"). Defaults to today."
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "check",
+              "credit_card",
+              "bank_transfer"
+            ],
+            "description": "Payment method. Maps to QuickBooks PaymentMethodRef."
+          }
+        },
+        "required": [
+          "customerId",
+          "totalAmt"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-payment",
+      "description": "Delete a QuickBooks Online payment. This permanently removes the payment record. Requires paymentId and syncToken. Use get-payment to obtain the current syncToken.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "paymentId": {
+            "type": "string",
+            "description": "The QuickBooks payment ID to delete."
+          },
+          "syncToken": {
+            "type": "string",
+            "description": "The current SyncToken of the payment. Get it via get-payment."
+          }
+        },
+        "required": [
+          "paymentId",
+          "syncToken"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-bills",
+      "description": "List QuickBooks Online bills with optional filters. Filter by vendor, status (open/paid), and date range. Returns key bill fields (Id, TxnDate, DueDate, VendorRef, TotalAmt, Balance).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "vendorId": {
+            "type": "string",
+            "description": "Filter bills by vendor ID."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "paid",
+              "all"
+            ],
+            "description": "Filter by bill status: \"open\" (Balance > 0), \"paid\" (Balance = 0), or \"all\" (default)."
+          },
+          "dateFrom": {
+            "type": "string",
+            "description": "Filter bills from this date (ISO format, e.g. \"2026-01-01\")."
+          },
+          "dateTo": {
+            "type": "string",
+            "description": "Filter bills up to this date (ISO format, e.g. \"2026-12-31\")."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 50, max: 100).",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "number",
+            "description": "Starting position for pagination (1-based, default: 1).",
+            "default": 1,
+            "minimum": 1
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-bill",
+      "description": "Retrieve a single QuickBooks Online bill by ID. Returns the full bill object with line items, vendor reference, and SyncToken (needed for updates and deletes).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "billId": {
+            "type": "string",
+            "description": "The QuickBooks bill ID."
+          }
+        },
+        "required": [
+          "billId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-bill",
+      "description": "Create a new QuickBooks Online bill (vendor invoice). Requires a vendor ID and at least one line item with an expense account. Line items use AccountBasedExpenseLineDetail. Returns the created bill with Id and TotalAmt.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "vendorId": {
+            "type": "string",
+            "description": "The QuickBooks vendor ID for this bill."
+          },
+          "txnDate": {
+            "type": "string",
+            "description": "Transaction date (ISO format, e.g. \"2026-09-20\"). Defaults to today."
+          },
+          "dueDate": {
+            "type": "string",
+            "description": "Due date for the bill (ISO format, e.g. \"2026-10-20\")."
+          },
+          "lineItems": {
+            "type": "array",
+            "description": "Array of expense line items. Each item must have an accountId and amount.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "accountId": {
+                  "type": "string",
+                  "description": "The expense account ID for this line item."
+                },
+                "amount": {
+                  "type": "number",
+                  "description": "The amount for this line item."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Optional description for this line item."
+                }
+              },
+              "required": [
+                "accountId",
+                "amount"
+              ]
+            }
+          }
+        },
+        "required": [
+          "vendorId",
+          "lineItems"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-bill",
+      "description": "Update an existing QuickBooks Online bill. Requires billId and syncToken (obtain syncToken via get-bill first). Only provided fields are updated; omitted fields remain unchanged.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "billId": {
+            "type": "string",
+            "description": "The QuickBooks bill ID to update."
+          },
+          "syncToken": {
+            "type": "string",
+            "description": "The current SyncToken of the bill. Required for optimistic concurrency. Get it via get-bill."
+          },
+          "vendorId": {
+            "type": "string",
+            "description": "Update the vendor reference for this bill."
+          },
+          "txnDate": {
+            "type": "string",
+            "description": "Update the transaction date (ISO format)."
+          },
+          "dueDate": {
+            "type": "string",
+            "description": "Update the due date (ISO format)."
+          },
+          "lineItems": {
+            "type": "array",
+            "description": "Replace the bill line items. Each item must have an accountId and amount.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "accountId": {
+                  "type": "string",
+                  "description": "The expense account ID for this line item."
+                },
+                "amount": {
+                  "type": "number",
+                  "description": "The amount for this line item."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Optional description for this line item."
+                }
+              },
+              "required": [
+                "accountId",
+                "amount"
+              ]
+            }
+          },
+          "privateNote": {
+            "type": "string",
+            "description": "Update the private note on the bill."
+          }
+        },
+        "required": [
+          "billId",
+          "syncToken"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-bill",
+      "description": "Delete a QuickBooks Online bill. This permanently removes the bill record. Requires billId and syncToken. Use get-bill to obtain the current syncToken.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "billId": {
+            "type": "string",
+            "description": "The QuickBooks bill ID to delete."
+          },
+          "syncToken": {
+            "type": "string",
+            "description": "The current SyncToken of the bill. Get it via get-bill."
+          }
+        },
+        "required": [
+          "billId",
+          "syncToken"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-accounts",
+      "description": "List QuickBooks Online accounts (chart of accounts) with optional filters. Filter by account type (Bank, Accounts Receivable, Other Current Asset, Fixed Asset, Other Asset, Accounts Payable, Credit Card, Other Current Liability, Long Term Liability, Equity, Income, Cost of Goods Sold, Expense, Other Income, Other Expense, Non Posting) or by classification (Asset, Liability, Equity, Revenue, Expense) and active status. Returns key account fields (Id, Name, AccountType, AccountSubType, CurrentBalance).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountType": {
+            "type": "string",
+            "enum": [
+              "Bank",
+              "Accounts Receivable",
+              "Other Current Asset",
+              "Fixed Asset",
+              "Other Asset",
+              "Accounts Payable",
+              "Credit Card",
+              "Other Current Liability",
+              "Long Term Liability",
+              "Equity",
+              "Income",
+              "Cost of Goods Sold",
+              "Expense",
+              "Other Income",
+              "Other Expense",
+              "Non Posting"
+            ],
+            "description": "Filter by account type. Valid values: Bank, Accounts Receivable, Other Current Asset, Fixed Asset, Other Asset, Accounts Payable, Credit Card, Other Current Liability, Long Term Liability, Equity, Income, Cost of Goods Sold, Expense, Other Income, Other Expense, Non Posting."
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "Asset",
+              "Liability",
+              "Equity",
+              "Revenue",
+              "Expense"
+            ],
+            "description": "Filter by account classification (broad category). Useful when you want all asset, liability, or equity accounts regardless of specific type."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Filter by active status. true = active only, false = inactive only."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 50, max: 100).",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "number",
+            "description": "Starting position for pagination (1-based, default: 1).",
+            "default": 1,
+            "minimum": 1
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-account",
+      "description": "Retrieve a single QuickBooks Online account by ID. Returns the full account object with type, subtype, balance, and SyncToken.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The QuickBooks account ID."
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-account",
+      "description": "Create a new QuickBooks Online account in the chart of accounts. Requires a name and account type (Bank, Accounts Receivable, Other Current Asset, Fixed Asset, Other Asset, Accounts Payable, Credit Card, Other Current Liability, Long Term Liability, Equity, Income, Cost of Goods Sold, Expense, Other Income, Other Expense, Non Posting). Optionally specify an account subtype and currency. Returns the created account with Id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the account (e.g. \"Office Supplies\")."
+          },
+          "accountType": {
+            "type": "string",
+            "enum": [
+              "Bank",
+              "Accounts Receivable",
+              "Other Current Asset",
+              "Fixed Asset",
+              "Other Asset",
+              "Accounts Payable",
+              "Credit Card",
+              "Other Current Liability",
+              "Long Term Liability",
+              "Equity",
+              "Income",
+              "Cost of Goods Sold",
+              "Expense",
+              "Other Income",
+              "Other Expense",
+              "Non Posting"
+            ],
+            "description": "The type of account. Valid values: Bank, Accounts Receivable, Other Current Asset, Fixed Asset, Other Asset, Accounts Payable, Credit Card, Other Current Liability, Long Term Liability, Equity, Income, Cost of Goods Sold, Expense, Other Income, Other Expense, Non Posting."
+          },
+          "accountSubType": {
+            "type": "string",
+            "description": "The account subtype (e.g. \"SuppliesMaterialsCogs\", \"AccountsPayable\", \"AccountsReceivable\")."
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code for the account (e.g. \"USD\", \"EUR\"). Defaults to the company currency."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description for the account."
+          }
+        },
+        "required": [
+          "name",
+          "accountType"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-items",
+      "description": "List QuickBooks Online items (products and services) with optional filters. Filter by type (Service, Inventory, NonInventory) and active status. Returns key item fields (Id, Name, Type, UnitPrice, IncomeAccountRef).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "Service",
+              "Inventory",
+              "NonInventory",
+              "Category",
+              "Bundle"
+            ],
+            "description": "Filter by item type."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Filter by active status. true = active only, false = inactive only."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 50, max: 100).",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "number",
+            "description": "Starting position for pagination (1-based, default: 1).",
+            "default": 1,
+            "minimum": 1
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-item",
+      "description": "Retrieve a single QuickBooks Online item (product or service) by ID. Returns the full item object with type, price, account references, and SyncToken.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "The QuickBooks item ID."
+          }
+        },
+        "required": [
+          "itemId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-item",
+      "description": "Create a new QuickBooks Online item (product or service). Requires a name, type (Service, Inventory, NonInventory), and an income account reference. Optionally specify unit price and expense account. Returns the created item with Id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the item (e.g. \"Consulting Service\")."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "Service",
+              "Inventory",
+              "NonInventory",
+              "Category",
+              "Bundle"
+            ],
+            "description": "The type of item."
+          },
+          "incomeAccountRef": {
+            "type": "string",
+            "description": "The income account ID for this item (sales revenue account)."
+          },
+          "unitPrice": {
+            "type": "number",
+            "description": "The unit price (sales price) for this item."
+          },
+          "expenseAccountRef": {
+            "type": "string",
+            "description": "The expense account ID for this item (cost of goods sold account)."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description for the item."
+          },
+          "sku": {
+            "type": "string",
+            "description": "Optional SKU (stock keeping unit) for the item."
+          },
+          "taxable": {
+            "type": "boolean",
+            "description": "Whether this item is taxable. Default: false."
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "incomeAccountRef"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "report-profit-loss",
+      "description": "Generate a QuickBooks Online Profit & Loss (Income Statement) report for a date range. Returns the full report (Header, Columns, Rows) plus a simplified summary with total income, total expenses, and net income. Supports cash or accrual accounting method.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "description": "Start date for the report period (ISO format, e.g. \"2026-01-01\")."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date for the report period (ISO format, e.g. \"2026-09-30\")."
+          },
+          "accountingMethod": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "accrual"
+            ],
+            "description": "Accounting method: \"cash\" or \"accrual\". Default: \"accrual\"."
+          }
+        },
+        "required": [
+          "startDate",
+          "endDate"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "report-balance-sheet",
+      "description": "Generate a QuickBooks Online Balance Sheet report as of a specific date. Shows assets, liabilities, and equity. Supports cash or accrual accounting method.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "As-of date for the report (ISO format, e.g. \"2026-09-30\")."
+          },
+          "accountingMethod": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "accrual"
+            ],
+            "description": "Accounting method: \"cash\" or \"accrual\". Default: \"accrual\"."
+          }
+        },
+        "required": [
+          "date"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "report-cash-flow",
+      "description": "Generate a QuickBooks Online Cash Flow report for a date range. Shows operating, investing, and financing activities and the net change in cash.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "description": "Start date for the report period (ISO format, e.g. \"2026-01-01\")."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date for the report period (ISO format, e.g. \"2026-09-30\")."
+          }
+        },
+        "required": [
+          "startDate",
+          "endDate"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "report-aged-receivables",
+      "description": "Generate a QuickBooks Online Aged Receivables report as of a specific date. Shows outstanding customer balances grouped by aging buckets (Current, 1-30, 31-60, 61-90, 91+ days). Returns the full report plus a simplified aging summary with bucket totals.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "As-of date for the report (ISO format, e.g. \"2026-09-30\")."
+          }
+        },
+        "required": [
+          "date"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "report-aged-payables",
+      "description": "Generate a QuickBooks Online Aged Payables report as of a specific date. Shows outstanding vendor balances grouped by aging buckets (Current, 1-30, 31-60, 61-90, 91+ days). Returns the full report plus a simplified aging summary with bucket totals.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "As-of date for the report (ISO format, e.g. \"2026-09-30\")."
+          }
+        },
+        "required": [
+          "date"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "report-trial-balance",
+      "description": "Generate a QuickBooks Online Trial Balance report for a date range. Lists all accounts with their debit and credit balances, showing that total debits equal total credits.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "description": "Start date for the report period (ISO format, e.g. \"2026-01-01\")."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date for the report period (ISO format, e.g. \"2026-09-30\")."
+          }
+        },
+        "required": [
+          "startDate",
+          "endDate"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "report-general-ledger",
+      "description": "Generate a QuickBooks Online General Ledger report for a date range. Shows all transactions posted to each account, with debit and credit amounts. Optionally filter by account type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "description": "Start date for the report period (ISO format, e.g. \"2026-01-01\")."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date for the report period (ISO format, e.g. \"2026-09-30\")."
+          },
+          "accountType": {
+            "type": "string",
+            "enum": [
+              "Bank",
+              "AccountsReceivable",
+              "OtherCurrentAsset",
+              "FixedAsset",
+              "OtherAsset",
+              "AccountsPayable",
+              "CreditCard",
+              "OtherCurrentLiability",
+              "LongTermLiability",
+              "Equity",
+              "Income",
+              "CostOfGoodsSold",
+              "Expense",
+              "OtherIncome",
+              "OtherExpense",
+              "NonPosting"
+            ],
+            "description": "Optional account type filter. Valid values: Bank, AccountsReceivable, OtherCurrentAsset, FixedAsset, OtherAsset, AccountsPayable, CreditCard, OtherCurrentLiability, LongTermLiability, Equity, Income, CostOfGoodsSold, Expense, OtherIncome, OtherExpense, NonPosting."
+          }
+        },
+        "required": [
+          "startDate",
+          "endDate"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "report-customer-balance",
+      "description": "Generate a QuickBooks Online Customer Balance report for a date range. Shows outstanding balances for each customer, including total amount owed and aging information.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "description": "Start date for the report period (ISO format, e.g. \"2026-01-01\")."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date for the report period (ISO format, e.g. \"2026-09-30\")."
+          }
+        },
+        "required": [
+          "startDate",
+          "endDate"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "report-sales-by-customer",
+      "description": "Generate a QuickBooks Online Sales by Customer report for a date range. Shows total sales revenue broken down by customer, with subtotals and grand total.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "description": "Start date for the report period (ISO format, e.g. \"2026-01-01\")."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date for the report period (ISO format, e.g. \"2026-09-30\")."
+          }
+        },
+        "required": [
+          "startDate",
+          "endDate"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

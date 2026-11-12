@@ -1,5 +1,6 @@
 import type { ToolConfig } from '@teros/mca-sdk'
 import { createGraphClient, buildRecipients, processEmailBody } from '../lib'
+import { resolveSignatureHtml, withSignature } from '../lib/signature'
 import type { OutlookSecrets } from '../lib'
 
 export const updateDraft: ToolConfig = {
@@ -41,7 +42,12 @@ export const updateDraft: ToolConfig = {
         args.body as string,
         args.isHtml as boolean | undefined,
       )
-      updates.body = { contentType: isHtml ? 'HTML' : 'Text', content: processedBody }
+
+      // Signature: appended AFTER body processing (see create-draft).
+      const signature = resolveSignatureHtml(secrets.SIGNATURE_HTML)
+      const finalBody = withSignature(processedBody, isHtml, signature)
+
+      updates.body = { contentType: isHtml ? 'HTML' : 'Text', content: finalBody }
     }
 
     await graphRequest('PATCH', `/me/messages/${draftId}`, updates)

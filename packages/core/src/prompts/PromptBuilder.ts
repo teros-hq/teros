@@ -45,6 +45,13 @@ export interface PromptComponents {
   /** 1. System prompt (identity, personality, rules) */
   system: string;
 
+  /**
+   * Trailing per-request suffix already contained at the end of `system` (loaded
+   * skills + <context> timestamp). Forwarded onto BuiltPrompt.systemPromptVolatile
+   * for cache-aware adapters; NOT re-appended here (it is already inside `system`).
+   */
+  volatile?: string;
+
   /** 2. Tool definitions */
   tools?: ToolDefinition[];
 
@@ -115,6 +122,13 @@ export interface PromptBuilderConfig {
 export interface BuiltPrompt {
   /** System prompt (blocks 1 + 3 combined) */
   systemPrompt: string;
+
+  /**
+   * Trailing per-request suffix of `systemPrompt` (loaded skills + <context>).
+   * When present, `systemPrompt.endsWith(systemPromptVolatile)` holds. Cache-aware
+   * adapters slice it off so only the stable prefix is cached (TER-618).
+   */
+  systemPromptVolatile?: string;
 
   /** Tool definitions (block 2) */
   tools?: ToolDefinition[];
@@ -461,6 +475,13 @@ export function buildPrompt(
 
   return {
     systemPrompt,
+    // Only meaningful when the volatile suffix is still the tail of systemPrompt.
+    // If examples were appended after `system`, the invariant no longer holds and
+    // cache-aware adapters fall back to a single cached block (endsWith guard).
+    systemPromptVolatile:
+      components.volatile && systemPrompt.endsWith(components.volatile)
+        ? components.volatile
+        : undefined,
     tools: components.tools,
     messages: builtMessages,
     breakdown,

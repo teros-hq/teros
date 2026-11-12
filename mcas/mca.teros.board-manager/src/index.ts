@@ -41,7 +41,9 @@
  * - list-event-subscriptions: List active event subscriptions for a channel
  */
 
-import { McaServer, healthIssue, notReady, ready } from '@teros/mca-sdk';
+import { McaServer, healthIssue, notReady, ready, loadEventsDeclaration, registerSubscriptionTools } from '@teros/mca-sdk';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { disconnectWsClient, initializeWsClient, isWsConnected } from './lib';
 import {
   addProgressNote,
@@ -94,6 +96,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies WebSocket connectivity to backend.',
   parameters: {
     type: 'object',
@@ -108,6 +111,16 @@ server.tool('-health-check', {
     );
   },
 });
+
+// =============================================================================
+// RESERVED SUBSCRIPTION TOOLS (v1.4.4 — the unified subscription API)
+//
+// board_manager__subscribe(event: 'task_moved', filter?) → backend topic
+// board.task_moved. Replaces subscribe-to-board (deprecated, still functional).
+// State lives in the backend: subscriptions survive MCA respawns.
+// =============================================================================
+
+registerSubscriptionTools(server, loadEventsDeclaration(dirname(fileURLToPath(import.meta.url))));
 
 // =============================================================================
 // READ TOOLS
@@ -174,8 +187,15 @@ server.tool('list-event-subscriptions', listEventSubscriptions);
 async function main() {
   console.error('🚀 Starting Boards Manager MCA...');
 
-  // Connect to backend via WebSocket
-  await initializeWsClient();
+  // Connect to backend via WebSocket. Best-effort: under offline tool
+  // generation (generate-mca-tools.ts: stdio transport, no MCA_WS_URL) the
+  // process still needs to boot far enough to answer tools/list.
+  try {
+    await initializeWsClient();
+  } catch (err: any) {
+    if (process.env.MCA_WS_URL) throw err;
+    console.error(`⚠️ WebSocket unavailable (${err?.message ?? err}) — starting without backend connection`);
+  }
 
   // Start HTTP server
   await server.start();

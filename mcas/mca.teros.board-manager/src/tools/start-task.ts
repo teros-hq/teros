@@ -32,6 +32,8 @@ export const startTask: ToolConfig = {
 
     // Capture caller channel at call time — safe under parallel invocations
     const callerChannelId = context.execution.channelId;
+    const callerAgentId = (context.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
 
     const result = await withTimeout(
       wsClient.queryConversations<any>('start_task', {
@@ -39,6 +41,7 @@ export const startTask: ToolConfig = {
         agentId: args?.agentId,
         prompt: args?.prompt,
         ...(callerChannelId && { callerChannelId }),
+        callerAgentId,
       }),
       20_000,
       'start_task',

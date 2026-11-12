@@ -10,6 +10,8 @@
  */
 
 import type { Collection, Db } from 'mongodb'
+import { DEFAULT_TEROS_SIZES, type TerosFailoverSetting, type TerosSize, type TerosSizeRoutes } from './providers/teros.js'
+import { COLLECTIONS, ensureIndexesFor } from '../db'
 import { encrypt } from '../auth/encryption'
 import { isMongoDuplicateKey } from '../lib/mongo-errors'
 import { secrets } from '../secrets/secrets-manager'
@@ -32,6 +34,13 @@ export interface BillingPlan {
 
   // Consumo
   agentHoursLimit: number
+
+  /**
+   * Automate executions (any trigger kind) a subscriber may run per UTC day.
+   * 0 or absent ⇒ unmetered. Enforced by AutomateQuotaService; counted per
+   * starter creator (`automate_executions.createdBy`), not per workspace.
+   */
+  automateDailyExecutionLimit?: number
 
   // Features (feature-gating)
   features: {
@@ -71,6 +80,8 @@ export interface BillingSubscription {
   customAgentHoursLimit: number | null
   customPrice: number | null
   customPriceNote: string | null
+  /** Per-subscription override of plan.automateDailyExecutionLimit (0 ⇒ unmetered). Optional, admin-set. */
+  customAutomateDailyExecutionLimit?: number | null
 
   // Consumo (ciclo actual)
   agentHoursUsed: number
@@ -165,11 +176,20 @@ export interface TerosProviderConfig {
 
   name: string
 
-  /** Fireworks API key encrypted with the system encryption key */
+  /** Fireworks API key encrypted with the system encryption key (legacy; runtime routing uses system secrets). */
   fireworksApiKey: string
 
   /** Exactly one config must have isDefault: true */
   isDefault: boolean
+
+  /**
+   * Per-size upstream routes, one per latency lane (TPROV-REQ-4, TLANE-REQ-5).
+   * Written by migrations 20261103_001 / 20261109_001 and the admin window.
+   * @spec TLANE-REQ-5
+   */
+  sizes: Record<TerosSize, TerosSizeRoutes>
+  /** Failover policy for every size (TPROV-REQ-6). */
+  failover: TerosFailoverSetting
 
   // Metadata
   createdAt: Date
@@ -257,7 +277,12 @@ export interface BillingInvoice {
   //                   quote, e.g. a swept balance). NOT the user's fault: no dunning,
   //                   no account block; surfaced to ops until remediated.
   //   waived        — never charged (€0 BETA period, manual/transfer write-off).
-  status: 'pending' | 'invoiced' | 'paid' | 'waived' | 'overdue' | 'uncollectible' | 'held'
+  //   refunded      — Stripe refunded the full charge (charge.refunded webhook).
+  status: 'pending' | 'invoiced' | 'paid' | 'waived' | 'overdue' | 'uncollectible' | 'held' | 'refunded'
+
+  /** Amount Stripe refunded so far (whole units), from charge.refunded. */
+  refundedAmount?: number
+  refundedAt?: Date | null
 
   // Método de pago usado
   paymentMethod: 'stripe' | 'manual' | 'transfer' | 'other'
@@ -354,7 +379,10 @@ export interface BillingHourLedgerEntry {
   /** Previous cursor; exclusive lower bound of the summed range. Null = from epoch. */
   fromHourBucket: Date | null
 
-  /** Hours added to agentHoursUsed in this commit (summed userActiveMs / 3.6e6). */
+  /**
+   * Hours added to agentHoursUsed in this commit (summed billed ms / 3.6e6 —
+   * userWorkMs with userActiveMs fallback, decision #29).
+   */
   hoursAdded: number
 
   /** agentHoursUsed AFTER this commit (expected value once the $inc lands). */
@@ -602,164 +630,27 @@ export async function insertHourBoost(
 // ============================================================================
 
 /**
- * createIndex that heals a name collision when an index's SPEC changed.
- *
- * Mongo rejects createIndex when an index with the same name exists but a
- * different spec: IndexKeySpecsConflict (code 86) when the key FIELDS differ, or
- * IndexOptionsConflict (code 85) when only the OPTIONS differ (e.g. adding a
- * partialFilterExpression to the same key) — so simply editing an index here
- * (e.g. unique → partial-unique) would crash boot on any DB that still has the
- * old index. ensureBillingIndexes runs BEFORE runMigrations, so a migration
- * can't fix it first. This drops the conflicting index and recreates it with the
- * new spec. On a fresh DB (no old index) or a re-run (same spec) it's a plain,
- * idempotent createIndex with no drop.
+ * Re-exported from src/db/indexes.ts (GOV-4), where the registry uses it for
+ * the entries marked `heal` (billing_inv_period_unique, billing_boost_request_unique).
  */
-export async function createIndexHealingConflict(
-  col: Collection<any>,
-  keys: Record<string, 1 | -1>,
-  options: { name: string } & Record<string, unknown>,
-): Promise<void> {
-  try {
-    await col.createIndex(keys, options)
-  } catch (err) {
-    // 86 = IndexKeySpecsConflict (key fields changed); 85 = IndexOptionsConflict
-    // (same key, different options — e.g. a new partialFilterExpression). Both
-    // mean "same name, different spec" → heal by dropping + recreating. Any other
-    // error is real and must propagate.
-    const code = (err as { code?: number }).code
-    if (code !== 85 && code !== 86) throw err
-    await col.dropIndex(options.name)
-    await col.createIndex(keys, options)
-  }
-}
+export { createIndexHealingConflict } from '../db/indexes'
 
+/**
+ * Billing indexes are declared in src/db/indexes.ts (GOV-4); boot applies the
+ * whole registry with ensureAllIndexes after migrations. Kept for tests and scripts.
+ */
 export async function ensureBillingIndexes(db: Db): Promise<void> {
-  const plansCol = getBillingPlansCollection(db)
-  const subsCol = getBillingSubscriptionsCollection(db)
-  const invoicesCol = getBillingInvoicesCollection(db)
-  const configsCol = getTerosProviderConfigsCollection(db)
-  const teamsCol = getBillingTeamsCollection(db)
-
-  // billing_plans — _id is already indexed (PK)
-  // No extra indexes needed for plans (small, mostly read-all)
-
-  // billing_subscriptions
-  await subsCol.createIndex({ userId: 1 }, { name: 'billing_sub_userId' })
-  await subsCol.createIndex({ planId: 1 }, { name: 'billing_sub_planId' })
-  await subsCol.createIndex({ status: 1 }, { name: 'billing_sub_status' })
-  await subsCol.createIndex({ teamId: 1 }, { name: 'billing_sub_teamId' })
-  // Structural guard: at most ONE active subscription per user. Makes the
-  // "exactly one active sub" invariant impossible to violate by construction —
-  // a second insertOne/update to status:'active' for the same userId fails.
-  // The subscription history (status:'ended') lives alongside, unconstrained.
-  await subsCol.createIndex(
-    { userId: 1 },
-    {
-      name: 'billing_sub_one_active',
-      unique: true,
-      partialFilterExpression: { status: 'active' },
-    },
-  )
-
-  // billing_invoices
-  await invoicesCol.createIndex({ subscriptionId: 1 }, { name: 'billing_inv_subId' })
-  await invoicesCol.createIndex({ userId: 1 }, { name: 'billing_inv_userId' })
-  await invoicesCol.createIndex({ status: 1 }, { name: 'billing_inv_status' })
-  // One SUBSCRIPTION invoice per subscription per billing period — guarantees
-  // idempotency for the billing-reset-cron's upsert (see migration 20260616_001).
-  // PARTIAL on kind:'subscription' so boost-purchase invoices (kind:'boost'),
-  // which copy the active period, never collide with the period invoice nor with
-  // each other (TER-596 I1). Healing create: a DB with the old full-unique index
-  // gets it dropped + recreated partial here, before migrations run.
-  await createIndexHealingConflict(
-    invoicesCol,
-    { subscriptionId: 1, periodStart: 1, periodEnd: 1 },
-    {
-      unique: true,
-      name: 'billing_inv_period_unique',
-      partialFilterExpression: { kind: 'subscription' },
-    },
-  )
-
-  // billing_hour_ledger — append-only audit trail of tracker commits.
-  // Unique (subscriptionId, hourBucket): a re-run cannot duplicate an entry.
-  const ledgerCol = getBillingHourLedgerCollection(db)
-  await ledgerCol.createIndex(
-    { subscriptionId: 1, hourBucket: 1 },
-    { unique: true, name: 'billing_ledger_sub_bucket_unique' },
-  )
-  await ledgerCol.createIndex({ userId: 1 }, { name: 'billing_ledger_userId' })
-  await ledgerCol.createIndex({ trackerRunId: 1 }, { name: 'billing_ledger_runId' })
-
-  // billing_period_snapshots — append-only consumption at period close.
-  // Unique (subscriptionId, periodStart, periodEnd): one snapshot per period.
-  const snapshotsCol = getBillingPeriodSnapshotsCollection(db)
-  await snapshotsCol.createIndex(
-    { subscriptionId: 1, periodStart: 1, periodEnd: 1 },
-    { unique: true, name: 'billing_snapshot_period_unique' },
-  )
-  await snapshotsCol.createIndex({ userId: 1 }, { name: 'billing_snapshot_userId' })
-
-  // teros_provider_configs
-  // Sparse unique index on isDefault ensures only one default config exists
-  await configsCol.createIndex(
-    { isDefault: 1 },
-    { name: 'teros_cfg_isDefault', unique: true, sparse: true },
-  )
-  await configsCol.createIndex({ name: 1 }, { name: 'teros_cfg_name' })
-
-  // billing_teams — memberIds array index for fast member lookup
-  await teamsCol.createIndex({ memberIds: 1 }, { name: 'billing_teams_memberIds' })
-  await teamsCol.createIndex({ planId: 1 }, { name: 'billing_teams_planId' })
-  await teamsCol.createIndex({ status: 1 }, { name: 'billing_teams_status' })
-
-  // billing_customers — per-user Stripe mapping (FASE 4). _id is userId (PK).
-  // Unique stripeCustomerId prevents two users sharing a Stripe customer.
-  const customersCol = getBillingCustomersCollection(db)
-  await customersCol.createIndex(
-    { stripeCustomerId: 1 },
-    { unique: true, name: 'billing_customer_stripeId_unique' },
-  )
-
-  // billing_access_requests — request-access flow (FASE 6). At most one PENDING
-  // request per (userId, type): the partial unique index makes a blocked user
-  // unable to spam upgrade/boost requests by construction.
-  const accessReqCol = getBillingAccessRequestsCollection(db)
-  await accessReqCol.createIndex(
-    { userId: 1, type: 1 },
-    {
-      name: 'billing_access_req_one_pending',
-      unique: true,
-      partialFilterExpression: { status: 'pending' },
-    },
-  )
-  await accessReqCol.createIndex({ status: 1 }, { name: 'billing_access_req_status' })
-  await accessReqCol.createIndex({ userId: 1 }, { name: 'billing_access_req_userId' })
-
-  // billing_hour_boosts — extra per-period hours (FASE 6). PARTIAL-unique
-  // accessRequestId makes approving the same request twice unable to create a
-  // second boost; the partial filter lets purchase boosts (accessRequestId null,
-  // idempotent by their own _id = purchaseId) coexist without colliding on null.
-  // Healing create: a DB that already has the old NON-partial index gets it
-  // dropped + recreated partial here (TER-596 I1), since this runs before
-  // migrations.
-  const boostsCol = getBillingHourBoostsCollection(db)
-  await createIndexHealingConflict(
-    boostsCol,
-    { accessRequestId: 1 },
-    {
-      unique: true,
-      name: 'billing_boost_request_unique',
-      partialFilterExpression: { accessRequestId: { $type: 'string' } },
-    },
-  )
-  await boostsCol.createIndex(
-    { subscriptionId: 1, status: 1 },
-    { name: 'billing_boost_sub_status' },
-  )
-  await boostsCol.createIndex({ userId: 1 }, { name: 'billing_boost_userId' })
-
-  console.log('[Billing] MongoDB indexes ensured for billing_plans + billing_subscriptions + billing_invoices + billing_hour_ledger + billing_period_snapshots + teros_provider_configs + billing_teams + billing_customers + billing_access_requests + billing_hour_boosts')
+  await ensureIndexesFor(db, [
+    COLLECTIONS.billingSubscriptions,
+    COLLECTIONS.billingInvoices,
+    COLLECTIONS.billingHourLedger,
+    COLLECTIONS.billingPeriodSnapshots,
+    COLLECTIONS.terosProviderConfigs,
+    COLLECTIONS.billingTeams,
+    COLLECTIONS.billingCustomers,
+    COLLECTIONS.billingAccessRequests,
+    COLLECTIONS.billingHourBoosts,
+  ])
 }
 
 // ============================================================================
@@ -774,7 +665,7 @@ export async function ensureBillingIndexes(db: Db): Promise<void> {
  * carries meaning, and a silent rename would break code at a distance
  * (see CLAUDE.md "Evitar bugs por cambio de significado").
  */
-export const STARTER_PLAN_ID = 'plan_starter'
+export const DEFAULT_PLAN_ID = 'plan_seed'
 
 /**
  * planIds retired by the TER-596 catalogue reconciliation → their successor.
@@ -783,43 +674,78 @@ export const STARTER_PLAN_ID = 'plan_starter'
  * updated in place to the web "Pro" tier — 80h/€179).
  */
 export const RETIRED_PLAN_REMAP: Record<string, string> = {
-  plan_basic: STARTER_PLAN_ID,
+  plan_basic: DEFAULT_PLAN_ID,
   plan_max: 'plan_ultra',
   plan_infinity: 'plan_enterprise',
 }
 
 /**
+ * Automate executions per UTC day by plan (0 ⇒ unmetered). One table shared
+ * by the seed catalogue and the migration that stamps existing plan docs, so
+ * the numbers can never drift between the two. Rationale: a per-minute cron
+ * on a free tier burns tokens and hurts platform stability without the user
+ * noticing; the cap scales with the tier the same way agent-hours do.
+ */
+export const AUTOMATE_DAILY_EXECUTION_LIMITS: Record<string, number> = {
+  plan_seed: 5,
+  plan_starter: 20,
+  plan_growth: 50,
+  plan_pro: 100,
+  plan_ultra: 200,
+  plan_enterprise: 0,
+}
+
+/**
  * Canonical plan catalogue — the public tiers mirror the public pricing page
- * (teros.ai). Starter is the free entry tier (free during beta, €9 after).
+ * (teros.ai). Seed is the free entry tier (0€/2h), followed by Starter (€19/8h),
+ * Growth (€89/40h), Pro (€159/80h) and Ultra (€349/200h).
  * Enterprise is unmetered (agentHoursLimit 0 + terosModel true → the gate treats
  * it as unlimited) and not self-serve (contactSales).
  *
- * Plus one HIDDEN internal tier — plan_unlimited (isPublic:false) — unmetered
- * like Enterprise but admin-assignable (not contactSales). It never appears in
- * any self-serve path; only admin.update-billing-subscription can grant it.
+ * The former hidden internal tier (plan_unlimited) was retired by migration
+ * 20261009_001 (subscriptions moved to plan_pro, plan doc deleted), so it is
+ * deliberately NOT seeded here. Hidden tiers (isPublic:false) remain supported
+ * generically by the admin and self-serve paths.
  */
 export const BILLING_PLANS_SEED: Omit<BillingPlan, 'createdAt' | 'updatedAt'>[] = [
   {
-    _id: STARTER_PLAN_ID,
+    // Free entry tier — the plan every user lands on by default (signup, after a
+    // cancellation matures, admin clear). Named 'seed' not 'free' so the id stays
+    // meaningful if the tier ever stops being free.
+    _id: DEFAULT_PLAN_ID,
+    name: 'seed',
+    displayName: 'Seed',
+    description: 'Try Teros with no commitment. 2 agent-hours/month.',
+    price: 0,
+    currency: 'EUR',
+    agentHoursLimit: 2,
+    automateDailyExecutionLimit: AUTOMATE_DAILY_EXECUTION_LIMITS.plan_seed,
+    features: { byok: true, terosModel: true, unlimitedAgents: true, maxWorkspaces: -1, prioritySupport: false },
+    highlights: ['2 agent-hours / month', 'Unlimited integrations, agents & workspaces', 'On-demand containers', 'Bring your own AI key', 'Email support'],
+    isPublic: true,
+  },
+  {
+    _id: 'plan_starter',
     name: 'starter',
     displayName: 'Starter',
-    description: '10 agent-hours/month, bring your own AI key. Free during beta.',
-    price: 0,            // Free during beta. Post-beta price in postBetaPrice (€9).
-    postBetaPrice: 9,
+    description: 'To start automating your work. 8 agent-hours/month.',
+    price: 19,
     currency: 'EUR',
-    agentHoursLimit: 10,
+    agentHoursLimit: 8,
+    automateDailyExecutionLimit: AUTOMATE_DAILY_EXECUTION_LIMITS.plan_starter,
     features: { byok: true, terosModel: true, unlimitedAgents: true, maxWorkspaces: -1, prioritySupport: false },
-    highlights: ['10 agent-hours / month', 'Unlimited integrations, agents & workspaces', 'On-demand containers', 'Bring your own AI key', 'Email support'],
+    highlights: ['Everything in Seed', '8 agent-hours / month', 'AI provider included', 'Email support'],
     isPublic: true,
   },
   {
     _id: 'plan_growth',
     name: 'growth',
     displayName: 'Growth',
-    description: '40 agent-hours/month with the Teros AI provider included.',
+    description: 'For professionals who need more agentic hours. 40 agent-hours/month.',
     price: 89,
     currency: 'EUR',
     agentHoursLimit: 40,
+    automateDailyExecutionLimit: AUTOMATE_DAILY_EXECUTION_LIMITS.plan_growth,
     features: { byok: true, terosModel: true, unlimitedAgents: true, maxWorkspaces: -1, prioritySupport: true },
     highlights: ['Everything in Starter', '40 agent-hours / month', 'AI provider included', 'Always-on containers (24/7)', 'Webhooks & scheduled triggers', 'Priority support'],
     popular: true,
@@ -829,10 +755,11 @@ export const BILLING_PLANS_SEED: Omit<BillingPlan, 'createdAt' | 'updatedAt'>[] 
     _id: 'plan_pro',
     name: 'pro',
     displayName: 'Pro',
-    description: '80 agent-hours/month, concurrent agents, SSO and audit logs.',
-    price: 179,
+    description: 'For teams working with multiple agents. 80 agent-hours/month.',
+    price: 159,
     currency: 'EUR',
     agentHoursLimit: 80,
+    automateDailyExecutionLimit: AUTOMATE_DAILY_EXECUTION_LIMITS.plan_pro,
     features: { byok: true, terosModel: true, unlimitedAgents: true, maxWorkspaces: -1, prioritySupport: true },
     highlights: ['Everything in Growth', '80 agent-hours / month', 'Multiple concurrent agents', 'Agent guardrails & audit logs', 'SSO and role-based access', 'Dedicated support with SLA'],
     isPublic: true,
@@ -845,6 +772,7 @@ export const BILLING_PLANS_SEED: Omit<BillingPlan, 'createdAt' | 'updatedAt'>[] 
     price: 349,
     currency: 'EUR',
     agentHoursLimit: 200,
+    automateDailyExecutionLimit: AUTOMATE_DAILY_EXECUTION_LIMITS.plan_ultra,
     features: { byok: true, terosModel: true, unlimitedAgents: true, maxWorkspaces: -1, prioritySupport: true },
     highlights: ['Everything in Pro', '200 agent-hours / month', 'Dedicated infrastructure', 'Custom contracts', 'Advanced security & compliance', 'White-glove onboarding'],
     isPublic: true,
@@ -857,28 +785,11 @@ export const BILLING_PLANS_SEED: Omit<BillingPlan, 'createdAt' | 'updatedAt'>[] 
     price: 0,            // Custom pricing — contact sales.
     currency: 'EUR',
     agentHoursLimit: 0,  // 0 + terosModel:true ⇒ unmetered (unlimited) in the gate.
+    automateDailyExecutionLimit: AUTOMATE_DAILY_EXECUTION_LIMITS.plan_enterprise,
     features: { byok: true, terosModel: true, unlimitedAgents: true, maxWorkspaces: -1, prioritySupport: true },
     highlights: ['Everything in Ultra', 'Unlimited agent time', 'SOC-2 ready', 'On-premise or private cloud', 'Dedicated account manager'],
     contactSales: true,
     isPublic: true,
-  },
-  {
-    // Hidden internal tier — NOT in the public catalogue (isPublic:false) and not
-    // self-serve. Unmetered like Enterprise (agentHoursLimit 0 + terosModel:true ⇒
-    // the gate's `limit <= 0` no-op), but admin-assignable (contactSales:false) for
-    // founding partners / internal accounts. Only admin.update-billing-subscription
-    // grants it; every self-serve path (list-plans, change-plan, preview-plan-change,
-    // request-access) filters isPublic so it can never be seen nor self-selected.
-    _id: 'plan_unlimited',
-    name: 'unlimited',
-    displayName: 'Unlimited',
-    description: 'Internal unlimited tier — assigned by Teros, not self-serve.',
-    price: 0,
-    currency: 'EUR',
-    agentHoursLimit: 0, // 0 + terosModel:true ⇒ unmetered (unlimited) in the gate.
-    features: { byok: true, terosModel: true, unlimitedAgents: true, maxWorkspaces: -1, prioritySupport: true },
-    isPublic: false, // Hidden from onboarding/catalogue.
-    contactSales: false, // Assignable by an admin (not a contact-sales card).
   },
 ]
 
@@ -887,7 +798,10 @@ export const BILLING_PLANS_SEED: Omit<BillingPlan, 'createdAt' | 'updatedAt'>[] 
 // ============================================================================
 
 /**
- * Upsert the 4 base billing plans. Safe to run on every startup (idempotent).
+ * Insert any canonical plan from BILLING_PLANS_SEED that is missing
+ * ($setOnInsert — existing plan docs are never overwritten). Safe to run on
+ * every startup (idempotent). Only seeded ids can be (re)created, so a plan
+ * retired by a migration must also be dropped from the seed.
  */
 export async function seedBillingPlans(db: Db): Promise<void> {
   const col = getBillingPlansCollection(db)
@@ -983,6 +897,22 @@ export function getEffectiveLimit(
 }
 
 /**
+ * Effective Automate executions-per-day cap: the subscription override when
+ * set, else the plan value. 0 means unmetered (same convention as
+ * agentHoursLimit). A plan without the field is unmetered — every catalogue
+ * plan carries it (seed + migration 20261015_001), so that only happens for
+ * an ad-hoc plan doc, and failing open there is the lesser evil.
+ */
+export function getEffectiveAutomateDailyLimit(
+  sub: Pick<BillingSubscription, 'customAutomateDailyExecutionLimit'> | null,
+  plan: Pick<BillingPlan, 'automateDailyExecutionLimit'>,
+): number {
+  const override = sub?.customAutomateDailyExecutionLimit
+  if (typeof override === 'number' && override >= 0) return override
+  return plan.automateDailyExecutionLimit ?? 0
+}
+
+/**
  * Sum of a subscription's currently-active boost hours: boosts with
  * `status:'active'` whose [periodStart, periodEnd) window contains `now`. The
  * window check is the authority (a boost granted for a past period never
@@ -1071,7 +1001,7 @@ export async function createDefaultSubscription(
   const doc: BillingSubscription = {
     _id: crypto.randomUUID(),
     userId,
-    planId: STARTER_PLAN_ID,
+    planId: DEFAULT_PLAN_ID,
     customAgentHoursLimit: null,
     customPrice: 0,          // gratis durante BETA
     customPriceNote: null,
@@ -1130,6 +1060,9 @@ export async function seedDefaultTerosProviderConfig(
     name: 'Default',
     fireworksApiKey: encryptWithSystemKey(fireworksApiKey),
     isDefault: true,
+    // TPROV-REQ-4 / TLANE-REQ-6: today's routes on both lanes until an admin edits the config.
+    sizes: DEFAULT_TEROS_SIZES.sizes,
+    failover: DEFAULT_TEROS_SIZES.failover,
     createdAt: now,
     updatedAt: now,
   }

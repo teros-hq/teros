@@ -77,6 +77,15 @@ if [ ! -d /opt/mca-deps/node_modules ]; then
 fi
 ln -sfn /opt/mca-deps/node_modules "$RUN_DIR/node_modules"
 
+# Override @teros/* symlinks to point to the host-mounted packages
+# instead of the baked SDK, so `npm run build` on the host propagates
+# immediately (just restart the container).
+if [ -d /opt/teros/packages/shared/dist ]; then
+  ln -sfn /opt/teros/packages/shared   /opt/mca-deps/node_modules/@teros/shared
+  ln -sfn /opt/teros/packages/mca-sdk  /opt/mca-deps/node_modules/@teros/mca-sdk
+  ln -sfn /opt/teros/packages/workflows /opt/mca-deps/node_modules/@teros/workflows
+fi
+
 cd "$RUN_DIR"
 
 # ─────────────────────────────────────────────────────────────────
@@ -87,11 +96,12 @@ cd "$RUN_DIR"
 # dist and flip this preference.
 # ─────────────────────────────────────────────────────────────────
 if   [ -f "src/index.ts"  ]; then ENTRY="src/index.ts";  RUNNER="tsx"
+elif [ -f "mcp/src/index.ts" ]; then ENTRY="mcp/src/index.ts"; RUNNER="tsx"
 elif [ -f "mcp/index.ts"  ]; then ENTRY="mcp/index.ts";  RUNNER="tsx"
 elif [ -f "dist/index.js" ]; then ENTRY="dist/index.js"; RUNNER="node"
 elif [ -f "mcp/index.js"  ]; then ENTRY="mcp/index.js";  RUNNER="node"
 else
-  echo "❌ Error: No entry point found (src/index.ts, mcp/index.*, dist/index.js)"
+  echo "❌ Error: No entry point found (src/index.ts, mcp/src/index.ts, mcp/index.*, dist/index.js)"
   exit 1
 fi
 

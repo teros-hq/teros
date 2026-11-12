@@ -18,12 +18,14 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, Linking } from 'react-native';
 import { Avatar, Image, Text, XStack, YStack } from 'tamagui';
 import { usePulseAnimation } from '../../../../hooks/usePulseAnimation';
+import { useImageWithFallback } from '../../../../hooks/useImageWithFallback';
+import { backendUrl } from '../../../../config/runtime';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const CONTACTS_ICON = 'https://ssl.gstatic.com/images/branding/product/1x/contacts_2022_48dp.png';
+const CONTACTS_ICON = `${backendUrl()}/static/mcas/mca.google.contacts/icon.svg`;
 
 // ============================================================================
 // Colors — Renderer UX Guide v2 §5 (theme-adaptive).
@@ -202,9 +204,11 @@ interface ContactAvatarProps {
 
 export function ContactAvatar({ contact, size = 32 }: ContactAvatarProps) {
   const colors = useContactsColors();
-  if (contact.photo) {
+  const radius = Math.max(4, Math.round(size * 0.25));
+  const { showImage, onError } = useImageWithFallback(contact.photo);
+  if (showImage) {
     return (
-      <Image source={{ uri: contact.photo }} width={size} height={size} borderRadius={size / 2} />
+      <Image source={{ uri: contact.photo }} width={size} height={size} borderRadius={radius} onError={onError} />
     );
   }
 
@@ -215,7 +219,7 @@ export function ContactAvatar({ contact, size = 32 }: ContactAvatarProps) {
     <XStack
       width={size}
       height={size}
-      borderRadius={size / 2}
+      borderRadius={radius}
       backgroundColor={bgColor}
       alignItems="center"
       justifyContent="center"

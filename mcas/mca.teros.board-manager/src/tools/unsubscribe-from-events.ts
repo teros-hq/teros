@@ -13,8 +13,10 @@ export const unsubscribeFromEvents: ToolConfig = {
     },
     required: ['id'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const id = args?.id as string;
     if (!id) throw new Error('id is required');
@@ -23,7 +25,7 @@ export const unsubscribeFromEvents: ToolConfig = {
     await withRetry(
       () =>
         withTimeout(
-          wsClient.queryConversations<any>('unsubscribe_from_events', { id }),
+          wsClient.queryConversations<any>('unsubscribe_from_events', { id, callerAgentId }),
           15_000,
           'unsubscribe_from_events',
         ),

@@ -218,6 +218,7 @@ describe("install-gate invariant — closed set of createWorkspaceApp() callers"
   const ALLOWED_CREATE_WORKSPACE_APP_CALLERS = [
     "handlers/domains/workspace/install-app.ts", // WS `workspace.install-app` (audited path #2, B-4)
     "handlers/websocket/workspace-commands.ts", // legacy WS command, delegates to the same gated sink
+    "services/dev-seed.ts", // local dev seed: filesystem/bash for dev@teros.local, gated like any install
   ]
 
   it("exactly the known callers call createWorkspaceApp()", () => {

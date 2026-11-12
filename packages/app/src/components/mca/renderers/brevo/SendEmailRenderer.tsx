@@ -40,7 +40,7 @@ export function SendEmailRenderer({ input, status, output, error, appIcon }: Too
   return (
     <ToolCallCard
       status={status}
-      verb="Send email"
+      description="Send email"
       badge={badge}
       iconUri={appIcon}
       animateExpand

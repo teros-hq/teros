@@ -14,26 +14,26 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'bun:test'
-import { STARTER_PLAN_ID, createDefaultSubscription } from '../../src/models/billing'
+import { DEFAULT_PLAN_ID, createDefaultSubscription } from '../../src/models/billing'
 import { InMemoryDb } from './_stripe-test-helpers'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
 describe('createDefaultSubscription', () => {
-  it('creates an active Starter subscription with zero hours used', async () => {
+  it('creates an active entry-tier (Seed) subscription with zero hours used', async () => {
     const db = new InMemoryDb()
     const sub = await createDefaultSubscription(db as any, 'user_x')
 
     expect(sub.userId).toBe('user_x')
-    expect(sub.planId).toBe(STARTER_PLAN_ID)
-    expect(sub.planId).toBe('plan_starter')
+    expect(sub.planId).toBe(DEFAULT_PLAN_ID)
+    expect(sub.planId).toBe('plan_seed')
     expect(sub.status).toBe('active')
     expect(sub.agentHoursUsed).toBe(0)
     expect(sub.currentPeriodEnd.getTime()).toBeGreaterThan(sub.currentPeriodStart.getTime())
 
     // …and it is persisted, not just returned.
     const stored = await db.collection('billing_subscriptions').findOne({ userId: 'user_x' })
-    expect(stored?.planId).toBe('plan_starter')
+    expect(stored?.planId).toBe('plan_seed')
     expect(stored?.status).toBe('active')
   })
 })

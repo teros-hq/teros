@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { initializeGoogleClients, withAuthRetry } from '../lib';
 
 const READ_MASK = 'names,emailAddresses,phoneNumbers,organizations,photos';
 
@@ -22,7 +22,6 @@ export const searchContacts: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const { query, pageSize = 30 } = args as {
       query: string;

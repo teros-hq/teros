@@ -10,7 +10,7 @@ import { Image, Text, XStack } from 'tamagui';
 // Constants
 // ============================================================================
 
-const NOTION_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/notion-icon.png`;
+const NOTION_ICON = `${backendUrl()}/static/mcas/mca.notion/icon.svg`;
 
 // ============================================================================
 // Colors
@@ -404,6 +404,7 @@ export {
   SuccessBlock,
   ToolCallCard,
 } from '../../primitives';
+import { backendUrl } from '../../../../config/runtime';
 
 interface PageStatusBadgeProps {
   status?: string;

@@ -1,25 +1,25 @@
-import type React from 'react';
-import { YStack } from 'tamagui';
-import { ActionBadge, type ActionVerb } from './ActionBadge';
-import { EntityCardHeader } from './EntityCard';
-import { useColors } from './useColors';
+import type React from "react"
+import { YStack } from "tamagui"
+import { ActionBadge, type ActionVerb } from "./ActionBadge"
+import { EntityCardHeader } from "./EntityCard"
+import { useColors } from "./useColors"
 
 interface ResourceCardProps {
   /** Slot izquierdo (Avatar, IconTile). */
-  leading?: React.ReactNode;
+  leading?: React.ReactNode
   /** Título visible. String → estilo default; ReactNode → control total (strikethrough, highlights, etc.). */
-  title: string | React.ReactNode;
+  title: string | React.ReactNode
   /** Subtítulo opcional. Same semantics as title. */
-  subtitle?: string | React.ReactNode;
+  subtitle?: string | React.ReactNode
   /**
    * Verbo de la acción. Si se define, se pinta un ActionBadge a la derecha del
    * header. Si se omite, el card funciona como detail-view (get-*).
    */
-  verb?: ActionVerb;
+  verb?: ActionVerb
   /** Slot extra de metadatos a la derecha del header (chips, badges). */
-  meta?: React.ReactNode;
+  meta?: React.ReactNode
   /** Contenido del card (KeyValueGrid, PillList, texto). */
-  children?: React.ReactNode;
+  children?: React.ReactNode
 }
 
 /**
@@ -43,29 +43,29 @@ export function ResourceCard({
   meta,
   children,
 }: ResourceCardProps): React.ReactNode {
-  const c = useColors();
+  const c = useColors()
   const headerMeta =
     verb || meta ? (
       <>
         {verb && <ActionBadge verb={verb} />}
         {meta}
       </>
-    ) : undefined;
+    ) : undefined
 
   return (
     <YStack
-      backgroundColor={c.bgInner}
-      borderRadius={6}
+      backgroundColor={c.bgStep}
+      borderRadius={10}
       borderWidth={1}
       borderColor={c.border}
       overflow="hidden"
     >
       <EntityCardHeader leading={leading} title={title} subtitle={subtitle} meta={headerMeta} />
       {children && (
-        <YStack padding={10} gap={8}>
+        <YStack padding={12} gap={8}>
           {children}
         </YStack>
       )}
     </YStack>
-  );
+  )
 }

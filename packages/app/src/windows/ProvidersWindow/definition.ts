@@ -4,18 +4,23 @@
  * Admin window to view and manage LLM providers and their models.
  */
 
-import { Cloud } from '@tamagui/lucide-icons';
-import i18n from '../../i18n';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { ProvidersWindowContent } from './ProvidersWindowContent';
+import { Cloud } from "@tamagui/lucide-icons"
+import i18n from "../../i18n"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const ProvidersWindowContent = lazyWithRetry(() =>
+  import("./ProvidersWindowContent").then((m) => ({ default: m.ProvidersWindowContent })),
+)
 
-export type ProvidersWindowProps = {};
+export type ProvidersWindowProps = {}
 
 export const providersWindowDefinition: WindowTypeDefinition<ProvidersWindowProps> = {
-  type: 'providers',
-  displayName: 'Providers',
+  type: "providers",
+  audience: "user",
+  displayName: "Providers",
   icon: Cloud,
-  color: '#C75450',
+  phIcon: "cloud",
+  color: "#C75450",
   component: ProvidersWindowContent,
 
   defaultSize: { width: 900, height: 700 },
@@ -28,4 +33,4 @@ export const providersWindowDefinition: WindowTypeDefinition<ProvidersWindowProp
 
   serialize: () => ({}),
   deserialize: () => ({}),
-};
+}

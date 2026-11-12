@@ -1,0 +1,14 @@
+{
+  "name": "mca-telegram",
+  "version": "1.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "bun test test/"
+  },
+  "dependencies": {
+    "@teros/mca-sdk": "0.1.0",
+    "teleproto": "^1.230.0"
+  }
+}

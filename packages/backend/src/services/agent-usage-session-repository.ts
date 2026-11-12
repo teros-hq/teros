@@ -4,7 +4,7 @@
  * Pure CRUD. Domain logic (classifyError, deriveStatus, etc.) lives in
  * `agent-usage-session-service.ts`.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §3.3
  */
 
 import type { Collection, Db, Filter, UpdateFilter } from "mongodb"

@@ -64,9 +64,9 @@
     },
     "rename-channel": {
       "name": "rename-channel",
-      "description": "Rename a conversation. Changes the title/name of a channel.",
+      "description": "Rename a conversation. Changes the title/name of a channel. Without channelId it renames the current conversation. Conversations linked to a board task cannot be renamed — rename the task instead and the conversation follows.",
       "params": {
-        "channelId": "The ID of the channel to rename",
+        "channelId": "The ID of the channel to rename. Optional — defaults to the current conversation.",
         "name": "The new name/title for the conversation"
       }
     },

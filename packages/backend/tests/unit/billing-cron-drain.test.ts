@@ -26,6 +26,9 @@ import { waitUntilIdle } from "../../src/lib/drain"
 import { LEADER_LOCKS } from "../../src/services/leader-election"
 import { InMemoryDb } from "./_stripe-test-helpers"
 
+/** Every rolled-up hour counts as final here (the billable horizon has its own tests). */
+const billAllHours = async () => new Date(8_640_000_000_000_000)
+
 const noopLog = {
   error() {},
   info() {},
@@ -84,7 +87,7 @@ describe("cron drain", () => {
       (() => {
         const r: string[] = []
         tracksReleased.push(r)
-        return { cron: new AgentHoursTracker(db, noopLog, fakeLeader(r)), lock: LEADER_LOCKS.AgentHoursTracker }
+        return { cron: new AgentHoursTracker(db, noopLog, fakeLeader(r), undefined, undefined, billAllHours), lock: LEADER_LOCKS.AgentHoursTracker }
       })(),
       (() => {
         const r: string[] = []

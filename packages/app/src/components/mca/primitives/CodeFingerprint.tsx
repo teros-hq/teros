@@ -1,30 +1,31 @@
-import type React from 'react';
-import { Text, XStack, YStack } from 'tamagui';
-import { useColors } from './useColors';
+import type React from "react"
+import { XStack, YStack } from "tamagui"
+import { T } from "../../ui/ds/Text"
+import { useColors } from "./useColors"
 
 interface CodeFingerprintProps {
   /** Hex digest (any length). Common: SHA1=40, SHA256=64, SHA512=128, MD5=32. */
-  hash: string;
+  hash: string
   /** Algorithm label rendered in the footer. */
-  algorithm: string;
+  algorithm: string
   /** Optional file size or extra meta rendered alongside the algorithm. */
-  size?: string;
+  size?: string
   /** Optional accent color for the bottom border of each cell. */
-  accent?: string;
+  accent?: string
   /**
    * Number of columns. Default auto-derived from `hash.length`:
    * 32 → 4, 40 → 5, 64 → 8, 128 → 8.
    */
-  columns?: number;
+  columns?: number
 }
 
-const GROUP = 8;
+const GROUP = 8
 
 function autoColumns(length: number): number {
-  if (length <= 32) return 4;
-  if (length <= 40) return 5;
-  if (length <= 64) return 8;
-  return 8;
+  if (length <= 32) return 4
+  if (length <= 40) return 5
+  if (length <= 64) return 8
+  return 8
 }
 
 /**
@@ -46,26 +47,28 @@ export function CodeFingerprint({
   accent,
   columns,
 }: CodeFingerprintProps): React.ReactNode {
-  const c = useColors();
-  if (!hash) return null;
-  const groups: string[] = [];
+  const c = useColors()
+  if (!hash) return null
+  const groups: string[] = []
   for (let i = 0; i < hash.length; i += GROUP) {
-    groups.push(hash.slice(i, i + GROUP));
+    groups.push(hash.slice(i, i + GROUP))
   }
-  const cols = columns ?? autoColumns(hash.length);
-  const rows: string[][] = [];
+  const cols = columns ?? autoColumns(hash.length)
+  const rows: string[][] = []
   for (let i = 0; i < groups.length; i += cols) {
-    rows.push(groups.slice(i, i + cols));
+    rows.push(groups.slice(i, i + cols))
   }
-  const accentColor = accent ?? c.text3;
+  const accentColor = accent ?? c.borderStrong
 
   return (
     <YStack gap={6}>
       <YStack
-        backgroundColor={c.bgInner}
-        borderRadius={4}
-        paddingVertical={6}
-        paddingHorizontal={4}
+        backgroundColor={c.bgStep}
+        borderWidth={1}
+        borderColor={c.border}
+        borderRadius={10}
+        paddingVertical={8}
+        paddingHorizontal={8}
       >
         {rows.map((row, rIdx) => (
           <XStack
@@ -82,17 +85,11 @@ export function CodeFingerprint({
                 paddingHorizontal={2}
                 borderBottomWidth={1}
                 borderBottomColor={accentColor}
-                paddingBottom={2}
+                paddingBottom={3}
               >
-                <Text
-                  color={c.text}
-                  fontSize={13}
-                  fontFamily="$mono"
-                  letterSpacing={1.5}
-                  textAlign="center"
-                >
+                <T step="code13" center style={{ letterSpacing: 1.5 }} selectable>
                   {group}
-                </Text>
+                </T>
               </YStack>
             ))}
             {/* Pad incomplete trailing row with empty flex slots to keep alignment */}
@@ -106,21 +103,15 @@ export function CodeFingerprint({
         ))}
       </YStack>
       <XStack justifyContent="space-between" paddingHorizontal={4}>
-        <Text
-          color={c.text3}
-          fontSize={10}
-          fontFamily="$mono"
-          letterSpacing={1}
-          textTransform="uppercase"
-        >
+        <T step="codenote" tone="text3">
           {algorithm}
-        </Text>
+        </T>
         {size ? (
-          <Text color={c.text3} fontSize={10} fontFamily="$mono">
+          <T step="code" tone="text3" style={{ fontSize: 11, lineHeight: 12 }}>
             {size}
-          </Text>
+          </T>
         ) : null}
       </XStack>
     </YStack>
-  );
+  )
 }

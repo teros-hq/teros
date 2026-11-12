@@ -1,2 +1,2 @@
-export { type ModelHealthWindowProps, modelHealthWindowDefinition } from "./definition"
-export { ModelHealthWindowContent } from "./ModelHealthWindowContent"
+export type { ModelHealthWindowProps } from "./definition";
+export { modelHealthWindowDefinition } from "./definition";

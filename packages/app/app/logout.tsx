@@ -11,9 +11,11 @@
 import { useRouter } from "expo-router"
 import { useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { Text, YStack } from "tamagui"
+import { View } from "react-native"
 import { destroySession } from "../src/store/session/SessionManager"
 import { useColors } from "../src/components/mca/primitives/useColors"
+import { AppSpinner } from "../src/components/ui/AppSpinner"
+import { T } from "../src/components/ui/ds"
 
 export default function LogoutPage() {
   const router = useRouter()
@@ -27,8 +29,19 @@ export default function LogoutPage() {
   }, [])
 
   return (
-    <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={c.bgPage}>
-      <Text color={c.text3}>{t("auth.signingOut")}</Text>
-    </YStack>
+    <View
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        gap: 14,
+        backgroundColor: c.bgFrame,
+      }}
+    >
+      <AppSpinner size="md" />
+      <T step="sm" tone="text3">
+        {t("auth.signingOut")}
+      </T>
+    </View>
   )
 }

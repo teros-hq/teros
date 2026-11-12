@@ -16,18 +16,24 @@ import {
   RandomIdGenerator,
   type IdGenerator,
 } from '@teros/core';
-import type { Collection, Db } from 'mongodb';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
+import type { Collection, Db, Document } from 'mongodb';
+import { normalizeTags } from '@teros/shared';
 import { buildAvatarUrl } from '../lib/avatar-url';
+import { mapActivityTypeToEventCategory, type BoardEventService } from './board-event-service';
 import type {
   Board,
   BoardColumn,
+  BoardEventCategory,
+  BoardEventDetails,
   ProgressNote,
   Project,
   Task,
   TaskActivityEntry,
   TaskActivityEventType,
-  TaskPriority,
-} from '../types/database';
+  TaskPriority, TaskArtifact } from '../types/database';
+import { DeletionService } from './deletion-service';
+import { cappedPush, TASK_ACTIVITY_CAP, TASK_PROGRESS_NOTES_CAP } from '../lib/task-arrays';
 
 // ============================================================================
 // DEFAULT COLUMNS
@@ -51,10 +57,48 @@ export interface CreateProjectInput {
   description?: string;
 }
 
+
+/**
+ * Normaliza `tags` a `string[]`.
+ *
+ * Defensa en profundidad: algunos LLMs pasan el array como string JSON
+ * ('["a","b"]') y el string llegaba intacto a MongoDB, rompiendo
+ * `task.tags.join()` en el frontend (bug "task.tags.join is not a function",
+ * que bloqueaba la ventana de conversación entera). El MCA board-manager ya
+ * normaliza en su capa; esto protege el resto de callers del backend.
+ */
+function normalizeTagsInput(tags: unknown): string[] | undefined {
+  if (tags === undefined || tags === null) return undefined;
+  if (Array.isArray(tags)) {
+    return tags.map((t) => String(t).trim()).filter(Boolean);
+  }
+  if (typeof tags === 'string') {
+    const trimmed = tags.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((t) => String(t).trim()).filter(Boolean);
+        }
+      } catch {
+        // fallback CSV abajo
+      }
+    }
+    return trimmed
+      .replace(/^\[|\]$/g, '')
+      .split(',')
+      .map((t) => t.trim().replace(/^"|"$/g, ''))
+      .filter(Boolean);
+  }
+  return undefined;
+}
+
 export interface CreateTaskInput {
   title: string;
   description?: string;
-  instructions?: string;
+  /** Detailed task instructions in markdown — required so assigned agents have context for autonomous execution. */
+  instructions: string;
   priority?: TaskPriority;
   tags?: string[];
   assignedAgentId?: string;
@@ -62,6 +106,25 @@ export interface CreateTaskInput {
   parentTaskId?: string;
   /** IDs of tasks that block this task. Must belong to the same board. */
   dependencies?: string[];
+
+  // --- Workflow extensions (§WF2) ---
+  // Set by the workflow engine when creating a task for a workflow node.
+  // All optional — absent for manually created tasks.
+
+  /** Input gate from the workflow node (routing metadata) */
+  workflowInputGate?: Record<string, unknown>;
+  /** Output gate from the workflow node (routing metadata) */
+  workflowOutputGate?: Record<string, unknown>;
+  /** Reference to the workflow execution that created this task */
+  workflowExecutionId?: string;
+  /** Reference to the workflow node that created this task */
+  workflowNodeId?: string;
+
+  // --- Artifacts (docs/specs/tasks/artifacts.md) ---
+  /** What the task receives (event payload, upstream gate data, …). */
+  input?: TaskArtifact;
+  /** What the task is expected to deliver (type + schema; data filled on completion). */
+  output?: TaskArtifact;
 }
 
 export interface UpdateTaskInput {
@@ -73,6 +136,9 @@ export interface UpdateTaskInput {
   assignedAgentId?: string | null;
   /** IDs of tasks that block this task. Must belong to the same board. */
   dependencies?: string[];
+
+  /** Deliverable value → `output.data` (humans via the window, agents via complete-my-task, flows on validation). */
+  outputData?: unknown;
 }
 
 export interface ListTasksFilter {
@@ -81,7 +147,43 @@ export interface ListTasksFilter {
   priority?: TaskPriority;
   tags?: string[];
   archived?: boolean;
+  /**
+   * Mongo projection applied to the returned task documents.
+   *
+   * Large boards return hundreds of tasks in a single response (board.get /
+   * board.list-tasks). Full documents carry heavy per-task fields that only the
+   * task detail needs: `activity` (~46% of the payload, and its progress_note
+   * entries duplicate `progressNotes`), `progressNotes` (~37%), `instructions`
+   * (~12%), plus `input` / `output` / workflow data. Callers that render lists
+   * pass a projection here; callers that need full docs (MCA board-manager,
+   * get-task sub-task resolution) omit it and get complete documents.
+   *
+   * Array fields accept `{ $slice: n }` to keep only the last |n| elements
+   * (e.g. `progressNotes: { $slice: -1 }` for "last note only").
+   */
+  projection?: Record<string, 0 | 1 | { $slice: number }>;
 }
+
+/**
+ * Projection for board list responses (board.get / board.list-tasks).
+ *
+ * Strips the heavy per-task fields that only the task detail consumes:
+ *  - `activity` and `progressNotes` — the detail panel fetches them via
+ *    board.get-task; the MissionControl feed reads board_events, not these.
+ *  - `instructions`, `input`, `output`, `workflowInputData`, `workflowOutputData`
+ *    — detail-panel-only content.
+ * `_id` is excluded because it is a Mongo internal.
+ */
+export const TASK_LIST_PROJECTION: Record<string, 0 | 1 | { $slice: number }> = {
+  _id: 0,
+  activity: 0,
+  progressNotes: 0,
+  instructions: 0,
+  input: 0,
+  output: 0,
+  workflowInputData: 0,
+  workflowOutputData: 0,
+};
 
 // ============================================================================
 // BOARD SERVICE
@@ -91,19 +193,68 @@ export class BoardService {
   private projects: Collection<Project>;
   private boards: Collection<Board>;
   private tasks: Collection<Task>;
+  /** Channels — used to sync linked conversation titles on task rename. */
+  private channels: Collection<Document>;
   /** taskId sembrable: en modo determinista (TEROS_DETERMINISTIC) el board runner inyecta el
    * taskId en el prompt del agente (getBoardTaskPrompt), así que un id aleatorio rompía el hash
    * del replay LLM. Con SeededIdGenerator es estable; en prod es RandomIdGenerator. TER-563. */
   private readonly taskIds: IdGenerator;
+  /** BoardEventService for persisting events to board_events collection. Optional for backward compat. */
+  private readonly boardEventService: BoardEventService | null;
 
   constructor(
     private db: Db,
-    idGenerator: IdGenerator = new RandomIdGenerator(),
+    idGenerator?: IdGenerator,
+    boardEventService?: BoardEventService,
   ) {
     this.projects = db.collection<Project>('projects');
     this.boards = db.collection<Board>('boards');
     this.tasks = db.collection<Task>('tasks');
-    this.taskIds = idGenerator.fork('task');
+    // Channels collection — used only to sync the linked conversation's title
+    // when a task title changes (task.channelId ↔ channel title invariant).
+    this.channels = db.collection('channels');
+    this.taskIds = (idGenerator ?? new RandomIdGenerator()).fork('task');
+    this.boardEventService = boardEventService ?? null;
+  }
+
+  // ==========================================================================
+  // EVENT RECORDING HELPER
+  // ==========================================================================
+
+  /**
+   * Record a board event to the board_events collection.
+   * Awaited so events land in order and before the caller returns (MOD-4:
+   * fire-and-forget lost them silently and could reorder a batch); a failure
+   * is logged and doesn't fail the task write, which already happened.
+   * Maps legacy TaskActivityEventType to BoardEventCategory.
+   */
+  private async _recordEvent(
+    boardId: string,
+    projectId: string,
+    workspaceId: string,
+    task: { taskId: string; title: string } | null,
+    eventType: TaskActivityEventType | BoardEventCategory,
+    actor: string,
+    details?: BoardEventDetails,
+  ): Promise<void> {
+    if (!this.boardEventService) return;
+    const category = eventType.includes('.')
+      ? (eventType as BoardEventCategory)
+      : mapActivityTypeToEventCategory(eventType);
+    await this.boardEventService
+      .recordEvent({
+        boardId,
+        projectId,
+        workspaceId,
+        taskId: task?.taskId ?? null,
+        taskTitle: task?.title ?? null,
+        eventType: category,
+        actor,
+        details,
+      })
+      .catch((err) => {
+        console.error('[BoardService] Error recording board event:', err);
+      });
   }
 
   // ==========================================================================
@@ -111,23 +262,11 @@ export class BoardService {
   // ==========================================================================
 
   async ensureIndexes(): Promise<void> {
-    // Projects
-    await this.projects.createIndex({ projectId: 1 }, { unique: true });
-    await this.projects.createIndex({ workspaceId: 1 });
-    await this.projects.createIndex({ status: 1 });
-
-    // Boards
-    await this.boards.createIndex({ boardId: 1 }, { unique: true });
-    await this.boards.createIndex({ projectId: 1 }, { unique: true });
-
-    // Tasks
-    await this.tasks.createIndex({ taskId: 1 }, { unique: true });
-    await this.tasks.createIndex({ boardId: 1, columnId: 1, position: 1 });
-    await this.tasks.createIndex({ boardId: 1, assignedAgentId: 1 });
-    await this.tasks.createIndex({ channelId: 1 }, { sparse: true });
-    await this.tasks.createIndex({ parentTaskId: 1 }, { sparse: true });
-
-    console.log('[BoardService] Database indexes created');
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.projects, COLLECTIONS.projects);
+    await ensureCollectionIndexes(this.boards, COLLECTIONS.boards);
+    await ensureCollectionIndexes(this.tasks, COLLECTIONS.tasks);
   }
 
   // ==========================================================================
@@ -169,6 +308,7 @@ export class BoardService {
     const board: Board = {
       boardId,
       projectId,
+      workspaceId,
       columns,
       createdAt: now,
       updatedAt: now,
@@ -255,12 +395,12 @@ export class BoardService {
       {
         $set: { archived: true, updatedAt: now },
         $push: {
-          activity: {
+          activity: cappedPush({
             eventType: 'status_changed',
             actor,
             timestamp: now,
             details: { fromStatus: 'active', toStatus: 'archived' },
-          },
+          }, TASK_ACTIVITY_CAP),
         },
       },
     );
@@ -279,13 +419,16 @@ export class BoardService {
    * Delete a project, its board, and all tasks
    * Linked conversations are NOT deleted.
    */
-  async deleteProject(projectId: string): Promise<boolean> {
+  /**
+   * Delete a project and everything on its board — same cascade as
+   * ProjectService.delete (INF-3: the two paths used to leave different
+   * orphans; this one skipped events, stats, subscriptions, relationships).
+   */
+  async deleteProject(projectId: string, actor = 'system'): Promise<boolean> {
     const project = await this.projects.findOne({ projectId });
     if (!project) return false;
 
-    await this.tasks.deleteMany({ boardId: project.boardId });
-    await this.boards.deleteOne({ boardId: project.boardId });
-    await this.projects.deleteOne({ projectId });
+    await new DeletionService(this.db).deleteProject(projectId, actor);
 
     console.log(`[BoardService] Deleted project ${projectId} and all associated data`);
     return true;
@@ -408,9 +551,10 @@ export class BoardService {
       position,
       title: input.title,
       description: input.description,
+      instructions: input.instructions,
       priority: input.priority ?? 'medium',
       archived: false,
-      tags: input.tags ?? [],
+      tags: normalizeTagsInput(input.tags) ?? [],
       assignedAgentId: input.assignedAgentId,
       running: false,
       parentTaskId: input.parentTaskId,
@@ -426,9 +570,24 @@ export class BoardService {
       createdBy,
       createdAt: now,
       updatedAt: now,
+      // Workflow linkage — only present when created by the workflow engine
+      workflowInputGate: input.workflowInputGate,
+      workflowOutputGate: input.workflowOutputGate,
+      workflowExecutionId: input.workflowExecutionId,
+      workflowNodeId: input.workflowNodeId,
+      // Artifacts — any creator may set them
+      ...(input.input ? { input: input.input } : {}),
+      ...(input.output ? { output: input.output } : {}),
     };
 
     await this.tasks.insertOne(task);
+
+    // Record event to board_events collection
+    const project = await this.projects.findOne({ boardId });
+    if (project) {
+      await this._recordEvent(boardId, project.projectId, project.workspaceId, task, 'created', createdBy);
+    }
+
     return task;
   }
 
@@ -514,9 +673,10 @@ export class BoardService {
         position,
         title: input.title.trim(),
         description: input.description,
+        instructions: input.instructions,
         priority: input.priority ?? 'medium',
         archived: false,
-        tags: input.tags ?? [],
+        tags: normalizeTagsInput(input.tags) ?? [],
         assignedAgentId: input.assignedAgentId,
         running: false,
         parentTaskId: input.parentTaskId,
@@ -532,6 +692,13 @@ export class BoardService {
         createdBy,
         createdAt: now,
         updatedAt: now,
+        // Workflow linkage — only present when created by the workflow engine
+        workflowInputGate: input.workflowInputGate,
+        workflowOutputGate: input.workflowOutputGate,
+        workflowExecutionId: input.workflowExecutionId,
+        workflowNodeId: input.workflowNodeId,
+        ...(input.input ? { input: input.input } : {}),
+        ...(input.output ? { output: input.output } : {}),
       });
     }
 
@@ -567,10 +734,11 @@ export class BoardService {
       query.archived = false;
     }
 
-    return this.tasks
-      .find(query)
-      .sort({ columnId: 1, position: 1 })
-      .toArray();
+    const cursor = this.tasks.find(query, {
+      ...(filter?.projection ? { projection: filter.projection } : {}),
+    });
+
+    return cursor.sort({ columnId: 1, position: 1 }).toArray();
   }
 
   /**
@@ -644,7 +812,7 @@ export class BoardService {
       });
     }
     if (input.tags !== undefined) {
-      $set.tags = input.tags;
+      $set.tags = normalizeTagsInput(input.tags) ?? [];
       activityEntries.push({ eventType: 'updated', actor, timestamp: now, details: { field: 'tags' } });
     }
     if (input.assignedAgentId !== undefined) {
@@ -686,10 +854,16 @@ export class BoardService {
         activityEntries.push({ eventType: 'updated', actor, timestamp: now, details: { field: 'dependencies' } });
       }
     }
+    if (input.outputData !== undefined) {
+      // Only the value changes; the type (schemaId / schema) set at creation stays.
+      $set['output.data'] = input.outputData;
+      if (!task.output || task.output.schemaId === undefined) $set['output.schemaId'] = task.output?.schemaId ?? null;
+      activityEntries.push({ eventType: 'updated', actor, timestamp: now, details: { field: 'output' } });
+    }
 
     const updateOp: Record<string, any> = { $set };
     if (activityEntries.length > 0) {
-      updateOp.$push = { activity: { $each: activityEntries } };
+      updateOp.$push = { activity: cappedPush(activityEntries, TASK_ACTIVITY_CAP) };
     }
 
     const result = await this.tasks.findOneAndUpdate(
@@ -697,6 +871,39 @@ export class BoardService {
       updateOp,
       { returnDocument: 'after' },
     );
+
+    // Sync the linked conversation's title when the task title changed —
+    // the "task title = linked conversation title" invariant. The channel
+    // rename goes straight to the channels collection (not through
+    // ChannelManager.renameChannel, which intentionally blocks task-linked
+    // channels to prevent drift from the other direction).
+    if (result?.channelId && input.title !== undefined && input.title !== task.title) {
+      try {
+        await this.channels.updateOne(
+          { channelId: result.channelId },
+          { $set: { 'metadata.name': result.title, updatedAt: now } },
+        );
+      } catch (err) {
+        // Non-fatal: the task update already succeeded; a stale channel
+        // title is recoverable by renaming the task again.
+        console.warn(
+          `[BoardService.updateTask] Failed to sync linked channel title for task ${taskId}:`,
+          err,
+        );
+      }
+    }
+
+    // Record events to board_events collection
+    if (result) {
+      const board = await this.boards.findOne({ boardId: result.boardId });
+      const project = board ? await this.projects.findOne({ projectId: board.projectId }) : null;
+      if (board && project) {
+        for (const entry of activityEntries) {
+          await this._recordEvent(result.boardId, board.projectId, project.workspaceId, result, entry.eventType, actor, entry.details as BoardEventDetails);
+        }
+      }
+    }
+
     return result ?? null;
   }
 
@@ -774,31 +981,53 @@ export class BoardService {
     }
 
     const now = new Date().toISOString();
-    const activityEntry: TaskActivityEntry = {
-      eventType: 'moved',
-      actor,
-      timestamp: now,
-      details: {
-        fromColumn: fromColumn?.name ?? task.columnId,
-        toColumn: targetColumn.name,
-      },
+    const isRealMove = !sameColumn;
+
+    const updateSet: Record<string, unknown> = {
+      columnId: targetColumnId,
+      position: newPosition,
+      updatedAt: now,
     };
+    const updateDoc: Record<string, unknown> = { $set: updateSet };
+
+    // Only record an activity entry and reset autoWakeCount for real
+    // column moves — not for reordering within the same column.
+    if (isRealMove) {
+      const activityEntry: TaskActivityEntry = {
+        eventType: 'moved',
+        actor,
+        timestamp: now,
+        details: {
+          fromColumn: fromColumn?.name ?? task.columnId,
+          toColumn: targetColumn.name,
+        },
+      };
+      updateSet.autoWakeCount = 0;
+      // Clear running flag when moving out of In Progress — prevents ghost
+      // tasks that keep consuming agent slots after being moved to Done/Review/Blocked
+      if (targetColumn.slug !== 'in_progress') {
+        updateSet.running = false;
+      }
+      updateDoc.$push = { activity: cappedPush(activityEntry, TASK_ACTIVITY_CAP) };
+    }
 
     const result = await this.tasks.findOneAndUpdate(
       { taskId },
-      {
-        $set: {
-          columnId: targetColumnId,
-          position: newPosition,
-          updatedAt: now,
-          // Real progress (a column move) → reset the autoplay stuck counter
-          // (TER-650/G2). NOT reset on the per-turn `running` toggle.
-          autoWakeCount: 0,
-        },
-        $push: { activity: activityEntry },
-      },
+      updateDoc,
       { returnDocument: 'after' },
     );
+
+    // Record event to board_events collection
+    if (result && isRealMove) {
+      const project = await this.projects.findOne({ boardId: board.boardId });
+      if (project) {
+        await this._recordEvent(board.boardId, project.projectId, project.workspaceId, result, 'moved', actor, {
+          fromColumn: fromColumn?.name ?? task.columnId,
+          toColumn: targetColumn.name,
+        });
+      }
+    }
+
     return result ?? null;
   }
 
@@ -840,10 +1069,20 @@ export class BoardService {
           assignedAgentId: agentId ?? undefined,
           updatedAt: now,
         },
-        $push: { activity: activityEntry },
+        $push: { activity: cappedPush(activityEntry, TASK_ACTIVITY_CAP) },
       },
       { returnDocument: 'after' },
     );
+
+    // Record event to board_events collection
+    if (result) {
+      const board = await this.boards.findOne({ boardId: result.boardId });
+      const project = board ? await this.projects.findOne({ projectId: board.projectId }) : null;
+      if (board && project) {
+        await this._recordEvent(result.boardId, board.projectId, project.workspaceId, result, activityEntry.eventType, actor, activityEntry.details as BoardEventDetails);
+      }
+    }
+
     return result ?? null;
   }
 
@@ -917,12 +1156,20 @@ export class BoardService {
           position,
           updatedAt: now,
         },
-        $push: { activity: { $each: activityEntries } },
+        $push: { activity: cappedPush(activityEntries, TASK_ACTIVITY_CAP) },
       },
       { returnDocument: 'after' },
     );
 
     if (!result) throw new Error(`Failed to update task ${taskId}`);
+
+    // Record events to board_events collection
+    const project = await this.projects.findOne({ boardId: board.boardId });
+    if (project) {
+      for (const entry of activityEntries) {
+        await this._recordEvent(board.boardId, project.projectId, project.workspaceId, result, entry.eventType, actor, entry.details as BoardEventDetails);
+      }
+    }
 
     return { task: result, inProgressColumnId: inProgressCol.columnId };
   }
@@ -942,16 +1189,26 @@ export class BoardService {
       {
         $set: { channelId, updatedAt: now },
         $push: {
-          activity: {
+          activity: cappedPush({
             eventType: 'linked' as TaskActivityEventType,
             actor,
             timestamp: now,
             details: { channelId },
-          },
+          }, TASK_ACTIVITY_CAP),
         },
       },
       { returnDocument: 'after' },
     );
+
+    // Record event to board_events collection
+    if (result) {
+      const board = await this.boards.findOne({ boardId: result.boardId });
+      const project = board ? await this.projects.findOne({ projectId: board.projectId }) : null;
+      if (board && project) {
+        await this._recordEvent(result.boardId, board.projectId, project.workspaceId, result, 'linked', actor, { channelId });
+      }
+    }
+
     return result ?? null;
   }
 
@@ -967,6 +1224,7 @@ export class BoardService {
     const now = new Date().toISOString();
     const $set: Record<string, unknown> = {
       archived: true,
+      running: false, // Clear running flag — archived tasks must not consume autoplay slots
       updatedAt: now,
     };
 
@@ -983,9 +1241,18 @@ export class BoardService {
 
     const result = await this.tasks.findOneAndUpdate(
       { taskId },
-      { $set, $push: { activity: activityEntry } },
+      { $set, $push: { activity: cappedPush(activityEntry, TASK_ACTIVITY_CAP) } },
       { returnDocument: 'after' },
     );
+
+    // Record event to board_events collection
+    if (result) {
+      const board = await this.boards.findOne({ boardId: result.boardId });
+      const project = board ? await this.projects.findOne({ projectId: board.projectId }) : null;
+      if (board && project) {
+        await this._recordEvent(result.boardId, board.projectId, project.workspaceId, result, 'task.archived', actor, { archiveNote, fromStatus: 'active', toStatus: 'archived' });
+      }
+    }
 
     return result ?? null;
   }
@@ -1011,10 +1278,19 @@ export class BoardService {
       { taskId },
       {
         $set: { archived: false, updatedAt: now },
-        $push: { activity: activityEntry },
+        $push: { activity: cappedPush(activityEntry, TASK_ACTIVITY_CAP) },
       },
       { returnDocument: 'after' },
     );
+
+    // Record event to board_events collection
+    if (result) {
+      const board = await this.boards.findOne({ boardId: result.boardId });
+      const project = board ? await this.projects.findOne({ projectId: board.projectId }) : null;
+      if (board && project) {
+        await this._recordEvent(result.boardId, board.projectId, project.workspaceId, result, 'task.unarchived', actor, { fromStatus: 'archived', toStatus: 'active' });
+      }
+    }
 
     return result ?? null;
   }
@@ -1048,12 +1324,22 @@ export class BoardService {
         // (TER-650/G2).
         $set: { updatedAt: now, autoWakeCount: 0 },
         $push: {
-          progressNotes: note,
-          activity: activityEntry,
+          progressNotes: cappedPush(note, TASK_PROGRESS_NOTES_CAP),
+          activity: cappedPush(activityEntry, TASK_ACTIVITY_CAP),
         },
       },
       { returnDocument: 'after' },
     );
+
+    // Record event to board_events collection
+    if (result) {
+      const board = await this.boards.findOne({ boardId: result.boardId });
+      const project = board ? await this.projects.findOne({ projectId: board.projectId }) : null;
+      if (board && project) {
+        await this._recordEvent(result.boardId, board.projectId, project.workspaceId, result, 'progress_note', actor, { note: text });
+      }
+    }
+
     return result ?? null;
   }
 
@@ -1080,13 +1366,18 @@ export class BoardService {
   }
 
   /**
-   * Set the running flag on a task (system-controlled).
+   * Set the running flag on a task.
    *
    * Returns the updated task if the flag actually changed, or null if:
    * - Task not found
    * - Flag was already at the desired value (no-op)
+   *
+   * @param actor — who is changing the running flag. Defaults to 'system'
+   *   for backward compatibility, but callers should pass the agent ID
+   *   (e.g. `task.assignedAgentId`) so the activity log attributes the
+   *   change to the agent, not to System.
    */
-  async setRunning(taskId: string, running: boolean): Promise<Task | null> {
+  async setRunning(taskId: string, running: boolean, actor: string = 'system'): Promise<Task | null> {
     const task = await this.tasks.findOne({ taskId });
     if (!task) return null;
 
@@ -1102,12 +1393,12 @@ export class BoardService {
       {
         $set,
         $push: {
-          activity: {
+          activity: cappedPush({
             eventType: 'running_changed' as const,
-            actor: 'system',
+            actor,
             timestamp: now,
             details: { running },
-          },
+          }, TASK_ACTIVITY_CAP),
         },
       },
       { returnDocument: 'after' },
@@ -1362,12 +1653,12 @@ export class BoardService {
         $addToSet: { dependencies: dependsOnTaskId },
         $set: { updatedAt: now },
         $push: {
-          activity: {
+          activity: cappedPush({
             eventType: 'dependency_added' as const,
             actor,
             timestamp: now,
             details: { note: `Added dependency on ${dependsOnTaskId}` },
-          },
+          }, TASK_ACTIVITY_CAP),
         },
       },
       { returnDocument: 'after' },
@@ -1401,12 +1692,12 @@ export class BoardService {
         $pull: { dependencies: dependsOnTaskId },
         $set: { updatedAt: now },
         $push: {
-          activity: {
+          activity: cappedPush({
             eventType: 'dependency_removed' as const,
             actor,
             timestamp: now,
             details: { note: `Removed dependency on ${dependsOnTaskId}` },
-          },
+          }, TASK_ACTIVITY_CAP),
         },
       },
       { returnDocument: 'after' },
@@ -1452,6 +1743,14 @@ export class BoardService {
  * Build the initial message sent to an agent when a task is started.
  */
 /**
+ * Unified system sender for all platform-generated messages (task start via
+ * autoplay, manual start-task, or MCA board-start). Always use this — no
+ * fallbacks, no getUserSender() calls. The `role` field stays 'user' (it's
+ * the LLM protocol role); `sender` is the display identity.
+ */
+export const SYSTEM_SENDER = { type: 'system' as const, id: 'teros', name: 'Teros' };
+
+/**
  * Unified initial message builder for board tasks — used by both the manual
  * start-task handler and the autoplay service. The agent receives this as a
  * regular user message in its conversation channel.
@@ -1462,27 +1761,53 @@ export function buildTaskInitialMessage(task: {
   description?: string;
   instructions?: string;
   priority?: string;
-  tags?: string[];
+  tags?: unknown;
+  input?: { schemaId?: string | null; data?: unknown } | null;
 }, customPrompt?: string, boardRunnerAppName: string = 'boards'): string {
   // This instruction is always appended — even to custom prompts — to enforce
   // the no-delegation rule for all board task execution contexts.
   const noDelegationNote =
     `\n\n> **Board task execution context:** Do NOT use \`conversations_delegate-task\` or any delegation tool. Execute all work directly in this conversation.`;
 
-  if (customPrompt) return customPrompt + noDelegationNote;
+  // This instruction is always appended — even to custom prompts — so the agent
+  // knows it can retrieve full task details (instructions, status, progress notes)
+  // at any time via the board-runner get-my-task tool.
+  const getMyTaskNote =
+    `\n\n> **Task details:** Use \`${boardRunnerAppName}_get-my-task\` to view the full task details (title, description, instructions, priority, tags, status, and progress notes) at any time.`;
+
+  // Conditional input note — appended when the task carries an input artifact
+  // (event payload, upstream workflow data, …). Tells the agent where to read it.
+  const hasInput = task.input?.data !== undefined && task.input?.data !== null;
+  const workflowInputNote = hasInput
+    ? `\n\n> **Input:** This task has an input artifact${task.input?.schemaId ? ` (type \`${task.input.schemaId}\`)` : ''}. Use \`${boardRunnerAppName}_get-my-task\` to read the full \`input\` (schema + data).`
+    : '';
+
+  if (customPrompt) return customPrompt + getMyTaskNote + workflowInputNote + noDelegationNote;
 
   const taskDescription = task.instructions || task.description || 'No description provided.';
+
+  // Conditional Workflow Input section for the standard message body.
+  const workflowInputSection = hasInput
+    ? [
+        ``,
+        `## Input`,
+        `This task has an input artifact${task.input?.schemaId ? ` of type \`${task.input.schemaId}\`` : ''}. Use \`${boardRunnerAppName}_get-my-task\` to read the full \`input\` (schema + data) — it is what this task has to process.`,
+        ``,
+      ].join('\n')
+    : '';
+
   return [
     `You have been assigned a task. Execute it autonomously.`,
     ``,
     `## Task: ${task.title}`,
     `**Priority:** ${task.priority || 'medium'}`,
-    `**Tags:** ${task.tags?.length ? task.tags.join(', ') : 'none'}`,
+    `**Tags:** ${normalizeTags(task.tags).join(', ') || 'none'}`,
     ``,
     `## Description`,
     taskDescription,
-    ``,
+    workflowInputSection,
     `## Instructions`,
+    `- Use \`${boardRunnerAppName}_get-my-task\` to view the full task details (title, description, instructions, priority, tags, status, and progress notes) at any time.`,
     `- Work autonomously. If tools require user approval, the user will be notified.`,
     `- **After each significant step, add a progress note** with \`${boardRunnerAppName}_add-progress-note\` (taskId: \`${task.taskId}\`). Write notes in clear, accessible language — the same tone as the task description. Explain what you did, what you found, and what comes next. These notes are how the operator follows your work, so they are essential.`,
     `- When you finish, move this task to the Review or Done column using \`${boardRunnerAppName}_move-my-task\`.`,

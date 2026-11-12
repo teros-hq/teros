@@ -9,14 +9,15 @@
  * agent's scope (global/personal → 'super-agent'; workspace-scoped → 'agent').
  */
 
-import { generateAgentId } from '@teros/core';
-import type { Collection, Db } from 'mongodb';
-import type { AgentCore, AgentInstance } from '../types/database';
-import { stableBucket } from './feature-flag-rollout';
-import type { McaService } from './mca-service';
-import type { FeatureFlagService } from './feature-flag-service';
+import { generateAgentId } from "@teros/core"
+import type { Collection, Db } from "mongodb"
+import { pickDefaultAvatar } from "../lib/default-avatars"
+import type { AgentCore, AgentInstance } from "../types/database"
+import { stableBucket } from "./feature-flag-rollout"
+import type { FeatureFlagService } from "./feature-flag-service"
+import type { McaService } from "./mca-service"
 
-export type CoreType = 'agent' | 'super-agent';
+export type CoreType = "agent" | "super-agent"
 
 /**
  * Derive the core kind from the agent's scope. The user never chooses it.
@@ -29,45 +30,45 @@ export type CoreType = 'agent' | 'super-agent';
  * same agent differently across creation paths.
  */
 export function resolveCoreType(workspaceId?: string): CoreType {
-  return workspaceId ? 'agent' : 'super-agent';
+  return workspaceId ? "agent" : "super-agent"
 }
 
 export interface AgentProfile {
-  name: string;
-  fullName: string;
-  role: string;
-  intro: string;
-  avatarUrl?: string;
-  context?: string;
+  name: string
+  fullName: string
+  role: string
+  intro: string
+  avatarUrl?: string
+  context?: string
 }
 
 export interface CreateAgentParams {
-  ownerId: string;
-  workspaceId?: string;
-  profile: AgentProfile;
+  ownerId: string
+  workspaceId?: string
+  profile: AgentProfile
 }
 
 /** Per-agent decision of a rollout plan. `stay` = no move (stays on `current`). */
 export interface RolloutPlanItem {
-  agentId: string;
-  agentName?: string;
-  ownerId?: string;
-  current: string;
-  target: string;
-  kind: 'migrate' | 'revert' | 'stay';
+  agentId: string
+  agentName?: string
+  ownerId?: string
+  current: string
+  target: string
+  kind: "migrate" | "revert" | "stay"
 }
 
 /** One agent in the rollout cohort, enriched for the admin "who" view. */
 export interface RolloutCohortEntry {
-  agentId: string;
-  agentName: string;
-  ownerId: string | null;
-  ownerName: string;
-  current: string;
-  target: string;
-  kind: 'migrate' | 'revert' | 'stay';
+  agentId: string
+  agentName: string
+  ownerId: string | null
+  ownerName: string
+  current: string
+  target: string
+  kind: "migrate" | "revert" | "stay"
   /** Deterministic 0–99 bucket of the owner for this flag; null if no ownerId. */
-  bucket: number | null;
+  bucket: number | null
 }
 
 /**
@@ -77,38 +78,38 @@ export interface RolloutCohortEntry {
  * disagree with what Apply actually does.
  */
 export interface RolloutPlan {
-  total: number;
+  total: number
   /** Current count of agents per governed coreId (count 0 for governed-but-empty). */
-  distribution: Array<{ coreId: string; count: number }>;
-  items: RolloutPlanItem[];
+  distribution: Array<{ coreId: string; count: number }>
+  items: RolloutPlanItem[]
 }
 
 /** Dry-run shape returned to the admin UI: current state + what Apply would do. */
 export interface RolloutPreview {
-  total: number;
+  total: number
   /** Where agents run NOW (count per coreId). */
-  distribution: Array<{ coreId: string; count: number }>;
+  distribution: Array<{ coreId: string; count: number }>
   /** What Apply would do at the resolved percentage. */
-  plan: { migrate: number; revert: number; stay: number };
+  plan: { migrate: number; revert: number; stay: number }
   /** Where agents would run AFTER applying (count per coreId). */
-  resulting: Array<{ coreId: string; count: number }>;
+  resulting: Array<{ coreId: string; count: number }>
   /** Agents with no ownerId — no bucketing identity, so they NEVER migrate. A
    *  subset of `plan.stay`, surfaced so the admin sees a stuck-on-stable cohort. */
-  unbucketed: number;
+  unbucketed: number
 }
 
 export class AgentProvisioningService {
-  private agents: Collection<AgentInstance>;
-  private agentCores: Collection<AgentCore>;
-  private users: Collection<{ userId: string; privateWorkspaceId?: string }>;
+  private agents: Collection<AgentInstance>
+  private agentCores: Collection<AgentCore>
+  private users: Collection<{ userId: string; privateWorkspaceId?: string }>
 
   constructor(
     private db: Db,
     private mcaService: McaService,
   ) {
-    this.agents = db.collection<AgentInstance>('agents');
-    this.agentCores = db.collection<AgentCore>('agent_cores');
-    this.users = db.collection('users');
+    this.agents = db.collection<AgentInstance>("agents")
+    this.agentCores = db.collection<AgentCore>("agent_cores")
+    this.users = db.collection("users")
   }
 
   /**
@@ -117,7 +118,7 @@ export class AgentProvisioningService {
    * for ergonomic call sites and so the mapping can be exercised via the public API.
    */
   resolveCoreType(workspaceId?: string): CoreType {
-    return resolveCoreType(workspaceId);
+    return resolveCoreType(workspaceId)
   }
 
   /**
@@ -125,9 +126,9 @@ export class AgentProvisioningService {
    * This is the only path that should build an AgentInstance document.
    */
   async createAgentFromCore(params: CreateAgentParams): Promise<AgentInstance> {
-    const { ownerId, workspaceId, profile } = params;
+    const { ownerId, workspaceId, profile } = params
 
-    const coreType = this.resolveCoreType(workspaceId);
+    const coreType = this.resolveCoreType(workspaceId)
     // Deterministic: the canonical (stable) core for a coreType has
     // coreId === coreType ('agent'/'super-agent'). Rollout introduces additional
     // ACTIVE cores of the same coreType (experimental ones with their own coreId);
@@ -136,13 +137,13 @@ export class AgentProvisioningService {
     // Falling back to a stable sort keeps it deterministic if the canonical core
     // is ever missing.
     const core =
-      (await this.agentCores.findOne({ coreId: coreType, status: 'active' })) ??
-      (await this.agentCores.findOne({ coreType, status: 'active' }, { sort: { coreId: 1 } }));
+      (await this.agentCores.findOne({ coreId: coreType, status: "active" })) ??
+      (await this.agentCores.findOne({ coreType, status: "active" }, { sort: { coreId: 1 } }))
     if (!core) {
-      throw new Error(`No active agent core for coreType '${coreType}'`);
+      throw new Error(`No active agent core for coreType '${coreType}'`)
     }
 
-    const now = new Date().toISOString();
+    const now = new Date().toISOString()
     const agent: AgentInstance = {
       agentId: generateAgentId(),
       coreId: core.coreId,
@@ -150,39 +151,53 @@ export class AgentProvisioningService {
       fullName: profile.fullName,
       role: profile.role,
       intro: profile.intro,
-      avatarUrl: profile.avatarUrl || core.avatarUrl,
-      status: 'active',
+      // No avatar chosen → one of the default portraits, not the core's (which
+      // made every new agent look like Iria): the least used among the agents
+      // the creator already sees (lib/default-avatars.ts).
+      avatarUrl: profile.avatarUrl || (await this.defaultAvatarFor(ownerId, workspaceId)),
+      status: "active",
       ownerId,
       workspaceId,
       context: profile.context,
-      // No explicit provider/model → uses the user's system default.
-      availableProviders: [],
+      // No model pin → System Default: the user's default provider + its
+      // defaultModelId (2-level model, 2026-10-21).
       selectedProviderId: null,
       selectedModelId: null,
       createdAt: now,
       updatedAt: now,
-    };
+    }
 
-    await this.agents.insertOne(agent);
+    await this.agents.insertOne(agent)
 
     // Provision system + core default apps. Superagents have no workspace of
     // their own, so provision against the owner's private workspace.
-    const activeWorkspaceId = workspaceId ?? (await this.privateWorkspaceId(ownerId));
+    const activeWorkspaceId = workspaceId ?? (await this.privateWorkspaceId(ownerId))
     if (activeWorkspaceId) {
       try {
-        await this.mcaService.ensureProvisionedApps(agent.agentId, activeWorkspaceId);
+        await this.mcaService.ensureProvisionedApps(agent.agentId, activeWorkspaceId)
       } catch (err) {
         // All-or-nothing: a provisioning failure must not leave a half-created
         // agent that we hand back to the caller as "created". The lazy heal in
         // getAgentApps is the safety net for agents that reach this state via
         // other paths (backfill, legacy docs) — not a licence to return broken
         // creations here. DB writes are contracts (ENGINEERING-PRINCIPLES.md).
-        await this.agents.deleteOne({ agentId: agent.agentId });
-        throw err;
+        await this.agents.deleteOne({ agentId: agent.agentId })
+        throw err
       }
     }
 
-    return agent;
+    return agent
+  }
+
+  /**
+   * The default portrait for a new agent of `ownerId` (in `workspaceId`): the
+   * least used among the avatars of the agents they already see — their own
+   * and the workspace's.
+   */
+  private async defaultAvatarFor(ownerId: string, workspaceId?: string): Promise<string> {
+    const scope = workspaceId ? { $or: [{ ownerId }, { workspaceId }] } : { ownerId }
+    const seen = await this.agents.find(scope, { projection: { _id: 0, avatarUrl: 1 } }).toArray()
+    return pickDefaultAvatar(seen.map((a) => a.avatarUrl))
   }
 
   /**
@@ -190,24 +205,23 @@ export class AgentProvisioningService {
    * Does not revoke apps from the previous core; admins can do that explicitly.
    */
   async reprovisionForCore(agentId: string, newCoreId: string): Promise<void> {
-    const agent = await this.agents.findOne({ agentId });
+    const agent = await this.agents.findOne({ agentId })
     if (!agent) {
-      throw new Error(`Agent '${agentId}' not found`);
+      throw new Error(`Agent '${agentId}' not found`)
     }
-    const core = await this.agentCores.findOne({ coreId: newCoreId });
+    const core = await this.agentCores.findOne({ coreId: newCoreId })
     if (!core) {
-      throw new Error(`Agent core '${newCoreId}' not found`);
+      throw new Error(`Agent core '${newCoreId}' not found`)
     }
 
     await this.agents.updateOne(
       { agentId },
       { $set: { coreId: newCoreId, updatedAt: new Date().toISOString() } },
-    );
+    )
 
-    const activeWorkspaceId =
-      agent.workspaceId ?? (await this.privateWorkspaceId(agent.ownerId));
+    const activeWorkspaceId = agent.workspaceId ?? (await this.privateWorkspaceId(agent.ownerId))
     if (activeWorkspaceId) {
-      await this.mcaService.ensureProvisionedApps(agentId, activeWorkspaceId);
+      await this.mcaService.ensureProvisionedApps(agentId, activeWorkspaceId)
     }
   }
 
@@ -227,42 +241,41 @@ export class AgentProvisioningService {
    * skipped — one bad agent never aborts the backfill.
    */
   async backfillCoreApps(): Promise<{
-    processed: number;
-    provisioned: number;
-    skipped: number;
-    failed: number;
+    processed: number
+    provisioned: number
+    skipped: number
+    failed: number
   }> {
     const all = await this.agents
       .find({}, { projection: { agentId: 1, ownerId: 1, workspaceId: 1, _id: 0 } })
-      .toArray();
+      .toArray()
 
-    let provisioned = 0;
-    let skipped = 0;
-    let failed = 0;
+    let provisioned = 0
+    let skipped = 0
+    let failed = 0
 
     for (const agent of all) {
-      const activeWorkspaceId =
-        agent.workspaceId ?? (await this.privateWorkspaceId(agent.ownerId));
+      const activeWorkspaceId = agent.workspaceId ?? (await this.privateWorkspaceId(agent.ownerId))
       if (!activeWorkspaceId) {
         // Super-agent whose owner has no private workspace — cannot provision,
         // same constraint as creation. The lazy getAgentApps path heals it on
         // first use within a workspace.
-        skipped++;
-        continue;
+        skipped++
+        continue
       }
       try {
-        await this.mcaService.ensureProvisionedApps(agent.agentId, activeWorkspaceId);
-        provisioned++;
+        await this.mcaService.ensureProvisionedApps(agent.agentId, activeWorkspaceId)
+        provisioned++
       } catch (err) {
-        failed++;
+        failed++
         console.error(
           `[AgentProvisioning] backfillCoreApps failed for agent ${agent.agentId}:`,
           err,
-        );
+        )
       }
     }
 
-    return { processed: all.length, provisioned, skipped, failed };
+    return { processed: all.length, provisioned, skipped, failed }
   }
 
   /**
@@ -294,23 +307,23 @@ export class AgentProvisioningService {
     coreType: CoreType,
     flagService: FeatureFlagService,
   ): Promise<{ migrated: number; reverted: number; unchanged: number; total: number }> {
-    const key = `core.${coreType}`;
+    const key = `core.${coreType}`
 
-    const flag = await flagService.getFlag(key);
-    const experimentalId = flag?.rollout?.value;
+    const flag = await flagService.getFlag(key)
+    const experimentalId = flag?.rollout?.value
     // Only guard against a missing/inactive experimental core when the rollout is
     // actually routing agents toward it (percentage > 0). At 0% nobody migrates to
     // the experimental, so an Apply is a REVERSION — it must run even if that core
     // was deactivated, or agents already on it get stuck (the guard would throw
     // before reverting anyone).
-    const percentage = flag?.rollout?.percentage ?? 0;
+    const percentage = flag?.rollout?.percentage ?? 0
     if (experimentalId !== undefined && experimentalId !== coreType && percentage > 0) {
-      const exp = await this.agentCores.findOne({ coreId: String(experimentalId) });
-      if (!exp || exp.status !== 'active') {
+      const exp = await this.agentCores.findOne({ coreId: String(experimentalId) })
+      if (!exp || exp.status !== "active") {
         throw new Error(
           `Rollout target core '${String(experimentalId)}' for ${key} is missing or inactive — ` +
-            'activate it or clear the rollout before applying.',
-        );
+            "activate it or clear the rollout before applying.",
+        )
       }
     }
 
@@ -320,18 +333,18 @@ export class AgentProvisioningService {
       flagService
         .resolve(key, { userId: agent.ownerId, workspaceId: agent.workspaceId ?? undefined })
         .then(String),
-    );
+    )
 
-    let migrated = 0;
-    let reverted = 0;
+    let migrated = 0
+    let reverted = 0
     for (const item of plan.items) {
-      if (item.kind === 'stay') continue;
-      await this.reprovisionForCore(item.agentId, item.target);
-      if (item.kind === 'revert') reverted++;
-      else migrated++;
+      if (item.kind === "stay") continue
+      await this.reprovisionForCore(item.agentId, item.target)
+      if (item.kind === "revert") reverted++
+      else migrated++
     }
 
-    return { migrated, reverted, unchanged: plan.total - migrated - reverted, total: plan.total };
+    return { migrated, reverted, unchanged: plan.total - migrated - reverted, total: plan.total }
   }
 
   /**
@@ -350,7 +363,7 @@ export class AgentProvisioningService {
     flagService: FeatureFlagService,
     hypothetical?: { experimentalCoreId: string; percentage: number },
   ): Promise<RolloutPreview> {
-    const key = `core.${coreType}`;
+    const key = `core.${coreType}`
     const resolveTarget = (agent: AgentInstance): Promise<string> =>
       flagService
         .resolve(
@@ -360,22 +373,22 @@ export class AgentProvisioningService {
             ? { value: hypothetical.experimentalCoreId, percentage: hypothetical.percentage }
             : undefined,
         )
-        .then(String);
+        .then(String)
 
-    const plan = await this.computeRolloutPlan(coreType, resolveTarget);
+    const plan = await this.computeRolloutPlan(coreType, resolveTarget)
 
-    let migrate = 0;
-    let revert = 0;
-    let stay = 0;
-    const resultMap = new Map<string, number>();
-    for (const { coreId } of plan.distribution) resultMap.set(coreId, 0);
+    let migrate = 0
+    let revert = 0
+    let stay = 0
+    const resultMap = new Map<string, number>()
+    for (const { coreId } of plan.distribution) resultMap.set(coreId, 0)
     for (const item of plan.items) {
-      if (item.kind === 'migrate') migrate++;
-      else if (item.kind === 'revert') revert++;
-      else stay++;
+      if (item.kind === "migrate") migrate++
+      else if (item.kind === "revert") revert++
+      else stay++
       // Where the agent ends up: a `stay` keeps `current`; a move lands on `target`.
-      const landing = item.kind === 'stay' ? item.current : item.target;
-      resultMap.set(landing, (resultMap.get(landing) ?? 0) + 1);
+      const landing = item.kind === "stay" ? item.current : item.target
+      resultMap.set(landing, (resultMap.get(landing) ?? 0) + 1)
     }
 
     return {
@@ -384,7 +397,7 @@ export class AgentProvisioningService {
       plan: { migrate, revert, stay },
       resulting: [...resultMap.entries()].map(([coreId, count]) => ({ coreId, count })),
       unbucketed: plan.items.filter((i) => !i.ownerId).length,
-    };
+    }
   }
 
   /**
@@ -399,7 +412,7 @@ export class AgentProvisioningService {
     flagService: FeatureFlagService,
     hypothetical?: { experimentalCoreId: string; percentage: number },
   ): Promise<RolloutCohortEntry[]> {
-    const key = `core.${coreType}`;
+    const key = `core.${coreType}`
     const resolveTarget = (agent: AgentInstance): Promise<string> =>
       flagService
         .resolve(
@@ -409,32 +422,34 @@ export class AgentProvisioningService {
             ? { value: hypothetical.experimentalCoreId, percentage: hypothetical.percentage }
             : undefined,
         )
-        .then(String);
+        .then(String)
 
-    const plan = await this.computeRolloutPlan(coreType, resolveTarget);
+    const plan = await this.computeRolloutPlan(coreType, resolveTarget)
 
     // Resolve owner ids → readable names in one query.
-    const ownerIds = [...new Set(plan.items.map((i) => i.ownerId).filter(Boolean))] as string[];
+    const ownerIds = [...new Set(plan.items.map((i) => i.ownerId).filter(Boolean))] as string[]
     const userDocs = ownerIds.length
       ? await this.db
-          .collection<{ userId: string; profile?: { displayName?: string; email?: string } }>('users')
+          .collection<{ userId: string; profile?: { displayName?: string; email?: string } }>(
+            "users",
+          )
           .find({ userId: { $in: ownerIds } }, { projection: { userId: 1, profile: 1, _id: 0 } })
           .toArray()
-      : [];
+      : []
     const nameById = new Map(
       userDocs.map((u) => [u.userId, u.profile?.displayName || u.profile?.email || u.userId]),
-    );
+    )
 
     return plan.items.map((i) => ({
       agentId: i.agentId,
       agentName: i.agentName ?? i.agentId,
       ownerId: i.ownerId ?? null,
-      ownerName: i.ownerId ? (nameById.get(i.ownerId) ?? i.ownerId) : '—',
+      ownerName: i.ownerId ? (nameById.get(i.ownerId) ?? i.ownerId) : "—",
       current: i.current,
       target: i.target,
       kind: i.kind,
       bucket: i.ownerId ? stableBucket(i.ownerId, key) : null,
-    }));
+    }))
   }
 
   /**
@@ -451,48 +466,48 @@ export class AgentProvisioningService {
   ): Promise<RolloutPlan> {
     const governedDocs = await this.agentCores
       .find({ coreType }, { projection: { coreId: 1, _id: 0 } })
-      .toArray();
-    const governed = governedDocs.map((c) => c.coreId);
+      .toArray()
+    const governed = governedDocs.map((c) => c.coreId)
 
-    const agents = await this.agents.find({ coreId: { $in: governed } }).toArray();
+    const agents = await this.agents.find({ coreId: { $in: governed } }).toArray()
 
-    const distMap = new Map<string, number>();
-    for (const coreId of governed) distMap.set(coreId, 0);
-    for (const agent of agents) distMap.set(agent.coreId, (distMap.get(agent.coreId) ?? 0) + 1);
+    const distMap = new Map<string, number>()
+    for (const coreId of governed) distMap.set(coreId, 0)
+    for (const agent of agents) distMap.set(agent.coreId, (distMap.get(agent.coreId) ?? 0) + 1)
 
-    const items: RolloutPlanItem[] = [];
+    const items: RolloutPlanItem[] = []
     for (const agent of agents) {
       const base = {
         agentId: agent.agentId,
         agentName: agent.fullName ?? agent.name ?? agent.agentId,
         ownerId: agent.ownerId,
-      };
+      }
       if (!agent.ownerId) {
         // No bucketing identity → never migrates (stays on its current core forever).
-        items.push({ ...base, current: agent.coreId, target: agent.coreId, kind: 'stay' });
-        continue;
+        items.push({ ...base, current: agent.coreId, target: agent.coreId, kind: "stay" })
+        continue
       }
-      const target = await resolveTarget(agent);
-      let kind: RolloutPlanItem['kind'];
-      if (target === agent.coreId || !governed.includes(target)) kind = 'stay';
-      else if (target === coreType) kind = 'revert';
-      else kind = 'migrate';
-      items.push({ ...base, current: agent.coreId, target, kind });
+      const target = await resolveTarget(agent)
+      let kind: RolloutPlanItem["kind"]
+      if (target === agent.coreId || !governed.includes(target)) kind = "stay"
+      else if (target === coreType) kind = "revert"
+      else kind = "migrate"
+      items.push({ ...base, current: agent.coreId, target, kind })
     }
 
     return {
       total: agents.length,
       distribution: [...distMap.entries()].map(([coreId, count]) => ({ coreId, count })),
       items,
-    };
+    }
   }
 
   private async privateWorkspaceId(ownerId?: string): Promise<string | undefined> {
-    if (!ownerId) return undefined;
+    if (!ownerId) return undefined
     const user = await this.users.findOne(
       { userId: ownerId },
       { projection: { privateWorkspaceId: 1, _id: 0 } },
-    );
-    return user?.privateWorkspaceId;
+    )
+    return user?.privateWorkspaceId
   }
 }

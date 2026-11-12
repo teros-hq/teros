@@ -26,6 +26,9 @@ import { AgentHoursTracker } from "../../src/services/agent-hours-tracker"
 import { BillingReconciliationCron } from "../../src/services/billing-reconciliation-cron"
 import { BillingResetCron } from "../../src/services/billing-reset-cron"
 
+/** Every rolled-up hour counts as final here (the billable horizon has its own tests). */
+const billAllHours = async () => new Date(8_640_000_000_000_000)
+
 const stubLogger = {
   info: () => {},
   warn: () => {},
@@ -318,7 +321,14 @@ function makeWorld() {
 describe("billing lifecycle — full two-period cycle (FASE 3e)", () => {
   it("signup → bill → reconcile → reset → bill → reconcile, with zero drift and no double-count", async () => {
     const w = makeWorld()
-    const tracker = new AgentHoursTracker(w.db, stubLogger, null)
+    const tracker = new AgentHoursTracker(
+      w.db,
+      stubLogger,
+      null,
+      undefined,
+      undefined,
+      billAllHours,
+    )
     const reset = new BillingResetCron(w.db, stubLogger, null)
     const recon = new BillingReconciliationCron(w.db, stubLogger, null)
 

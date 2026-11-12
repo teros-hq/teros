@@ -9,7 +9,7 @@
  * - Provide typed access with graceful null handling
  * - Clear on logout
  *
-
+ * @spec docs/specs/core/feature-flags.md §8 (Integration Frontend)
  */
 
 import { createSessionStore } from './session/createSessionStore'

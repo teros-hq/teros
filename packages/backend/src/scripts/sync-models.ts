@@ -171,11 +171,16 @@ async function syncModels(dryRun: boolean = false) {
       // Sync user_providers — propagate active model IDs to each provider instance
       console.log("\n🔄 Syncing user providers...")
       const userProvidersCollection = db.collection("user_providers")
-      const activeModelsByProvider = new Map<string, string[]>()
+      const activeModelsByProvider = new Map<string, { modelId: string; modelString: string; capabilities: any; context: any }[]>()
       for (const model of MODEL_DEFINITIONS) {
         if (model.status === "active") {
           const list = activeModelsByProvider.get(model.provider) || []
-          list.push(model.modelId)
+          list.push({
+            modelId: model.modelId,
+            modelString: model.modelString,
+            capabilities: model.capabilities,
+            context: model.context,
+          })
           activeModelsByProvider.set(model.provider, list)
         }
       }
@@ -183,22 +188,53 @@ async function syncModels(dryRun: boolean = false) {
       const userProviders = await userProvidersCollection.find({}).toArray()
       let providersUpdated = 0
       for (const up of userProviders) {
-        const activeModelIds = activeModelsByProvider.get(up.providerType)
-        if (!activeModelIds) continue
+        const activeModels = activeModelsByProvider.get(up.providerType)
+        if (!activeModels) continue
 
         const currentModelIds = new Set((up.models || []).map((m: any) => m.modelId))
-        const modelsToAdd = activeModelIds.filter((id) => !currentModelIds.has(id))
+        const modelsToAdd = activeModels.filter((m) => !currentModelIds.has(m.modelId))
 
         if (modelsToAdd.length > 0) {
-          const newModels = modelsToAdd.map((modelId) => ({ modelId }))
           await userProvidersCollection.updateOne(
             { providerId: up.providerId },
-            { $addToSet: { models: { $each: newModels } } }
+            { $addToSet: { models: { $each: modelsToAdd } } }
           )
           providersUpdated++
         }
       }
       console.log(`  Updated ${providersUpdated} user providers with new model IDs`)
+
+      // Repair incomplete model entries (missing modelString/capabilities/context)
+      const fullModelMap = new Map(MODEL_DEFINITIONS.map((m) => [m.modelId, m]))
+      const providersForRepair = await userProvidersCollection.find({}).toArray()
+      let providersRepaired = 0
+      for (const up of providersForRepair) {
+        const currentModels = up.models || []
+        let needsRepair = false
+        const repairedModels = currentModels.map((m: any) => {
+          const full = fullModelMap.get(m.modelId)
+          if (full && (!m.modelString || !m.capabilities || !m.context)) {
+            needsRepair = true
+            return {
+              modelId: full.modelId,
+              modelString: full.modelString,
+              capabilities: full.capabilities,
+              context: full.context,
+            }
+          }
+          return m
+        })
+        if (needsRepair) {
+          await userProvidersCollection.updateOne(
+            { providerId: up.providerId },
+            { $set: { models: repairedModels } },
+          )
+          providersRepaired++
+        }
+      }
+      if (providersRepaired > 0) {
+        console.log(`  Repaired incomplete model entries in ${providersRepaired} user providers`)
+      }
 
       // Clean up orphaned modelIds from user_providers (modelIds no longer in definitions)
       const allDefinedModelIds = new Set(MODEL_DEFINITIONS.map((m) => m.modelId))
@@ -256,7 +292,10 @@ async function syncModels(dryRun: boolean = false) {
 }
 
 // Run if called directly
-if (import.meta.main) {
+// Note: import.meta.main doesn't work with tsx on Node < 21 (undefined there —
+// Bun and Node >= 21 define it), so we check if this is the main module too.
+const isMain = import.meta.url === `file://${process.argv[1]}` || import.meta.main
+if (isMain) {
   const args = process.argv.slice(2)
   const dryRun = args.includes("--dry-run")
 

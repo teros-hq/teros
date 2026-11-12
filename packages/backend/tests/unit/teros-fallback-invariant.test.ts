@@ -1,5 +1,5 @@
 /**
- * Lint-as-test (TER-617 / F3): the "teros = which upstream?" decision must live
+ * Lint-as-test (TER-617 / F3, TPROV-REQ-5): the "teros = which upstream?" decision must live
  * in ONE place — `services/teros-upstream.ts` (resolveTerosUpstream). This pins
  * that no other backend call-site reads the Fireworks/Together system secret
  * directly, nor hardcodes their base URLs, so a future edit can't silently
@@ -26,12 +26,12 @@ const ALLOWLIST = new Set([RESOLVER, "bootstrap/server-bootstrap.ts"])
 
 // `.system('fireworks')` / `secretsManager.system<T>("together")` / `x.system(`fireworks`)`
 // — ANY receiver, optional generic, single/double/back-tick quote.
-const SYSTEM_SECRET_READ = /\.system\s*(?:<[^>]*>)?\s*\(\s*['"`](?:fireworks|together)['"`]/
+const SYSTEM_SECRET_READ = /\.system\s*(?:<[^>]*>)?\s*\(\s*['"`](?:fireworks|together|helmcode)['"`]/
 
 // The upstream base URLs (in CODE) must live only in the resolver. The core
 // factory keeps a `?? 'https://api.fireworks.ai/...'` default — outside this
 // backend walk — synced by hand (// KEEP IN SYNC).
-const BASE_URL_LITERAL = /api\.(?:fireworks\.ai\/inference\/v1|together\.ai\/v1)/
+const BASE_URL_LITERAL = /api\.(?:fireworks\.ai\/inference\/v1|together\.ai\/v1|helmcode\.com\/v1)/
 
 function backendTsFiles(): string[] {
   return readdirSync(SRC, { recursive: true })
@@ -52,7 +52,7 @@ function isCommentLine(line: string): boolean {
 }
 
 describe("teros fallback invariant (TER-617)", () => {
-  it("reads the fireworks/together system secret ONLY in the upstream resolver (any receiver)", () => {
+  it("reads the fireworks/together/helmcode system secret ONLY in the upstream resolver (any receiver)", () => {
     const offenders = backendTsFiles().filter((rel) => {
       if (ALLOWLIST.has(rel)) return false
       // CODE reads only — a `secrets.system('fireworks')` mention in a comment
@@ -64,7 +64,7 @@ describe("teros fallback invariant (TER-617)", () => {
     expect(offenders).toEqual([])
   })
 
-  it("hardcodes the Fireworks/Together base URL ONLY in the resolver (code, not comments)", () => {
+  it("hardcodes the Fireworks/Together/Helmcode base URL ONLY in the resolver (code, not comments)", () => {
     const offenders = backendTsFiles().filter((rel) => {
       if (ALLOWLIST.has(rel)) return false
       return readFileSync(join(SRC, rel), "utf8")
@@ -74,12 +74,13 @@ describe("teros fallback invariant (TER-617)", () => {
     expect(offenders).toEqual([])
   })
 
-  it("the resolver IS the single source of truth (reads both system secrets)", () => {
+  it("the resolver IS the single source of truth (reads the three system secrets) [TPROV-REQ-5]", () => {
     // Anti-vacuity: if the resolver stopped reading them, the test above would
     // pass trivially. Pin that the choke-point still owns both upstream secrets.
     const resolver = readFileSync(join(SRC, RESOLVER), "utf8")
     expect(resolver).toContain('secrets.system("fireworks")')
     expect(resolver).toContain('secrets.system("together")')
+    expect(resolver).toContain('secrets.system("helmcode")')
   })
 
   it("scans a non-trivial number of backend source files (the walk works)", () => {

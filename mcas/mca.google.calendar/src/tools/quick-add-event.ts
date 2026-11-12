@@ -47,7 +47,7 @@ export const quickAddEvent: ToolConfig = {
     const targetCalendar = calendarId ?? "primary"
     const send = normaliseSendUpdates(sendUpdates)
 
-    const response = await runCalendarCall(() =>
+    const response = await runCalendarCall(context, () =>
       calendar.events.quickAdd({
         calendarId: targetCalendar,
         text,

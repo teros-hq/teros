@@ -1,13 +1,14 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Remove tracked files from the working tree and stage the deletion. Unlike
  * `mca.teros.filesystem.delete`, this respects the git index so the deletion
  * is part of a commit.
  */
-export const gitRm: ToolConfig = {
+export const gitRm: ToolConfig = lockedGitTool('git-rm', {
   annotations: { readOnlyHint: false },
   description:
     'Remove tracked files from the working tree and stage the deletion. Pass `cached: true` to only unstage (without deleting from disk).',
@@ -55,7 +56,7 @@ export const gitRm: ToolConfig = {
     if (a.cached) flags.push('--cached');
     if (a.recursive) flags.push('-r');
 
-    const result = runGit(repoPath, ['rm', ...flags, '--', ...a.paths]);
+    const result = await runGit(repoPath, ['rm', ...flags, '--', ...a.paths]);
     if (result.code !== 0) throwClassifiedGitError(result);
 
     return {
@@ -65,4 +66,4 @@ export const gitRm: ToolConfig = {
       details: result.stdout.trim() || result.stderr.trim(),
     };
   },
-};
+});

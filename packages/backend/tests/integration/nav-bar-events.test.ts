@@ -565,6 +565,32 @@ describe('NavBar realtime events (TER-304)', () => {
         b.close()
       }
     })
+
+    // Regression: creating a workspace through the service directly (the MCA
+    // agent-tool path — mca.teros.core create-workspace → POST /resources/workspaces
+    // → WorkspaceService.createWorkspace) must also broadcast to the owner.
+    // Previously only the WS domain handler broadcast, so agent-created
+    // workspaces never refreshed the frontend.
+    it('service-level create (MCA agent path) → owner receives workspace.created', async () => {
+      const a = await server.createClient()
+      try {
+        await a.authenticate(userAEmail)
+
+        const aCreated = waitForBroadcast(a, 'workspace.created')
+        const ws = await server.workspaceService!.createWorkspace(userAId, {
+          name: 'Agent-made WS',
+          type: 'shared',
+        })
+
+        const aEvent = await aCreated
+        expect(aEvent.workspace.workspaceId).toBe(ws.workspaceId)
+        expect(aEvent.workspace.name).toBe('Agent-made WS')
+        expect(aEvent.workspace.role).toBe('owner')
+        expect(aEvent.workspace.type).toBe('shared')
+      } finally {
+        a.close()
+      }
+    })
   })
 
   // -----------------------------------------------------------------------

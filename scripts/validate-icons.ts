@@ -3,7 +3,7 @@
  * MCA Icon Validator
  *
  * Validates icon files for all MCAs against the documented standards
-
+ * (Section 10 of docs/development/MCA-DEVELOPMENT.md).
  *
  * Rules enforced:
  *   - Icon file referenced in manifest.json must exist
@@ -287,7 +287,7 @@ Usage:
   bun scripts/validate-icons.ts mca.plaud          # Specific MCA(s)
   bun scripts/validate-icons.ts --help             # This help
 
-Validates icon files against the icon standards
+Validates icon files against the standards in docs/development/MCA-DEVELOPMENT.md
 (Section 10 — Icons).
 
 Rules enforced:

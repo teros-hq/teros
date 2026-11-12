@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -127,7 +130,8 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "safeWriteHint": true
       }
     },
     {
@@ -154,7 +158,8 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "safeWriteHint": true
       }
     },
     {
@@ -183,13 +188,13 @@
     },
     {
       "name": "rename-channel",
-      "description": "Rename a conversation. Changes the title/name of a channel.",
+      "description": "Rename a conversation. Changes the title/name of a channel. Without channelId it renames the current conversation. Conversations linked to a board task cannot be renamed — rename the task instead and the conversation follows.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "channelId": {
             "type": "string",
-            "description": "The ID of the channel to rename"
+            "description": "The ID of the channel to rename. Optional — defaults to the current conversation."
           },
           "name": {
             "type": "string",
@@ -197,12 +202,12 @@
           }
         },
         "required": [
-          "channelId",
           "name"
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "safeWriteHint": true
       }
     },
     {
@@ -237,7 +242,43 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "safeWriteHint": true
+      }
+    },
+    {
+      "name": "redact-by-value",
+      "description": "Redact every message in a conversation that contains a given secret value — the message where it was pasted, tool outputs like SSH/terminal logs that captured it, your own echoes, and even the arguments of this very call. Use it when a secret leaked into the conversation and you want no trace of it left in plaintext. The owner can still un-redact any message. Returns a coverage report (message ids + count) so you can verify nothing was missed. NEVER use this to hide non-secret content — it is a safety primitive for credentials.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "The exact secret text to sweep for (minimum 4 characters). Every message containing it will be redacted."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "The conversation to sweep (default: the current one). Only channels you have access to."
+          },
+          "window": {
+            "type": "number",
+            "description": "How many recent messages to scan (default 200, max 1000)."
+          },
+          "alsoRedact": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Extra message ids to redact when the exact match misses them (split key, transformed value)."
+          }
+        },
+        "required": [
+          "value"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
       }
     }
   ]

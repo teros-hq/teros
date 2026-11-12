@@ -8,10 +8,13 @@
  * can be open at a time (getKey enforces this at the registry level).
  */
 
-import { FolderOpen } from '@tamagui/lucide-icons';
-import i18n from '../../i18n';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { FileBrowserWindowContent } from './FileBrowserWindowContent';
+import { FolderOpen } from "@tamagui/lucide-icons"
+import i18n from "../../i18n"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const FileBrowserWindowContent = lazyWithRetry(() =>
+  import("./FileBrowserWindowContent").then((m) => ({ default: m.FileBrowserWindowContent })),
+)
 
 // ============================================================================
 // Props
@@ -19,9 +22,9 @@ import { FileBrowserWindowContent } from './FileBrowserWindowContent';
 
 export interface FileBrowserWindowProps {
   /** Workspace ID — used to resolve the correct volume */
-  workspaceId: string;
+  workspaceId: string
   /** Initial path inside the volume. Defaults to '/workspace' */
-  initialPath?: string;
+  initialPath?: string
 }
 
 // ============================================================================
@@ -29,10 +32,12 @@ export interface FileBrowserWindowProps {
 // ============================================================================
 
 export const fileBrowserWindowDefinition: WindowTypeDefinition<FileBrowserWindowProps> = {
-  type: 'file-browser',
-  displayName: 'File Browser',
+  type: "file-browser",
+  audience: "user",
+  displayName: "File Browser",
   icon: FolderOpen,
-  color: '#f59e0b', // Amber
+  phIcon: "folder-open",
+  color: "#f59e0b", // Amber
 
   component: FileBrowserWindowContent,
 
@@ -45,7 +50,7 @@ export const fileBrowserWindowDefinition: WindowTypeDefinition<FileBrowserWindow
   isLauncher: true,
 
   getTitle: () => i18n.t("windows.fileBrowser"),
-  getSubtitle: (props) => props.initialPath ?? '/workspace',
+  getSubtitle: (props) => props.initialPath ?? "/workspace",
 
   serialize: (props) => ({
     workspaceId: props.workspaceId,
@@ -53,7 +58,7 @@ export const fileBrowserWindowDefinition: WindowTypeDefinition<FileBrowserWindow
   }),
 
   deserialize: (data) => ({
-    workspaceId: (data.workspaceId as string) ?? '',
+    workspaceId: (data.workspaceId as string) ?? "",
     initialPath: data.initialPath as string | undefined,
   }),
-};
+}

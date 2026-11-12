@@ -4,7 +4,7 @@
   "tools": [
     {
       "name": "bash",
-      "description": "Execute a bash command with timeout and working directory support. Returns stdout, stderr, and exit code.",
+      "description": "Execute a bash command with real-time streaming output.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -14,16 +14,16 @@
           },
           "description": {
             "type": "string",
-            "description": "A 5-10 word description of what this command does"
-          },
-          "timeout": {
-            "type": "number",
-            "description": "Timeout in milliseconds (default: 120000 / 2 minutes, max: 600000 / 10 minutes)",
-            "default": 120000
+            "description": "ALWAYS provide this: a 5-10 word description of what the command does. It is shown to the user as the tool-call title."
           },
           "cwd": {
             "type": "string",
-            "description": "Working directory to execute the command in (optional)"
+            "description": "Working directory"
+          },
+          "stream": {
+            "type": "boolean",
+            "description": "Enable real-time streaming (default: true)",
+            "default": true
           }
         },
         "required": [

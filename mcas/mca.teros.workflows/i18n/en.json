@@ -1,0 +1,141 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies MongoDB and WebSocket connectivity."
+    },
+    "create-flow": {
+      "name": "create-flow",
+      "description": "Create a new workflow flow — a directed graph of nodes connected by typed gates. Nodes: start (entry point), action (creates a board task), end (terminal), function (executes code), pin (proxy/rerouting), integration (external MCA). Gates reference Artifacts via schemaId (or null for signal-only). Edges connect output gates to input gates. Triggers define how the flow starts (manual, schedule, webhook, event). Returns the created flow with generated IDs.",
+      "params": {
+        "name": "Human-readable flow name.",
+        "description": "What this flow does.",
+        "nodes": "Nodes in the graph. Must include at least one start node.",
+        "edges": "Connections from output gates to input gates.",
+        "triggers": "How the flow can be started.",
+        "status": "Flow lifecycle status (default: draft). Set to \"active\" to enable execution.",
+        "workspaceId": "Workspace ID (defaults to execution workspace).",
+        "flowId": "Optional existing flow ID for upsert (update if exists).",
+        "projectId": "Default project ID — tasks created by this flow go to this project's board. Can be overridden per action node."
+      }
+    },
+    "get-flow": {
+      "name": "get-flow",
+      "description": "Get a flow by ID — returns the full graph (nodes, edges, triggers) and metadata. Use this to inspect a flow before executing it.",
+      "params": {
+        "flowId": "The flow ID (e.g., \"flow_abc123\")."
+      }
+    },
+    "list-flows": {
+      "name": "list-flows",
+      "description": "List flows in a workspace, optionally filtered by status (draft, active, archived). Returns flows sorted by most recently updated. Each flow includes flowId, name, description, status, node/edge counts, and timestamps — but NOT the full graph (use get-flow for that).",
+      "params": {
+        "workspaceId": "Workspace ID (defaults to execution workspace).",
+        "status": "Filter by flow status. Omit to list all statuses."
+      }
+    },
+    "delete-flow": {
+      "name": "delete-flow",
+      "description": "Delete a flow by ID — permanently removes the flow document (nodes, edges, triggers, and all metadata). Irreversible. Returns { deleted: true } on success. Use list-flows to find flow IDs.",
+      "params": {
+        "flowId": "The flow ID to delete (e.g., \"flow_abc123\")."
+      }
+    },
+    "execute-flow": {
+      "name": "execute-flow",
+      "description": "Start a new execution of a flow. The engine processes the start node, cascades through non-action nodes (gate, parallel, condition), and creates board tasks for action nodes. Returns the execution, all steps created, and pending task IDs (tasks waiting for agent/human completion). The flow must be in \"active\" status. Pass projectId to specify which board project the tasks are created on.",
+      "params": {
+        "flowId": "The flow to execute (must be in \"active\" status).",
+        "projectId": "Project board ID where action node tasks will be created. If omitted, uses the flow's default projectId. Required if the flow has no default project.",
+        "triggeredBy": "How the execution was triggered (default: manual).",
+        "triggerData": "Optional trigger payload (webhook body, schedule data, etc.). Passed to the start node.",
+        "defaultPriority": "Default priority for created tasks (default: medium)."
+      }
+    },
+    "advance-flow": {
+      "name": "advance-flow",
+      "description": "Advance a workflow execution after a task completes. The engine validates the task output against the node's output gate artifact schema, marks the step as completed, and cascades to the next nodes (creating new tasks for any new action nodes). If validation fails, the execution is marked as failed and validation errors are returned. Use this when a board task linked to a workflow execution is completed (moved to Review or Done).",
+      "params": {
+        "executionId": "The execution ID to advance (e.g., \"exec_abc123\").",
+        "taskId": "The board task ID that completed. Must match a step in the execution.",
+        "outputData": "The output data produced by the task (the deliverable). Validated against the node's output gate artifact schema. If omitted, the engine uses whatever output data is already stored on the step."
+      }
+    },
+    "get-execution": {
+      "name": "get-execution",
+      "description": "Get the status of a workflow execution — returns the execution document, all steps (with node IDs, statuses, task IDs, branch IDs, and output data), a grouped view (trunk steps + per-branch groups with split/join metadata), and a summary (total/completed/running/pending/failed/blocked counts + allCompleted flag). Use this to check progress of a running execution, especially for Split/Join workflows with parallel branches.",
+      "params": {
+        "executionId": "The execution ID (e.g., \"exec_abc123\")."
+      }
+    },
+    "cancel-execution": {
+      "name": "cancel-execution",
+      "description": "Cancel a workflow execution — marks it as \"cancelled\" and sets completedAt. Useful when an execution is stale, contaminated by bugs, or no longer needed. Cannot cancel executions that are already \"completed\" or \"cancelled\". Running executions are marked cancelled (in-flight tasks are not killed, but the status is corrected).",
+      "params": {
+        "executionId": "The execution ID to cancel (e.g., \"exec_abc123\").",
+        "reason": "Optional reason for cancellation. Stored in the execution's error field. Defaults to \"Cancelled by user\"."
+      }
+    },
+    "list-executions": {
+      "name": "list-executions",
+      "description": "List workflow executions in a workspace, optionally filtered by flow and/or status (running, completed, failed, paused, cancelled). Returns executions sorted by most recently started (descending). Each execution includes executionId, flowId, status, startedAt, completedAt, and error (if any).",
+      "params": {
+        "flowId": "Filter by flow ID. Omit to list executions across all flows.",
+        "status": "Filter by execution status. Omit to list all statuses.",
+        "limit": "Maximum number of executions to return (default: 20, max: 200).",
+        "workspaceId": "Workspace ID (defaults to execution workspace)."
+      }
+    },
+    "create-artifact": {
+      "name": "create-artifact",
+      "description": "Create a new artifact — a named schema definition that types a gate. Artifacts define the shape of data flowing through gates (like TypeScript interfaces or Zod schemas, but simpler). Each property has a name, type, and optional constraints (required, enum, nested properties, array item type). Scopes: global (all workspaces), workspace (only this workspace), flow (only within a specific flow). Returns the created artifact with a generated artifactId.",
+      "params": {
+        "name": "Machine-readable name (e.g., \"Lead\", \"Email\", \"Report\").",
+        "title": "Human-readable title.",
+        "description": "What this artifact represents.",
+        "color": "Hex color for visual identification (e.g., \"#FF5733\"). Default: \"#5E6AD2\".",
+        "icon": "Emoji or icon name for visual identification. Default: \"📦\".",
+        "source": "Scope: global (all workspaces), workspace (only this workspace), flow (only within a specific flow). Default: \"workspace\".",
+        "flowId": "Required when source is \"flow\" — the flow this artifact belongs to.",
+        "schema": "The schema definition — shape of data this artifact describes.",
+        "workspaceId": "Workspace ID (defaults to execution workspace)."
+      }
+    },
+    "list-artifacts": {
+      "name": "list-artifacts",
+      "description": "List artifacts — named schema definitions that gates reference. Optionally filter by scope (global, workspace, flow) or flowId. Returns artifacts sorted by most recently updated. Without filters, returns all artifacts visible to the current workspace (global + workspace-scoped).",
+      "params": {
+        "source": "Filter by scope: global (pre-built, all workspaces), workspace (only this workspace), flow (only within a specific flow).",
+        "flowId": "Filter to artifacts belonging to a specific flow (use with source=\"flow\").",
+        "workspaceId": "Workspace ID (defaults to execution workspace)."
+      }
+    },
+    "update-artifact": {
+      "name": "update-artifact",
+      "description": "Update an artifact by ID — modify its name, title, description, color, icon, or schema definition. Only the fields you pass are updated; omitted fields are left unchanged. Returns the updated artifact. Use list-artifacts to find artifact IDs.",
+      "params": {
+        "artifactId": "The artifact ID (e.g., \"art_abc123\").",
+        "name": "New machine-readable name.",
+        "title": "New human-readable title.",
+        "description": "New description.",
+        "color": "New hex color for visual identification.",
+        "icon": "New emoji or icon name.",
+        "schema": "New schema definition — replaces the existing schema entirely."
+      }
+    },
+    "delete-artifact": {
+      "name": "delete-artifact",
+      "description": "Delete an artifact by ID — permanently removes the artifact schema definition. Gates that reference this artifact via schemaId will have dangling references after deletion. Use with caution. Returns { deleted: true } on success. Use list-artifacts to find artifact IDs.",
+      "params": {
+        "artifactId": "The artifact ID to delete (e.g., \"art_abc123\")."
+      }
+    }
+  },
+  "name": "Workflows",
+  "description": "Create, execute, and query visual workflows. Flows are directed graphs of nodes (start, action, end, gate, parallel, condition) connected by typed gates. The engine creates board tasks for action nodes and validates outputs against gate schemas.",
+  "changelog": [
+    {
+      "notes": "Initial release — create flows, start executions, get execution status. Integrates with the WorkflowEngine and board tasks."
+    }
+  ]
+}

@@ -14,6 +14,24 @@ export interface Session {
   ws: WebSocket;
   connectedAt: Date;
   lastActivityAt: Date;
+  /**
+   * Last client keepalive ping received. Client pings every 30s
+   * (pingIntervalMs), so a live socket has secondsSincePing < ~90.
+   * Distinguishes "app open but idle" from "zombie socket" (app closed
+   * without a close frame). Pings do NOT touch lastActivityAt — only
+   * real messages do.
+   */
+  lastPingAt: Date;
+  /** Client IP captured at the WS handshake (x-forwarded-for aware). */
+  ip: string;
+  /** Raw User-Agent header from the WS handshake. Null when absent. */
+  userAgent: string | null;
+}
+
+/** Connection metadata captured at handshake time, passed to createSession. */
+export interface SessionMeta {
+  ip?: string;
+  userAgent?: string | null;
 }
 
 export class SessionManager {
@@ -30,9 +48,10 @@ export class SessionManager {
   }
 
   /**
-   * Create a new session for authenticated user
+   * Create a new session for authenticated user.
+   * meta carries handshake metadata (ip, userAgent) for observability surfaces.
    */
-  createSession(userId: UserId, ws: WebSocket): Session {
+  createSession(userId: UserId, ws: WebSocket, meta?: SessionMeta): Session {
     const sessionId = generateSessionId();
 
     const session: Session = {
@@ -41,6 +60,9 @@ export class SessionManager {
       ws,
       connectedAt: new Date(),
       lastActivityAt: new Date(),
+      lastPingAt: new Date(),
+      ip: meta?.ip ?? "unknown",
+      userAgent: meta?.userAgent ?? null,
     };
 
     this.sessions.set(sessionId, session);
@@ -107,12 +129,22 @@ export class SessionManager {
   }
 
   /**
-   * Update last activity timestamp
+   * Update last activity timestamp (real messages only — pings use updatePing)
    */
   updateActivity(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.lastActivityAt = new Date();
+    }
+  }
+
+  /**
+   * Update last ping timestamp (keepalive only — does NOT touch lastActivityAt)
+   */
+  updatePing(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.lastPingAt = new Date();
     }
   }
 

@@ -3,26 +3,23 @@
  * primitive property, or a single raw-JSON textarea for non-flat schemas. Submit is gated on
  * required-only fields (flat) or JSON-parse + required-key success (raw). All chrome strings via
  * mca.status.form.*. Each field variant is its own small component so the render stays under the
- * cognitive-complexity limit (CLAUDE.md).
+ * cognitive-complexity limit (CLAUDE.md). Built from the `ui/ds` form primitives.
  */
-import { X } from "@tamagui/lucide-icons"
 import type React from "react"
-import { Button, Input, ScrollView, Text, XStack, YStack } from "tamagui"
+import { ScrollView, View } from "react-native"
 import {
   type ActiveForm,
   type FormField,
-  STATUS_COLORS,
   buildFormFields,
   isFlatSchema,
   rawJsonRequiredFilled,
 } from "./mcaHealth.utils"
-import { useColors } from "../../components/mca/primitives/useColors"
-import { colors as semanticColors, controlsBar } from "../../components/mca/primitives/colors"
+import { Btn, ChipBtn, Field, FieldHelp, FieldLabel, IconBtn, T } from "../../components/ui/ds"
 
 type Translate = (key: string, opts?: Record<string, unknown>) => string
 type SetField = (name: string, value: unknown) => void
 
-/** Boolean field — a true/false segmented toggle. */
+/** Boolean field — a true/false chip pair. */
 function BooleanField({
   field,
   value,
@@ -32,26 +29,19 @@ function BooleanField({
   value: unknown
   setField: SetField
 }) {
-  const c = useColors()
   return (
-    <XStack gap="$2">
-      {[true, false].map((val) => {
-        const selected = value === val
-        return (
-          <Button
-            key={String(val)}
-            size="$3"
-            flex={1}
-            backgroundColor={selected ? controlsBar.allow.bg : c.bgCardHover}
-            borderWidth={1}
-            borderColor={selected ? controlsBar.allow.border : c.borderStrong}
-            onPress={() => setField(field.name, val)}
-          >
-            <Text color={selected ? semanticColors.green : c.text2}>{val ? "true" : "false"}</Text>
-          </Button>
-        )
-      })}
-    </XStack>
+    <View style={{ flexDirection: "row", gap: 6 }}>
+      {[true, false].map((val) => (
+        <ChipBtn
+          key={String(val)}
+          mono
+          on={value === val}
+          onPress={() => setField(field.name, val)}
+        >
+          {val ? "true" : "false"}
+        </ChipBtn>
+      ))}
+    </View>
   )
 }
 
@@ -65,25 +55,14 @@ function EnumField({
   value: unknown
   setField: SetField
 }) {
-  const c = useColors()
   return (
-    <XStack gap="$2" flexWrap="wrap">
-      {(field.enum ?? []).map((opt) => {
-        const selected = value === opt
-        return (
-          <Button
-            key={opt}
-            size="$3"
-            backgroundColor={selected ? controlsBar.allow.bg : c.bgCardHover}
-            borderWidth={1}
-            borderColor={selected ? controlsBar.allow.border : c.borderStrong}
-            onPress={() => setField(field.name, opt)}
-          >
-            <Text color={selected ? semanticColors.green : c.text2}>{opt}</Text>
-          </Button>
-        )
-      })}
-    </XStack>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+      {(field.enum ?? []).map((opt) => (
+        <ChipBtn key={opt} mono on={value === opt} onPress={() => setField(field.name, opt)}>
+          {opt}
+        </ChipBtn>
+      ))}
+    </View>
   )
 }
 
@@ -97,11 +76,10 @@ function TextField({
   value: unknown
   setField: SetField
 }) {
-  const c = useColors()
   const numeric = field.type === "number" || field.type === "integer"
   return (
-    <Input
-      size="$3"
+    <Field
+      mono
       keyboardType={numeric ? "numeric" : "default"}
       value={value !== undefined ? String(value) : ""}
       onChangeText={(text) => {
@@ -112,8 +90,6 @@ function TextField({
         const num = Number(text)
         setField(field.name, text === "" ? "" : Number.isNaN(num) ? text : num)
       }}
-      backgroundColor={c.bgInner}
-      borderColor={c.borderStrong}
     />
   )
 }
@@ -128,26 +104,12 @@ function RawJsonField({
   setRawJson: (v: string) => void
   t: Translate
 }) {
-  const c = useColors()
   return (
-    <YStack gap="$1.5">
-      <Text fontSize="$2" color={c.text2}>
-        {t("mca.status.form.rawJsonLabel")}
-      </Text>
-      <Text fontSize="$1" color={c.text3}>
-        {t("mca.status.form.rawJsonHint")}
-      </Text>
-      <Input
-        size="$3"
-        multiline
-        numberOfLines={8}
-        value={rawJson}
-        onChangeText={setRawJson}
-        backgroundColor={c.bgInner}
-        borderColor={c.borderStrong}
-        fontFamily="$mono"
-      />
-    </YStack>
+    <View>
+      <FieldLabel>{t("mca.status.form.rawJsonLabel")}</FieldLabel>
+      <Field area mono minHeight={180} value={rawJson} onChangeText={setRawJson} />
+      <FieldHelp>{t("mca.status.form.rawJsonHint")}</FieldHelp>
+    </View>
   )
 }
 
@@ -161,13 +123,9 @@ function FlatField({
   value: unknown
   setField: SetField
 }) {
-  const c = useColors()
   return (
-    <YStack gap="$1.5">
-      <Text fontSize="$2" color={c.text2}>
-        {field.name}
-        {field.required ? " *" : ""}
-      </Text>
+    <View>
+      <FieldLabel required={field.required}>{field.name}</FieldLabel>
       {field.type === "boolean" ? (
         <BooleanField field={field} value={value} setField={setField} />
       ) : field.enum ? (
@@ -175,7 +133,7 @@ function FlatField({
       ) : (
         <TextField field={field} value={value} setField={setField} />
       )}
-    </YStack>
+    </View>
   )
 }
 
@@ -236,7 +194,6 @@ export function McaInputForm({
   onSubmit: () => void
   t: Translate
 }) {
-  const c = useColors()
   const { tool } = activeForm
   const { flat, fields, canSubmit, blockedMessage } = useSubmitGate(
     activeForm,
@@ -250,20 +207,25 @@ export function McaInputForm({
   }
 
   return (
-    <YStack gap="$4">
+    <View style={{ gap: 16 }}>
       {/* Header */}
-      <XStack justifyContent="space-between" alignItems="center">
-        <Text fontSize="$5" fontWeight="600" color="$color">
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <T step="xl" style={{ flex: 1 }}>
           {t("mca.status.form.title", { tool })}
-        </Text>
-        <Button size="$2" circular backgroundColor="transparent" onPress={onCancel}>
-          <X size={18} color={c.text2} />
-        </Button>
-      </XStack>
+        </T>
+        <IconBtn icon="x" plain onPress={onCancel} />
+      </View>
 
       {/* Body */}
-      <ScrollView maxHeight={360}>
-        <YStack gap="$3">
+      <ScrollView style={{ maxHeight: 360 }}>
+        <View style={{ gap: 16 }}>
           {flat ? (
             fields.map((field) => (
               <FlatField
@@ -277,38 +239,29 @@ export function McaInputForm({
             <RawJsonField rawJson={rawJson} setRawJson={setRawJson} t={t} />
           )}
           {!canSubmit && (
-            <Text fontSize="$1" color={STATUS_COLORS.fail}>
+            <T step="12" tone="danger">
               {blockedMessage}
-            </Text>
+            </T>
           )}
-        </YStack>
+        </View>
       </ScrollView>
 
       {/* Footer: Cancel / Submit (D-15) */}
-      <XStack gap="$3" marginTop="$2">
-        <Button
-          flex={1}
-          size="$4"
-          onPress={onCancel}
-          backgroundColor={c.bgCardHover}
-          borderWidth={1}
-          borderColor={c.borderStrong}
-        >
-          <Text color={c.text2}>{t("mca.status.form.cancel")}</Text>
-        </Button>
-        <Button
-          flex={1}
-          size="$4"
+      <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+        <Btn variant="sec" full style={{ flex: 1 }} onPress={onCancel}>
+          {t("mca.status.form.cancel")}
+        </Btn>
+        <Btn
+          variant="primary"
+          icon="play"
+          full
+          style={{ flex: 1 }}
           disabled={!canSubmit}
-          opacity={canSubmit ? 1 : 0.5}
           onPress={onSubmit}
-          backgroundColor={controlsBar.allow.bg}
-          borderWidth={1}
-          borderColor={controlsBar.allow.border}
         >
-          <Text color={semanticColors.green}>{t("mca.status.form.submit")}</Text>
-        </Button>
-      </XStack>
-    </YStack>
+          {t("mca.status.form.submit")}
+        </Btn>
+      </View>
+    </View>
   )
 }

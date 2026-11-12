@@ -2,15 +2,16 @@ import { FORM_TOOL_NAME, UI_HIDDEN_PROXY_TOOLS } from '@teros/shared';
 import { McaRegistry } from '../../mca';
 import { FormWidget } from '../../mca/FormWidget';
 import type { ToolCall } from './types';
+import { backendUrl } from '../../../config/runtime';
 
 /**
  * Derive the app icon URL from an mcaId.
- * Convention: every MCA ships an icon at /static/mcas/<mcaId>/icon.png.
+ * Convention: every MCA ships an icon at /static/mcas/<mcaId>/icon.svg.
  */
 function mcaIconUrl(mcaId: string | undefined): string | undefined {
   if (!mcaId) return undefined;
-  const base = process.env.EXPO_PUBLIC_BACKEND_URL ?? '';
-  return `${base}/static/mcas/${mcaId}/icon.png`;
+  const base = backendUrl();
+  return `${base}/static/mcas/${mcaId}/icon.svg`;
 }
 
 /**
@@ -71,6 +72,13 @@ export function ToolCallBlock({ tool }: { tool: ToolCall }) {
       duration={tool.duration}
       attachments={tool.attachments}
       appId={tool.appId}
+      // `mcaId` is passed as well as being used for the icon: it keys layer 1 of
+      // the approval intent ladder — the per-MCA `*-permission-description`
+      // overrides (TER-281) that turn "Wants to run" into "Deletes the build
+      // directory, cannot be undone". Omitting it left `props.mcaId` undefined in
+      // production, so that whole layer could never fire and every tool fell
+      // through to the generic description. See primitives/permission-intent.ts.
+      mcaId={tool.mcaId}
       appIcon={mcaIconUrl(tool.mcaId)}
       permissionRequestId={tool.permissionRequestId}
       irreversible={tool.irreversible}

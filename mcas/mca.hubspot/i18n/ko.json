@@ -249,13 +249,13 @@
     },
     "create-association": {
       "name": "create-association",
-      "description": "두 HubSpot CRM 객체(예: 연락처-회사, 거래-연락처) 간의 연관성을 생성합니다. v4 연관성 API를 사용합니다. 매개변수: fromObjectType, fromObjectId, toObjectType, toObjectId, associationType?",
+      "description": "두 HubSpot CRM 객체 간의 연관관계를 생성합니다 (예: 연락처-회사, 딜-연락처, 작업-딜). 쌍에 대해 검증된 HUBSPOT_DEFINED typeId를 사용하는 v4 연관관계 API를 사용합니다. 매개변수: fromObjectType, fromObjectId, toObjectType, toObjectId, associationTypeId?",
       "params": {
-        "fromObjectType": "소스 객체 유형: 연락처, 회사, 거래, 티켓.",
+        "fromObjectType": "소스 객체 유형: contacts, companies, deals, tickets, tasks, notes, calls, emails, meetings.",
         "fromObjectId": "소스 객체 HubSpot ID.",
-        "toObjectType": "대상 객체 유형: 연락처, 회사, 거래, 티켓.",
+        "toObjectType": "대상 객체 유형: contacts, companies, deals, tickets, tasks, notes, calls, emails, meetings.",
         "toObjectId": "대상 객체 HubSpot ID.",
-        "associationType": "연관성 유형 ID 또는 레이블(예: \"contact_to_company\", \"deal_to_contact\"). 선택 사항 — 생략할 경우 HubSpot이 기본값을 사용합니다."
+        "associationTypeId": "선택적 연관관계 유형 ID (예: 작업-딜은 216). 생략하면 해당 쌍에 대해 검증된 기본 HUBSPOT_DEFINED typeId가 사용됩니다."
       }
     },
     "delete-association": {
@@ -271,11 +271,11 @@
     },
     "list-associations": {
       "name": "list-associations",
-      "description": "HubSpot 객체에 대한 모든 연관성을 나열합니다. 매개변수: objectType, objectId, toObjectType, limit?",
+      "description": "HubSpot 객체의 지정된 유형의 연관된 레코드를 나열합니다 (예: 딜의 작업, 연락처의 회사). GET /crm/v4/objects/{objectType}/{objectId}/associations/{toObjectType}를 사용합니다. 매개변수: objectType, objectId, toObjectType, limit?",
       "params": {
-        "objectType": "객체 유형.",
+        "objectType": "조회 중인 레코드의 객체 유형.",
         "objectId": "HubSpot 객체 ID.",
-        "toObjectType": "검색할 연관 객체 유형.",
+        "toObjectType": "검색할 연관된 객체 유형 (예: 딜의 경우 tasks).",
         "limit": "최대 결과. 기본값 100."
       }
     },
@@ -297,14 +297,14 @@
     },
     "create-engagement": {
       "name": "create-engagement",
-      "description": "HubSpot 참여(전화, 이메일, 회의, 메모, 작업)를 생성합니다. v3 참여 API를 사용합니다. 매개변수: type (call|email|meeting|note|task), subject?, body?, status?, direction?, startTime?, duration?, associatedObjectType?, associatedObjectId?, properties?",
+      "description": "HubSpot 참여(전화, 이메일, 회의, 메모, 작업)를 생성합니다. v3 참여 API를 사용합니다. 매개변수: type (call|email|meeting|note|task), subject?, body?, status?, direction?, startTime?, duration?, associatedObjectType?, associatedObjectId?, properties?. startTime은 선택 사항입니다 — 생략하면 현재 시간이 참여 타임스탬프로 사용됩니다.",
       "params": {
         "type": "참여 유형.",
         "subject": "참여의 제목 또는 제목.",
         "body": "참여의 본문/내용.",
         "status": "상태(예: \"COMPLETED\", \"SCHEDULED\", \"NOT_STARTED\").",
-        "direction": "방향: INBOUND 또는 OUTBOUND(전화/이메일의 경우).",
-        "startTime": "시작 시간 ISO 문자열(회의/전화의 경우).",
+        "direction": "방향. 전화의 경우: INBOUND 또는 OUTBOUND. 이메일의 경우: EMAIL(발신), INCOMING_EMAIL, FORWARDED_EMAIL 또는 DRAFT_EMAIL(레거시 INBOUND/OUTBOUND는 자동으로 매핑됩니다).",
+        "startTime": "참여 타임스탬프 / 마감일, ISO 문자열. 선택 사항 — 기본값은 현재 시간입니다. HubSpot은 모든 참여 유형에 hs_timestamp를 요구합니다.",
         "duration": "밀리초 단위의 지속 시간(전화의 경우).",
         "associatedObjectType": "연관된 객체 유형: 연락처, 회사, 거래, 티켓.",
         "associatedObjectId": "연관된 객체의 HubSpot ID.",
@@ -322,12 +322,14 @@
     },
     "list-engagements": {
       "name": "list-engagements",
-      "description": "HubSpot 참여(전화, 이메일, 회의, 메모, 작업)를 나열합니다. 매개변수: type (call|email|meeting|note|task), limit?, after?",
+      "description": "HubSpot 참여(전화, 이메일, 회의, 메모, 작업)를 나열합니다. 매개변수: type (call|email|meeting|note|task), limit?, after?, ownerId?, status?, properties?. ownerId는 HubSpot 소유자(hubspot_owner_id)로 필터링합니다 — \"내 작업/참여\"에 사용하세요. 소유자 ID는 /crm/v3/owners에서 가져옵니다. status는 해당 유형의 상태 속성(hs_task_status, hs_call_status, hs_email_status, hs_meeting_status; 메모는 지원 안 함)으로 필터링합니다. ownerId 또는 status가 제공되면 일반 목록 엔드포인트가 서버 측 필터링을 지원하지 않기 때문에 검색 엔드포인트(POST /crm/v3/objects/{type}/search)를 사용합니다.",
       "params": {
         "type": "참여 유형.",
         "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본값 50.",
-        "after": "페이지 매김 커서.",
-        "properties": "포함할 추가 속성."
+        "after": "페이지 매김 커서(이전 페이지에서).",
+        "properties": "포함할 추가 속성.",
+        "ownerId": "HubSpot 소유자 ID(hubspot_owner_id)로 필터링, 예: \"내 작업\". 소유자 ID는 /crm/v3/owners에서 가져옵니다.",
+        "status": "상태로 필터링, 예: 작업의 경우 NOT_STARTED | IN_PROGRESS | WAITING | COMPLETED. 해당 유형의 상태 속성에 매핑됩니다. 메모는 지원하지 않습니다."
       }
     },
     "delete-engagement": {

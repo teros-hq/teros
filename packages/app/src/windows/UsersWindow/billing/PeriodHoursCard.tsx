@@ -10,19 +10,19 @@
  * with an origin badge and a Revoke action, and a Grant dialog with a live
  * preview. Money-adjacent: the grant idempotencyKey is generated ONCE per opened
  * dialog (a double-click / retry never double-grants), validation blocks invalid
- * hours BEFORE the call, and Confirm is disabled while in-flight. Colours are
- * monitoring tokens; primitives are the shared Badge/IconChip/Empty.
+ * hours BEFORE the call, and Confirm is disabled while in-flight. Presentation:
+ * a nested ds `Card` with a violet-tinted border, `Badge` / `Btn` / `Field`.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Text, XStack, YStack } from "tamagui"
-import { Badge, Empty, IconChip } from "../../../components/mca/primitives"
-import { tokens } from "../../../components/monitoring/colors"
+import { View } from "react-native"
+import { useColors } from "../../../components/mca/primitives/useColors"
+import { Badge, Btn, Card, EmptyHint, T } from "../../../components/ui/ds"
 import type { BillingAuditBoost, UserSummary } from "../../../services/AdminApi"
 import { getTerosClient } from "../../../services/terosClientSingleton"
 import { ConfirmDialog } from "../detail/ConfirmDialog"
-import { formatDate, hoursUsage } from "../usersModel"
+import { formatDate, hoursUsage, variantTone } from "../usersModel"
 import { Button, FieldLabel, FormError, TextField } from "./formPrimitives"
 import {
   boostOriginMeta,
@@ -49,6 +49,7 @@ function fmtH(n: number): string {
 export function PeriodHoursCard({ user, onChanged }: PeriodHoursCardProps) {
   const { t } = useTranslation()
   const client = getTerosClient()
+  const c = useColors()
 
   const [boosts, setBoosts] = useState<BillingAuditBoost[]>([])
   const [grantOpen, setGrantOpen] = useState(false)
@@ -98,39 +99,39 @@ export function PeriodHoursCard({ user, onChanged }: PeriodHoursCardProps) {
   }
 
   return (
-    <YStack
-      testID="period-hours-card"
-      gap={12}
-      padding={14}
-      borderRadius={12}
-      borderWidth={1}
-      borderColor={`${tokens.accent}33`}
-      backgroundColor={`${tokens.accent}0D`}
-    >
-      <XStack ai="center" jc="space-between" gap={8} flexWrap="wrap">
-        <XStack ai="center" gap={8}>
-          <Text fontSize={14} fontWeight="650" color={tokens.text}>
-            {t("windows.usersPanel.billing.periodHours.title")}
-          </Text>
-          <IconChip
-            text={t("windows.usersPanel.billing.periodHours.temporaryTag")}
-            accent={tokens.accent}
-          />
-        </XStack>
+    <Card nested pad testID="period-hours-card" style={{ borderColor: c.tint.i.bd, gap: 12 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <T step="base">{t("windows.usersPanel.billing.periodHours.title")}</T>
+          <Badge tone="i" pill cap>
+            {t("windows.usersPanel.billing.periodHours.temporaryTag")}
+          </Badge>
+        </View>
         {unmetered ? null : (
-          <Button
+          <Btn
             testID="period-grant-cta"
-            label={t("windows.usersPanel.billing.periodHours.grantCta")}
-            tone="primary"
+            variant="primary"
+            size="sm"
+            icon="plus"
             onPress={() => setGrantOpen(true)}
-          />
+          >
+            {t("windows.usersPanel.billing.periodHours.grantCta")}
+          </Btn>
         )}
-      </XStack>
+      </View>
 
       {unmetered ? (
-        <Text fontSize={12} color={tokens.textTertiary}>
+        <T step="sm" tone="text3">
           {t("windows.usersPanel.billing.periodHours.unmetered")}
-        </Text>
+        </T>
       ) : (
         <>
           <Breakdown
@@ -139,11 +140,11 @@ export function PeriodHoursCard({ user, onChanged }: PeriodHoursCardProps) {
             effective={effective}
             usageLabel={usage.label}
           />
-          <Text fontSize={11} color={tokens.textMuted} lineHeight={16}>
+          <T step="12" tone="text3">
             {t("windows.usersPanel.billing.periodHours.disclaimer", {
               date: formatDate(billing?.currentPeriodEnd),
             })}
-          </Text>
+          </T>
           <BoostList boosts={boosts} onRevoke={setRevokeTarget} />
         </>
       )}
@@ -164,15 +165,15 @@ export function PeriodHoursCard({ user, onChanged }: PeriodHoursCardProps) {
         open={revokeTarget != null}
         title={t("windows.usersPanel.billing.periodHours.revokeTitle")}
         body={
-          <YStack gap={10}>
-            <Text fontSize={13} lineHeight={20} color={tokens.textTertiary}>
+          <View style={{ gap: 10 }}>
+            <T step="sm" tone="text2">
               {t("windows.usersPanel.billing.periodHours.revokeConsequence", {
                 from: fmtH(effective),
                 to: fmtH(newPeriodLimit(effective, -(revokeTarget?.hours ?? 0))),
               })}
-            </Text>
+            </T>
             {revokeError ? <FormError message={revokeError} testID="period-revoke-error" /> : null}
-          </YStack>
+          </View>
         }
         confirmLabel={t("windows.usersPanel.billing.periodHours.revokeConfirm")}
         cancelLabel={t("windows.usersPanel.billing.cancel")}
@@ -184,7 +185,7 @@ export function PeriodHoursCard({ user, onChanged }: PeriodHoursCardProps) {
           setRevokeError(null)
         }}
       />
-    </YStack>
+    </Card>
   )
 }
 
@@ -200,9 +201,9 @@ function Breakdown({
   usageLabel: string
 }) {
   const { t } = useTranslation()
-  const boostColor = boost > 0 ? tokens.accent : tokens.textMuted
+  const c = useColors()
   return (
-    <YStack gap={5}>
+    <View style={{ gap: 6 }}>
       <Row
         label={t("windows.usersPanel.billing.periodHours.baseLimit")}
         value={`${fmtH(base)} h`}
@@ -210,20 +211,16 @@ function Breakdown({
       <Row
         label={t("windows.usersPanel.billing.periodHours.activeExtra")}
         value={`+ ${fmtH(boost)} h`}
-        valueColor={boostColor}
+        valueColor={boost > 0 ? c.accent : c.text3}
       />
       <Row
         label={t("windows.usersPanel.billing.periodHours.effectiveLimit")}
         value={`= ${fmtH(effective)} h`}
-        valueColor={tokens.text}
-        bold
+        valueColor={c.text}
+        big
       />
-      <Row
-        label={t("windows.usersPanel.billing.periodHours.usage")}
-        value={usageLabel}
-        valueColor={tokens.textSecondary}
-      />
-    </YStack>
+      <Row label={t("windows.usersPanel.billing.periodHours.usage")} value={usageLabel} />
+    </View>
   )
 }
 
@@ -231,27 +228,30 @@ function Row({
   label,
   value,
   valueColor,
-  bold,
+  big,
 }: {
   label: string
   value: string
   valueColor?: string
-  bold?: boolean
+  big?: boolean
 }) {
+  const c = useColors()
   return (
-    <XStack ai="center" jc="space-between" gap={10}>
-      <Text fontSize={12} color={tokens.textTertiary}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+      }}
+    >
+      <T step="12" tone="text3">
         {label}
-      </Text>
-      <Text
-        fontFamily="$mono"
-        fontSize={13}
-        fontWeight={bold ? "700" : "500"}
-        color={valueColor ?? tokens.textSecondary}
-      >
+      </T>
+      <T step={big ? "code13" : "code"} color={valueColor ?? c.text2}>
         {value}
-      </Text>
-    </XStack>
+      </T>
+    </View>
   )
 }
 
@@ -263,15 +263,20 @@ function BoostList({
   onRevoke: (b: BillingAuditBoost) => void
 }) {
   const { t } = useTranslation()
+  const c = useColors()
   if (boosts.length === 0) {
-    return <Empty message={t("windows.usersPanel.billing.periodHours.noBoosts")} />
+    return (
+      <EmptyHint style={{ paddingHorizontal: 0 }}>
+        {t("windows.usersPanel.billing.periodHours.noBoosts")}
+      </EmptyHint>
+    )
   }
   return (
-    <YStack gap={8} testID="period-boost-list">
+    <View testID="period-boost-list" style={{ borderTopWidth: 1, borderTopColor: c.border }}>
       {boosts.map((b) => (
         <BoostRow key={b._id} boost={b} onRevoke={onRevoke} />
       ))}
-    </YStack>
+    </View>
   )
 }
 
@@ -283,45 +288,47 @@ function BoostRow({
   onRevoke: (b: BillingAuditBoost) => void
 }) {
   const { t } = useTranslation()
+  const c = useColors()
   const origin = boostOriginMeta(boost.source)
   return (
-    <XStack
-      ai="center"
-      jc="space-between"
-      gap={10}
-      padding={10}
-      borderRadius={8}
-      borderWidth={1}
-      borderColor={tokens.border}
-      backgroundColor={tokens.bgInner}
-      flexWrap="wrap"
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: c.border,
+        flexWrap: "wrap",
+      }}
     >
-      <YStack gap={4} minWidth={0} flex={1}>
-        <XStack ai="center" gap={8} flexWrap="wrap">
-          <Text fontFamily="$mono" fontSize={14} fontWeight="700" color={tokens.text}>
-            +{fmtH(boost.hours)} h
-          </Text>
-          <Badge text={t(origin.labelKey)} variant={origin.variant} />
-        </XStack>
-        <Text fontSize={11} color={tokens.textMuted} numberOfLines={1}>
+      <View style={{ gap: 3, minWidth: 0, flex: 1 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <T step="code13">{`+${fmtH(boost.hours)} h`}</T>
+          <Badge tone={variantTone(origin.variant)} sm>
+            {t(origin.labelKey)}
+          </Badge>
+        </View>
+        <T step="12" tone="text3" numberOfLines={1}>
           {t("windows.usersPanel.billing.periodHours.grantedBy", {
             who: boost.grantedBy,
             date: formatDate(boost.createdAt),
           })}
-        </Text>
+        </T>
         {boost.note ? (
-          <Text fontSize={11} color={tokens.textTertiary} numberOfLines={2}>
+          <T step="12" tone="text2" numberOfLines={2}>
             {boost.note}
-          </Text>
+          </T>
         ) : null}
-      </YStack>
+      </View>
       <Button
         testID={`period-revoke-${boost._id}`}
         label={t("windows.usersPanel.billing.periodHours.revoke")}
         tone="danger"
         onPress={() => onRevoke(boost)}
       />
-    </XStack>
+    </View>
   )
 }
 
@@ -381,8 +388,8 @@ function GrantBoostDialog({
       open
       title={t("windows.usersPanel.billing.periodHours.grantTitle")}
       body={
-        <YStack gap={12}>
-          <YStack>
+        <View style={{ gap: 14 }}>
+          <View>
             <FieldLabel>
               {t("windows.usersPanel.billing.periodHours.grantHoursLabel", {
                 min: HOURS_MIN,
@@ -396,8 +403,8 @@ function GrantBoostDialog({
               placeholder={t("windows.usersPanel.billing.periodHours.grantHoursPlaceholder")}
               numeric
             />
-          </YStack>
-          <YStack>
+          </View>
+          <View>
             <FieldLabel>{t("windows.usersPanel.billing.periodHours.grantNoteLabel")}</FieldLabel>
             <TextField
               testID="period-grant-note"
@@ -405,15 +412,15 @@ function GrantBoostDialog({
               onChangeText={setNote}
               placeholder={t("windows.usersPanel.billing.periodHours.grantNotePlaceholder")}
             />
-          </YStack>
-          <Text testID="period-grant-preview" fontSize={13} color={tokens.accent} fontWeight="600">
+          </View>
+          <T testID="period-grant-preview" step="sm" tone="accent">
             {t("windows.usersPanel.billing.periodHours.grantPreview", {
               from: fmtH(currentEffective),
               to: fmtH(previewTo),
             })}
-          </Text>
+          </T>
           {error ? <FormError message={error} testID="period-grant-error" /> : null}
-        </YStack>
+        </View>
       }
       confirmLabel={t("windows.usersPanel.billing.periodHours.grantConfirm")}
       cancelLabel={t("windows.usersPanel.billing.cancel")}

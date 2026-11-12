@@ -1,0 +1,67 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Herramienta de verificación de salud interna. Verifica credenciales OAuth y conectividad."
+    },
+    "read-document": {
+      "name": "read-document",
+      "description": "Leer un documento de Word como markdown (predeterminado) o HTML. Devuelve el texto, no la estructura — usa list-paragraphs cuando necesites índices para editar."
+    },
+    "get-document-info": {
+      "name": "get-document-info",
+      "description": "Obtener los metadatos de OneDrive de un documento de Word, sus propiedades y los recuentos de párrafos y palabras."
+    },
+    "list-paragraphs": {
+      "name": "list-paragraphs",
+      "description": "Listar los párrafos de un documento de Word con los índices estables que las herramientas de edición usan. Llama esto antes de editar para encontrar el párrafo correcto."
+    },
+    "get-comments": {
+      "name": "get-comments",
+      "description": "Leer los comentarios de revisión en un documento de Word, con sus autores y fechas. Devuelve una lista vacía cuando el documento no tiene ninguno."
+    },
+    "create-document": {
+      "name": "create-document",
+      "description": "Crear un nuevo documento de Word a partir de párrafos estructurados. Falla si ya existe un archivo en la ruta a menos que se establezca overwrite."
+    },
+    "replace-text": {
+      "name": "replace-text",
+      "description": "Reemplazar texto en un documento de Word, coincidiendo con el texto como el lector lo ve incluso cuando Word lo ha dividido entre runs de formato."
+    },
+    "append-paragraphs": {
+      "name": "append-paragraphs",
+      "description": "Añadir párrafos al final de un documento de Word, dejando todo lo existente intacto."
+    },
+    "delete-paragraph": {
+      "name": "delete-paragraph",
+      "description": "Eliminar un párrafo de un documento de Word por su índice de list-paragraphs. Los índices cambian tras una eliminación, así que vuelve a listar antes de eliminar de nuevo."
+    },
+    "insert-table": {
+      "name": "insert-table",
+      "description": "Añadir una tabla a un documento de Word. Las filas son cadenas de texto; la primera puede estilo de encabezado."
+    },
+    "insert-page-break": {
+      "name": "insert-page-break",
+      "description": "Añadir un salto de página a un documento de Word, para que el contenido siguiente empiece en una nueva página."
+    },
+    "insert-image": {
+      "name": "insert-image",
+      "description": "Insertar una imagen PNG o JPEG al final de un documento de Word."
+    },
+    "update-document-properties": {
+      "name": "update-document-properties",
+      "description": "Establecer el título, autor, asunto o descripción de un documento de Word — las propiedades que Word muestra en Archivo → Información. No modifica el cuerpo del documento."
+    },
+    "convert-to-pdf": {
+      "name": "convert-to-pdf",
+      "description": "Convertir un documento de Word a PDF y guardarlo en OneDrive. Falla si ya existe un archivo en el destino a menos que se establezca overwrite."
+    }
+  },
+  "name": "Word",
+  "description": "Integración de Microsoft Word vía Microsoft Graph API",
+  "changelog": [
+    {
+      "notes": "Versión inicial — crear, leer y editar documentos de Word en OneDrive"
+    }
+  ]
+}

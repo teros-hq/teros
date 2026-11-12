@@ -1,6 +1,7 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { agentGitTool } from './_locked';
 
 interface BlameLine {
   sha: string;
@@ -15,7 +16,7 @@ interface BlameLine {
  * Per-line attribution for a file: who wrote each line and when. Uses
  * `git blame --porcelain` so the parser doesn't depend on column widths.
  */
-export const gitBlame: ToolConfig = {
+export const gitBlame: ToolConfig = agentGitTool({
   annotations: { readOnlyHint: false },
   description:
     'Per-line attribution for a file. Returns `[{ sha, author, date, lineNumber, content }]`. Restrict with `range: "10,50"` or `ref`.',
@@ -48,7 +49,7 @@ export const gitBlame: ToolConfig = {
     if (a.ref) argv.push(a.ref);
     argv.push('--', a.path);
 
-    const result = runGit(repoPath, argv);
+    const result = await runGit(repoPath, argv);
     if (result.code !== 0) throwClassifiedGitError(result);
 
     // Porcelain format:
@@ -104,4 +105,4 @@ export const gitBlame: ToolConfig = {
       lines,
     };
   },
-};
+});

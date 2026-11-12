@@ -30,7 +30,7 @@ export const getSettings: ToolConfig = {
     const { setting, includeRaw } = args as unknown as GetSettingsArgs
 
     if (setting) {
-      const response = await wrapCalendarCall(() => calendar.settings.get({ setting }))
+      const response = await wrapCalendarCall(context, () => calendar.settings.get({ setting }))
       const curated = extractSettingShape(response.data)
       return {
         account: email,
@@ -39,7 +39,7 @@ export const getSettings: ToolConfig = {
     }
 
     // Fetch the full list and reshape to {<id>: value} for ergonomic agent access.
-    const response = await wrapCalendarCall(() => calendar.settings.list({}))
+    const response = await wrapCalendarCall(context, () => calendar.settings.list({}))
     const items = response.data.items ?? []
     const curated = items.map(extractSettingShape)
     const map: Record<string, string> = {}

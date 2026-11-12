@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'bun:test';
 import { ImagePipeline, getDefaultAllowedDomains, type ProcessedImage } from './ImagePipeline';
 
 // Mock sharp

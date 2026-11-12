@@ -358,7 +358,7 @@ function GetChannelMessagesRenderer({ input, status, output, error, duration, ap
   const channelId = (input?.channelId as string) || '';
   const parsed = parseOutput(output);
   const messages: any[] = parsed?.messages ?? [];
-  const channelName: string = parsed?.channel?.name || shortChannelId(channelId);
+  const channelName: string = parsed?.channel?.name || '';
   const hasMore: boolean = parsed?.hasMore ?? false;
 
   const badge =
@@ -370,7 +370,7 @@ function GetChannelMessagesRenderer({ input, status, output, error, duration, ap
 
   const header = {
     status,
-    description: `Messages: ${truncate(channelName, 30)}`,
+    description: channelName ? `Messages: ${truncate(channelName, 30)}` : 'Conversation messages',
     duration,
     badge,
     appIcon,  };
@@ -428,11 +428,12 @@ function GetChannelMessagesRenderer({ input, status, output, error, duration, ap
 function GetChannelSummaryRenderer({ input, status, output, error, duration, appIcon }: SubProps) {
   const c = useColors();
   const colors = useConversationsColors();
-  const channelId = (input?.channelId as string) || '';
+  // The tool returns { success, summary: { name, messageCount, lastMessage, … } }.
   const parsed = parseOutput(output);
-  const name: string = parsed?.name || shortChannelId(channelId);
-  const msgCount: number = parsed?.messageCount ?? 0;
-  const lastMsg: string = parsed?.lastMessage?.content || '';
+  const summary = parsed?.summary ?? parsed;
+  const name: string = summary?.name || '';
+  const msgCount: number = summary?.messageCount ?? 0;
+  const lastMsg: string = summary?.lastMessage?.content || '';
 
   const badge =
     status === 'failed'
@@ -441,16 +442,21 @@ function GetChannelSummaryRenderer({ input, status, output, error, duration, app
         ? { text: `${msgCount} msg${msgCount !== 1 ? 's' : ''}`, variant: 'violet' as BadgeVariant }
         : undefined;
 
-  const header = { status, description: `Summary: ${truncate(name, 30)}`, duration, badge, appIcon };
+  const header = {
+    status,
+    description: name ? `Summary: ${truncate(name, 30)}` : 'Conversation summary',
+    duration,
+    badge,
+    appIcon,
+  };
   return (
     <ToolShell {...header}>
         {status === 'running' && <SkeletonLines />}
         {status === 'failed' && <ErrorBox error={error} />}
-        {status === 'completed' && parsed && (
+        {status === 'completed' && summary && (
           <YStack backgroundColor={c.bgInner} borderRadius={5} padding={8} gap={5}>
-            <InfoRow label="Name" value={name} />
+            {name && <InfoRow label="Name" value={name} />}
             <InfoRow label="Messages" value={String(msgCount)} />
-            {parsed.agentId && <InfoRow label="Agent" value={parsed.agentId} />}
             {lastMsg && <InfoRow label="Last msg" value={truncate(lastMsg, 80)} />}
           </YStack>
         )}
@@ -468,7 +474,7 @@ function CreateConversationRenderer({ input, status, output, error, duration, ap
   const agentId = (input?.agentId as string) || '';
   const name = (input?.name as string) || '';
   const parsed = parseOutput(output);
-  const channelId: string = parsed?.channelId || '';
+  const channelId: string = parsed?.channel?.channelId || parsed?.channelId || '';
 
   const badge =
     status === 'failed'
@@ -515,7 +521,9 @@ function DelegateTaskRenderer({ input, status, output, error, duration, appIcon 
 
   const handleOpenSubConversation = () => {
     if (!channelId) return;
-    openWindow('chat', { channelId, agentId: agentId || undefined }, true);
+    // Preview routing (preview-tabs.md): a plain click reuses the desktop's
+    // preview tab; only ctrl/cmd-click opens a separate tab.
+    openWindow('chat', { channelId, agentId: agentId || undefined }, false);
   };
 
   const badge =

@@ -1,15 +1,95 @@
 {
   "entries": [
     {
+      "id": "v1.4.6-browser-visible-tabs",
+      "date": "2026-11-08",
+      "category": "feature",
+      "title": {
+        "en": "Browser: Your Agent's Tabs, Live",
+        "es": "Navegador: las pestañas de tu agente, en directo",
+        "ko": "브라우저: 에이전트의 탭을 실시간으로"
+      },
+      "description": "The Browser app now runs a persistent Chrome profile per user and streams its visible tabs into the Browser window, so you watch and take over what the agent is doing.",
+      "content": {
+        "en": "The Browser app got a real browser behind it.\n\n### What changed\n\n- **Persistent profile**: each user gets their own Chrome profile that survives between sessions, so logins and cookies stick.\n- **Visible tabs**: the tabs the agent opens are streamed live into the Browser window; you can click, type and scroll to take over at any moment.\n- **Same window, web and desktop**: the Browser window uses the same toolbar whether the browser runs in the cloud or on your machine.\n\n### Under the hood\n\nThis ships on the new MCA streams protocol: an app can push frames and state and receive your input over its own channel, which other apps will use next.",
+        "es": "La app Navegador tiene ahora un navegador de verdad detrás.\n\n### Qué cambia\n\n- **Perfil persistente**: cada usuario tiene su propio perfil de Chrome que se conserva entre sesiones, así que los inicios de sesión y las cookies se mantienen.\n- **Pestañas visibles**: las pestañas que abre el agente se retransmiten en directo en la ventana Navegador; puedes hacer clic, escribir y desplazarte para tomar el control en cualquier momento.\n- **Misma ventana en web y escritorio**: la ventana Navegador usa la misma barra de herramientas tanto si el navegador corre en la nube como en tu máquina.\n\n### Por debajo\n\nLlega sobre el nuevo protocolo de MCA streams: una app puede enviar frames y estado y recibir tu input por su propio canal, que otras apps usarán a continuación.",
+        "ko": "브라우저 앱 뒤에 진짜 브라우저가 생겼습니다.\n\n### 바뀐 점\n\n- **영구 프로필**: 사용자마다 세션 간에 유지되는 Chrome 프로필을 갖게 되어 로그인과 쿠키가 보존됩니다.\n- **보이는 탭**: 에이전트가 여는 탭이 브라우저 창에 실시간으로 스트리밍되며, 언제든 클릭·입력·스크롤로 제어권을 가져올 수 있습니다.\n- **웹과 데스크톱에서 같은 창**: 브라우저가 클라우드에서 실행되든 내 컴퓨터에서 실행되든 같은 도구 모음을 사용합니다.\n\n### 내부적으로\n\n새로운 MCA 스트림 프로토콜 위에서 동작합니다. 앱이 자체 채널로 프레임과 상태를 보내고 사용자의 입력을 받을 수 있으며, 다른 앱들도 곧 이를 사용하게 됩니다."
+      }
+    },
+    {
+      "id": "v1.4.6-app-secrets-widget",
+      "date": "2026-11-08",
+      "category": "improvement",
+      "title": {
+        "en": "App Secrets From the Connection Card",
+        "es": "Secretos de la app desde la tarjeta de conexión",
+        "ko": "연결 카드에서 앱 비밀값 관리"
+      },
+      "description": "Disconnect an app, see which variables it holds and set a secret, all from the authentication widget, with values always masked.",
+      "content": {
+        "en": "Managing what an app knows about you no longer needs a trip to settings.\n\n### What changed\n\n- **Disconnect** an app from its connection card.\n- **Variables list**: see which secrets and settings the app holds, by name only.\n- **Masked set**: update a secret in place; the value is never shown back once saved.",
+        "es": "Gestionar lo que una app sabe de ti ya no requiere ir a ajustes.\n\n### Qué cambia\n\n- **Desconectar** una app desde su tarjeta de conexión.\n- **Lista de variables**: ver qué secretos y ajustes guarda la app, solo por nombre.\n- **Set enmascarado**: actualizar un secreto en el sitio; el valor nunca se vuelve a mostrar una vez guardado.",
+        "ko": "앱이 나에 대해 아는 정보를 관리하려고 설정으로 갈 필요가 없어졌습니다.\n\n### 바뀐 점\n\n- 연결 카드에서 앱 **연결 해제**.\n- **변수 목록**: 앱이 보관하는 비밀값과 설정을 이름으로만 확인.\n- **마스킹된 설정**: 비밀값을 그 자리에서 갱신하며, 저장 후에는 값이 다시 표시되지 않습니다."
+      }
+    },
+    {
+      "id": "v1.4.4-preview-routing-sweep",
+      "date": "2026-11-01",
+      "category": "fix",
+      "title": {
+        "en": "Preview Tabs: Every Open Follows the Rule",
+        "es": "Pestañas de vista previa: toda apertura respeta la regla",
+        "ko": "미리보기 탭: 모든 열기가 규칙을 따릅니다"
+      },
+      "description": "Swept every window-open path into the preview-tab rule: agent Chat, board and automate links, event bubbles and agent-commanded windows now reuse the preview tab instead of opening separate tabs.",
+      "content": {
+        "en": "Only the **pin click** turns the preview tab into a fixed tab — and now every open respects it.\n\n### What changed\n\n- **Agent → Chat**: the Chat button in an agent's window now opens the conversation **in that same preview tab** (it was a separate tab).\n- **In-window links**: opening a conversation from Automate or a board, the agent link in the chat header, error blocks, letter links, event bubbles (approve/open/jump), voice jump-to-conversation, app chips and sub-conversations all reuse the preview tab. Ctrl/cmd-click still opens a separate tab.\n- **Agent-commanded windows** (ui-open): same routing as your clicks — one model. Splits requested by an agent only happen when a genuinely new window appears.\n- Acting from a preview no longer pins it: **only the pin click** (or editing inside) does.\n\n### Why\n\nSome opens bypassed the preview tab and piled up separate tabs (spotted live on 31 Oct). The rule is now uniform: every new open lands in the desktop's preview tab; pin what you want to keep.",
+        "es": "Solo el **clic en el pin** convierte la pestaña de vista previa en fija — y ahora toda apertura lo respeta.\n\n### Qué cambió\n\n- **Agente → Chat**: el botón Chat de la ventana de un agente abre la conversación **en esa misma pestaña de vista previa** (antes abría una aparte).\n- **Enlaces dentro de ventanas**: abrir una conversación desde Automatizaciones o un board, el enlace del agente en la cabecera del chat, bloques de error, enlaces de la carta, burbujas de eventos (aprobar/abrir/saltar), saltar a la conversación desde voz, chips de apps y sub-conversaciones reutilizan la pestaña de vista previa. Ctrl/cmd-clic sigue abriendo una pestaña aparte.\n- **Ventanas abiertas por agentes** (ui-open): el mismo routing que tus clics — un solo modelo. Los splits que pida un agente solo ocurren cuando aparece una ventana genuinamente nueva.\n- Actuar desde una vista previa ya no la fija: **solo el clic en el pin** (o editar dentro) lo hace.\n\n### Por qué\n\nAlgunas aperturas se saltaban la pestaña de vista previa y acumulaban pestañas aparte (cazado en vivo el 31 oct). La regla ahora es uniforme: toda apertura nueva cae en la pestaña de vista previa del escritorio; fija con el pin lo que quieras conservar.",
+        "ko": "**핀 클릭**만 미리보기 탭을 고정 탭으로 바꿉니다 — 이제 모든 열기가 이 규칙을 따릅니다.\n\n### 변경 사항\n\n- **에이전트 → 채팅**: 에이전트 창의 채팅 버튼이 이제 **같은 미리보기 탭에서** 대화를 엽니다 (이전에는 별도 탭).\n- **창 내부 링크**: 자동화·보드에서 대화 열기, 채팅 헤더의 에이전트 링크, 오류 블록, 레터 링크, 이벤트 버블(승인/열기/이동), 음성에서 대화로 이동, 앱 칩, 하위 대화가 모두 미리보기 탭을 재사용합니다. Ctrl/cmd-클릭은 여전히 별도 탭을 엽니다.\n- **에이전트가 연 창** (ui-open): 클릭과 동일한 라우팅 — 하나의 모델. 에이전트가 요청한 분할은 실제로 새 창이 나타날 때만 발생합니다.\n- 미리보기에서 작업해도 더 이상 고정되지 않습니다: **핀 클릭만** (또는 내부 편집) 고정합니다.\n\n### 이유\n\n일부 열기가 미리보기 탭을 우회하여 별도 탭이 쌓였습니다 (10월 31일 실시간 발견). 이제 규칙은 하나입니다: 모든 새 열기는 데스크톱의 미리보기 탭에 열리고, 유지할 것은 핀으로 고정하세요."
+      }
+    },
+    {
+      "id": "v1.4.4-global-preview-tabs",
+      "date": "2026-10-31",
+      "category": "improvement",
+      "title": {
+        "en": "Preview Tabs — One Per Desktop, Like VS Code",
+        "es": "Pestañas de vista previa — una por escritorio, como VS Code",
+        "ko": "미리보기 탭 — VS Code처럼 데스크톱당 하나"
+      },
+      "description": "Opening a window now reuses the desktop's preview tab instead of piling up tabs. Pin it to keep it.",
+      "content": {
+        "en": "Clicking around no longer floods your desktop with tabs. Every new window now opens in the desktop's **preview tab** — one per desktop, like VS Code's preview editor.\n\n### What changed\n\n- Every open goes to the desktop's preview tab: an existing preview is **reused** (its content is replaced, back/forward still walks your history); with none yet, a new preview appears in the **rightmost-topmost pane**\n- **Pin it to keep it** — click the pin on the tab (or double-click the tab, or edit inside it). The next preview then gets a fresh tab\n- **Acting from a preview pins it** — open something from the preview and it stays, like VS Code\n- Each desktop has its own preview; terminals, code editors and live browsers always open as normal tabs\n- Re-opening something you already have open just focuses it — no duplicates",
+        "es": "Navegar ya no inunda tu escritorio de pestañas. Cada ventana nueva se abre ahora en la **pestaña de vista previa** del escritorio — una por escritorio, como el editor de vista previa de VS Code.\n\n### Qué cambió\n\n- Cada apertura va a la pestaña de vista previa del escritorio: si ya existe una, se **reutiliza** (su contenido se reemplaza, y atrás/adelante sigue recorriendo tu historial); si no hay, la nueva vista previa aparece en el **panel más a la derecha y más arriba**\n- **Fíjala para conservarla** — pulsa el pin de la pestaña (o doble clic en la pestaña, o edita dentro de ella). La siguiente vista previa obtiene entonces una pestaña nueva\n- **Actuar desde una vista previa la fija** — abre algo desde la vista previa y esta se queda, como en VS Code\n- Cada escritorio tiene su propia vista previa; los terminales, editores de código y navegadores en vivo siempre abren como pestañas normales\n- Reabrir algo que ya tienes abierto simplemente lo enfoca — sin duplicados",
+        "ko": "이제 클릭으로 이동해도 데스크톱이 탭으로 가득 차지 않습니다. 모든 새 창은 데스크톱의 **미리보기 탭**에서 열립니다 — VS Code의 미리보기 편집기처럼 데스크톱당 하나입니다.\n\n### 변경 사항\n\n- 모든 열기는 데스크톱의 미리보기 탭으로 이동합니다: 기존 미리보기가 있으면 **재사용**되고(내용이 교체되며, 뒤로/앞으로로 기록을 계속 탐색할 수 있음), 없으면 **가장 오른쪽 상단 패널**에 새 미리보기가 나타납니다\n- **고정하면 유지됩니다** — 탭의 핀을 클릭하세요(또는 탭을 더블클릭, 또는 창 안에서 편집). 그러면 다음 미리보기는 새 탭에서 열립니다\n- **미리보기에서 작동하면 고정됩니다** — 미리보기에서 무언가를 열면 VS Code처럼 그 자리에 남습니다\n- 각 데스크톱마다 자체 미리보기가 있습니다; 터미널, 코드 편집기, 라이브 브라우저는 항상 일반 탭으로 열립니다\n- 이미 열려 있는 항목을 다시 열면 단순히 포커스됩니다 — 중복 없음"
+      }
+    },
+    {
+      "id": "mca-permission-approval-detail",
+      "date": "2026-08-17",
+      "category": "improvement",
+      "title": {
+        "en": "See What a Tool Will Do Before You Approve It",
+        "es": "Mira qué hará una herramienta antes de aprobarla",
+        "ko": "승인하기 전에 도구가 무엇을 할지 확인하세요"
+      },
+      "description": "Approval requests now explain the action and show the exact values that will be used.",
+      "content": {
+        "en": "When an agent asks permission to use a tool, the request now **explains itself**.\n\n### What changed\n\n- A plain-language description of what the action will do — not just the tool name\n- Badges showing whether it only reads, cannot be undone, or reaches the internet\n- The actual values that will be sent, most important first, each with its own explanation\n- Nested values expand in place — nothing is hidden behind an unopenable placeholder\n- Values the tool never asked for are flagged\n- When several actions are requested at once, each one shows what it will do, so you can approve some and refuse others",
+        "es": "Cuando un agente pide permiso para usar una herramienta, la solicitud ahora **se explica sola**.\n\n### Qué cambió\n\n- Una descripción en lenguaje claro de lo que hará la acción — no solo el nombre de la herramienta\n- Etiquetas que indican si solo lee, si no se puede deshacer, o si accede a internet\n- Los valores exactos que se enviarán, los más importantes primero, cada uno con su explicación\n- Los valores anidados se expanden en el sitio — nada queda oculto tras un marcador que no se puede abrir\n- Se señalan los valores que la herramienta nunca pidió\n- Cuando se piden varias acciones a la vez, cada una muestra qué hará, así puedes aprobar unas y rechazar otras",
+        "ko": "에이전트가 도구 사용 권한을 요청할 때, 이제 그 요청이 **스스로를 설명합니다**.\n\n### 변경 사항\n\n- 도구 이름뿐 아니라 해당 작업이 무엇을 할지 알기 쉬운 언어로 설명\n- 읽기 전용인지, 되돌릴 수 없는지, 인터넷에 접근하는지 표시하는 배지\n- 실제로 전송될 값을 중요한 순서대로, 각각의 설명과 함께 표시\n- 중첩된 값은 그 자리에서 펼쳐집니다 — 열 수 없는 자리표시자 뒤에 숨는 것이 없습니다\n- 도구가 요청한 적 없는 값은 별도로 표시\n- 여러 작업을 한 번에 요청받으면 각각이 무엇을 할지 표시되어, 일부는 승인하고 일부는 거부할 수 있습니다"
+      }
+    },
+    {
       "id": "v1.3.0-light-dark-theme",
       "date": "2026-07-19",
       "category": "improvement",
-      "description": "Teros now looks great in light and dark. Switch anytime from your profile settings.",
       "title": {
         "en": "Light & Dark Theme System",
         "es": "Sistema de Temas Claro y Oscuro",
         "ko": "라이트 & 다크 테마 시스템"
       },
+      "description": "Teros now looks great in light and dark. Switch anytime from your profile settings.",
       "content": {
         "en": "Teros now looks great in **light and dark**. Switch anytime from the bottom of your sidebar — the app remembers your choice.\n\n### What changed\n\n- Full light mode across the entire app — chat, boards, conversations, settings\n- Redesigned tabs — smoother corners, cleaner look\n- Fixed contrast issues on mobile tab bar, chat header, and status bar",
         "es": "Teros ahora se ve genial en **claro y oscuro**. Cambia cuando quieras desde la parte inferior de la barra lateral — la app recuerda tu elección.\n\n### Qué cambió\n\n- Modo claro completo en toda la app — chat, boards, conversaciones, ajustes\n- Pestañas rediseñadas — esquinas más suaves, aspecto más limpio\n- Arreglados los problemas de contraste en la barra de pestañas móvil, el header del chat y la barra de estado",
@@ -20,12 +100,12 @@
       "id": "v1.3.0-board-tasks-deep-links",
       "date": "2026-07-19",
       "category": "improvement",
-      "description": "The board task panel is now tabbed and scrollable, and every window has a shareable URL.",
       "title": {
         "en": "Board, Tasks & Deep Links",
         "es": "Board, Tareas y Deep Links",
         "ko": "보드, 작업 & 딥 링크"
       },
+      "description": "The board task panel is now tabbed and scrollable, and every window has a shareable URL.",
       "content": {
         "en": "The board task panel is now **tabbed and scrollable**, and every window in Teros has a **shareable URL**.\n\n### What changed\n\n- **Deep links for all 36 windows** — every window has a URL you can share, bookmark, or go back to\n- **Task detail panel redesigned** — tabs for Instructions, Progress, and Conversation\n- Title and tags stay visible while you scroll through task content\n- Progress notes now show avatars and relative timestamps\n- Tasks now have a separate **Instructions** field\n- File viewer content now adapts to window width",
         "es": "El panel de tareas del board ahora tiene **pestañas y scroll**, y cada ventana de Teros tiene una **URL compartible**.\n\n### Qué cambió\n\n- **Deep links para las 36 ventanas** — cada ventana tiene una URL que puedes compartir, guardar o volver a visitar\n- **Panel de detalle de tarea rediseñado** — pestañas para Instrucciones, Progreso y Conversación\n- El título y los tags se quedan visibles mientras haces scroll por el contenido\n- Las notas de progreso ahora muestran avatares y timestamps relativos\n- Las tareas ahora tienen un campo de **Instrucciones** separado\n- El contenido del visor de archivos ahora se adapta al ancho de la ventana",
@@ -36,12 +116,12 @@
       "id": "v1.3.0-whats-new-modal",
       "date": "2026-07-19",
       "category": "feature",
-      "description": "Teros now shows you what's new every time we ship changes.",
       "title": {
         "en": "What's New",
         "es": "Novedades",
         "ko": "새로운 소식"
       },
+      "description": "Teros now shows you what's new every time we ship changes.",
       "content": {
         "en": "Teros now shows you **what's new** every time we ship changes. This window appears automatically when there are updates you haven't seen yet — and only once per release.\n\n### Minor fixes\n\n- Consistent loading spinners across the app\n- Click outside the task panel to close it\n- Board columns scroll properly when a task is open\n- Unified agent selector with play/stop controls",
         "es": "Teros ahora te muestra **las novedades** cada vez que lanzamos cambios. Esta ventana aparece automáticamente cuando hay actualizaciones que no has visto todavía — y solo una vez por release.\n\n### Arreglos menores\n\n- Spinners de carga consistentes en toda la app\n- Click fuera del panel de tareas para cerrarlo\n- Las columnas del board hacen scroll correctamente cuando hay una tarea abierta\n- Selector de agente unificado con controles de play/stop",

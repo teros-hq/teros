@@ -21,7 +21,7 @@ server.tool('bash', {
     type: 'object',
     properties: {
       command: { type: 'string', description: 'The bash command to execute' },
-      description: { type: 'string', description: 'Description of the command' },
+      description: { type: 'string', description: 'ALWAYS provide this: a 5-10 word description of what the command does. It is shown to the user as the tool-call title.' },
       cwd: { type: 'string', description: 'Working directory' },
       stream: { type: 'boolean', description: 'Enable real-time streaming (default: true)', default: true },
     },

@@ -10,29 +10,15 @@
  * On FORBIDDEN it shows the same Shield empty-state pattern as the other admin
  * windows, so the launcher needs no extra client guard.
  *
- * Accessibility: thresholds are icon + text + colour (never colour alone),
- * palette blue/orange (no red/green-only). Loading/empty/error are handled
- * per-window (not a blanked screen).
+ * Drawn as the OS prototype's page: `Page` on the sheet → MonitoringHeader
+ * (eyebrow + serif title + view chips + period controls) → Stat tiles → chart
+ * and table cards. Accessibility: thresholds are icon + text + colour (never
+ * colour alone). Loading/empty/error are handled per-window (not a blanked
+ * screen).
  */
 
-import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  Gauge,
-  GitBranch,
-  Grid3x3,
-  Radio,
-  RefreshCw,
-  Shield,
-  ThumbsUp,
-  Timer,
-  TrendingUp,
-  Zap,
-} from "@tamagui/lucide-icons"
-import { type ReactNode, useMemo, useState } from "react"
-import { Button, Paragraph, ScrollView, Text, XStack, YStack } from "tamagui"
+import { useMemo, useState } from "react"
+import { View, useWindowDimensions } from "react-native"
 import { FullscreenLoader } from "../../components/ui"
 import type {
   ModelHealthSummary,
@@ -53,200 +39,84 @@ import {
   formatPct,
   formatRate,
   type HealthLevel,
-  LEVEL_COLORS,
   LEVEL_LABELS,
+  LEVEL_TINT,
   latencyLevel,
   saturationLevel,
   toolErrorLevel,
   truncationLevel,
+  useLevelColors,
   worseLevel,
 } from "./format"
 import { useInflightGauge } from "./hooks/useInflightGauge"
 import { useModelHealthData } from "./hooks/useModelHealthData"
 import { useUpstreamErrors } from "./hooks/useUpstreamErrors"
-import { seriesColor } from "@teros/shared"
 import {
   type BucketUnit,
   DataTable,
   type Column,
+  KpiStrip,
+  KpiTile,
   MonitoringHeader,
   type MonitoringTarget,
-  StatusDot as StatusIcon,
+  SectionCard,
   fillSeriesBuckets,
   metricTone,
-  scrollbarThin,
-  tokens as mtokens,
   unitForPeriodMs,
   useAutoRefresh,
 } from "../../components/monitoring"
 import { useTilingStore } from "../../store/tilingStore"
 import { useColors } from "../../components/mca/primitives/useColors"
-import { colors as semanticColors, indicators } from "../../components/mca/primitives/colors"
+import { colors as semantic } from "../../components/mca/primitives/colors"
+import { Badge } from "../../components/ui/ds/Badge"
+import { ChipBtn, IconBtn } from "../../components/ui/ds/Buttons"
+import { Ph } from "../../components/ui/ds/Icon"
+import { EmptyState, Page } from "../../components/ui/ds/Page"
+import { T } from "../../components/ui/ds/Text"
+import { ModelTable, modelLeadingColumns } from "../shared/ModelTable"
 
 type Period = "1h" | "24h" | "7d" | "30d"
 const PERIODS: { value: Period; label: string; ms: number }[] = [
-  { value: "1h", label: "1h", ms: 3_600_000 },
-  { value: "24h", label: "24h", ms: 86_400_000 },
-  { value: "7d", label: "7d", ms: 7 * 86_400_000 },
-  { value: "30d", label: "30d", ms: 30 * 86_400_000 },
+  { value: "1h", label: "1 h", ms: 3_600_000 },
+  { value: "24h", label: "24 h", ms: 86_400_000 },
+  { value: "7d", label: "7 d", ms: 7 * 86_400_000 },
+  { value: "30d", label: "30 d", ms: 30 * 86_400_000 },
 ]
 
 /** Worst health level across latency p95, ttft p95 and error-rate for one model. */
 function modelLevel(m: ModelHealthSummary): HealthLevel {
   return worseLevel(
-    worseLevel(latencyLevel("latency", m.latency.p95, m.modelId), latencyLevel("ttft", m.ttft.p95, m.modelId)),
+    worseLevel(
+      latencyLevel("latency", m.latency.p95, m.modelId),
+      latencyLevel("ttft", m.ttft.p95, m.modelId),
+    ),
     errorRateLevel(m.errorRate),
   )
 }
 
-const LEVEL_STATUS: Record<HealthLevel, string> = { ok: "ok", warn: "warn", critical: "error" }
 /** `${provider}::${modelId}` — the stable identity key that colors a model everywhere. */
 const modelKey = (m: ModelHealthSummary) => `${m.actualProvider}::${m.modelId}`
-const shortModelId = (id: string) => (id.includes("/") ? (id.split("/").pop() ?? id) : id)
-
-/** Shared leading columns (status + model) so the two stacked tables align. */
-function leadingColumns(): Column<ModelHealthSummary>[] {
-  return [
-    {
-      key: "status",
-      header: "",
-      width: 44,
-      align: "center",
-      render: (m) => <StatusIcon status={LEVEL_STATUS[modelLevel(m)]} size={15} />,
-    },
-    {
-      key: "model",
-      header: "Model",
-      width: 240,
-      align: "left",
-      render: (m) => (
-        <XStack ai="center" gap={7} minWidth={0} flex={1}>
-          <YStack width={9} height={9} borderRadius={3} backgroundColor={seriesColor(modelKey(m))} />
-          <Text fontSize={13} fontWeight="560" color={mtokens.text} numberOfLines={1}>
-            {shortModelId(m.modelId)}
-          </Text>
-          <Text
-            fontSize={10}
-            fontFamily="$mono"
-            color={mtokens.textMuted}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            flex={1}
-          >
-            {m.actualProvider}
-          </Text>
-        </XStack>
-      ),
-    },
-  ]
-}
-
-const LEVEL_ICON: Record<HealthLevel, typeof CheckCircle2> = {
-  ok: CheckCircle2,
-  warn: AlertTriangle,
-  critical: AlertTriangle,
-}
-
-function StatusPill({ level }: { level: HealthLevel }) {
-  const Icon = LEVEL_ICON[level]
-  const color = LEVEL_COLORS[level]
-  return (
-    <XStack ai="center" gap={6} aria-label={`Status: ${LEVEL_LABELS[level]}`}>
-      <Icon size={16} color={color} />
-      <Text fontSize={13} fontWeight="600" color={color}>
-        {LEVEL_LABELS[level]}
-      </Text>
-    </XStack>
-  )
-}
-
-function KpiTile({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  color,
-}: {
-  icon: typeof Activity
-  label: string
-  value: string
-  sub?: string
-  color?: string
-}) {
-  const c = useColors()
-  return (
-    <YStack
-      flex={1}
-      minWidth={150}
-      gap={4}
-      padding={14}
-      borderRadius={10}
-      backgroundColor={c.bgInner}
-      borderColor={c.borderStrong}
-      borderWidth={1}
-    >
-      <XStack ai="center" gap={6}>
-        <Icon size={14} color={c.text2} />
-        <Text fontSize={11} color={c.text2} textTransform="uppercase" letterSpacing={0.5}>
-          {label}
-        </Text>
-      </XStack>
-      <Text fontSize={24} fontWeight="700" color={color ?? c.text}>
-        {value}
-      </Text>
-      {sub ? (
-        <Text fontSize={11} color={c.text3}>
-          {sub}
-        </Text>
-      ) : null}
-    </YStack>
-  )
-}
-
-function Card({
-  title,
-  icon: Icon,
-  children,
-}: {
-  title: string
-  icon: typeof Activity
-  children: ReactNode
-}) {
-  const c = useColors()
-  return (
-    <YStack
-      gap={12}
-      padding={16}
-      borderRadius={12}
-      backgroundColor={c.bgInner}
-      borderColor={c.borderStrong}
-      borderWidth={1}
-    >
-      <XStack ai="center" gap={8}>
-        <Icon size={16} color={semanticColors.indigo} />
-        <Text fontSize={14} fontWeight="600" color={c.text}>
-          {title}
-        </Text>
-      </XStack>
-      {children}
-    </YStack>
-  )
-}
 
 /**
  * Sub-reason → dot colour for the upstream-errors feed (TER-700). Amber = capacity
- * (self-heals), red = billing/auth (intervention), gray = model config, indigo =
+ * (self-heals), red = billing/auth (intervention), muted = model config, violet =
  * account rate-limit. Never colour alone — the label sits next to the dot.
  */
-const SUBREASON_COLOR: Record<string, string> = {
-  provider_capacity: semanticColors.amber,
-  provider_overloaded: semanticColors.amber,
-  account_rate_limit: semanticColors.indigo,
-  token_rate_limit: semanticColors.indigo,
-  provider_billing: semanticColors.red,
-  provider_server_error: semanticColors.red,
-  auth: semanticColors.red,
-  model_unavailable: mtokens.textTertiary,
+function subReasonColor(sub: string | undefined, c: { accent: string; text3: string }): string {
+  switch (sub) {
+    case "provider_capacity":
+    case "provider_overloaded":
+      return semantic.amber
+    case "account_rate_limit":
+    case "token_rate_limit":
+      return c.accent
+    case "provider_billing":
+    case "provider_server_error":
+    case "auth":
+      return semantic.red
+    default:
+      return c.text3
+  }
 }
 
 function fmtErrTime(iso?: string): string {
@@ -262,130 +132,81 @@ function UpstreamErrorsTable({ rows, loading }: { rows: UpstreamErrorRow[]; load
   const c = useColors()
   if (loading) {
     return (
-      <Text fontSize={12} color={c.text2}>
+      <T step="sm" tone="text3">
         Loading…
-      </Text>
+      </T>
     )
   }
   if (rows.length === 0) {
     return (
-      <Text fontSize={12} color={c.text2}>
+      <T step="sm" tone="text3">
         No upstream errors in this window — a healthy signal.
-      </Text>
+      </T>
     )
   }
   return (
-    <YStack>
-      <XStack paddingBottom={8} borderBottomWidth={1} borderColor={c.borderStrong}>
-        <Text width={56} fontSize={10} color={c.text3}>
-          WHEN
-        </Text>
-        <Text flex={1.4} fontSize={10} color={c.text3}>
-          PROVIDER · MODEL
-        </Text>
-        <Text flex={1.2} fontSize={10} color={c.text3}>
-          SUB-REASON
-        </Text>
-        <Text flex={2} fontSize={10} color={c.text3}>
-          MESSAGE
-        </Text>
-      </XStack>
+    <View>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+          paddingBottom: 8,
+          borderBottomWidth: 1,
+          borderBottomColor: c.border,
+        }}
+      >
+        <T step="codenote" tone="text3" style={{ width: 56 }}>
+          When
+        </T>
+        <T step="codenote" tone="text3" style={{ flex: 1.4 }}>
+          Provider · model
+        </T>
+        <T step="codenote" tone="text3" style={{ flex: 1.2 }}>
+          Sub-reason
+        </T>
+        <T step="codenote" tone="text3" style={{ flex: 2 }}>
+          Message
+        </T>
+      </View>
       {rows.map((r, i) => (
-        <XStack
+        <View
           key={`${r.time ?? ""}-${i}`}
-          paddingVertical={9}
-          borderBottomWidth={1}
-          borderColor={c.border}
-          ai="center"
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            paddingVertical: 9,
+            borderBottomWidth: 1,
+            borderBottomColor: c.border,
+          }}
         >
-          <Text width={56} fontSize={11} color={c.text2}>
+          <T step="code" tone="text2" style={{ width: 56 }}>
             {fmtErrTime(r.time)}
-          </Text>
-          <Text flex={1.4} fontSize={11} fontFamily="$mono" color={c.text2}>
+          </T>
+          <T step="code" tone="text2" numberOfLines={1} style={{ flex: 1.4 }}>
             {r.provider ?? "—"} · {r.model ?? "—"}
-          </Text>
-          <XStack flex={1.2} ai="center" gap={6}>
-            <YStack
-              width={7}
-              height={7}
-              borderRadius={4}
-              backgroundColor={SUBREASON_COLOR[r.errorSubReason ?? ""] ?? mtokens.textTertiary}
+          </T>
+          <View style={{ flex: 1.2, flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 4,
+                backgroundColor: subReasonColor(r.errorSubReason, c),
+              }}
             />
-            <Text fontSize={11} color={c.text2}>
+            <T step="12" tone="text2" numberOfLines={1} style={{ flexShrink: 1 }}>
               {r.errorSubReason ?? r.errorKind ?? "—"}
-            </Text>
-          </XStack>
-          <Text flex={2} fontSize={11} fontFamily="$mono" color={c.text2} numberOfLines={1}>
+            </T>
+          </View>
+          <T step="code" tone="text2" numberOfLines={1} style={{ flex: 2 }}>
             {r.upstreamMessage ?? "—"}
-          </Text>
-        </XStack>
+          </T>
+        </View>
       ))}
-    </YStack>
+    </View>
   )
-}
-
-/** Reusable per-model reliability table (also rendered in Agent Activity's "By model"). */
-export function ModelTable({ models }: { models: ModelHealthSummary[] }) {
-  const columns: Column<ModelHealthSummary>[] = [
-    ...leadingColumns(),
-    { key: "req", header: "Req", width: 92, align: "right", mono: true, color: () => mtokens.text, render: (m) => formatCount(m.requestCount) },
-    { key: "p50", header: "p50", width: 88, align: "right", mono: true, render: (m) => (m.latency.p50 == null ? "—" : formatMs(m.latency.p50)) },
-    {
-      key: "p95",
-      header: "p95",
-      width: 88,
-      align: "right",
-      mono: true,
-      color: (m) => LEVEL_COLORS[latencyLevel("latency", m.latency.p95, m.modelId)],
-      render: (m) => (m.latency.p95 == null ? "—" : formatMs(m.latency.p95)),
-    },
-    {
-      key: "p99",
-      header: "p99",
-      width: 88,
-      align: "right",
-      mono: true,
-      color: () => mtokens.textTertiary,
-      // When p99's rank lands in the unbounded overflow bucket the value is a
-      // clamp (81920ms), not the real tail → prefix "≥" so it doesn't read as an
-      // exact figure for reasoning models >82s (A3.1/TER-674).
-      render: (m) => (m.latency.p99 == null ? "—" : `${m.latency.p99Capped ? "≥" : ""}${formatMs(m.latency.p99)}`),
-    },
-    {
-      key: "ttft",
-      header: "TTFT p95",
-      width: 104,
-      align: "right",
-      mono: true,
-      color: (m) => LEVEL_COLORS[latencyLevel("ttft", m.ttft.p95, m.modelId)],
-      render: (m) => (m.ttft.p95 == null ? "—" : formatMs(m.ttft.p95)),
-    },
-    {
-      key: "err",
-      header: "Err",
-      width: 84,
-      align: "right",
-      mono: true,
-      color: (m) => LEVEL_COLORS[errorRateLevel(m.errorRate)],
-      render: (m) => formatPct(m.errorRate),
-    },
-    {
-      key: "success",
-      header: "Success",
-      width: 96,
-      // Absorbs the extra viewport width so the table reaches the window's right
-      // edge. Flex ONLY on the last column: the leading columns stay fixed and
-      // aligned with QualitySignalsTable stacked below.
-      flex: 1,
-      align: "right",
-      mono: true,
-      // null = all-aborted bucket (no measurable success) → neutral "—", never a
-      // red 0% (A3.3/TER-674).
-      color: (m) => (m.successRate == null ? mtokens.textTertiary : metricTone("success", m.successRate * 100)),
-      render: (m) => formatPct(m.successRate),
-    },
-  ]
-  return <DataTable columns={columns} rows={models} rowKey={modelKey} />
 }
 
 /**
@@ -394,30 +215,75 @@ export function ModelTable({ models }: { models: ModelHealthSummary[] }) {
  * calls (toolErrorRate has no denominator). Thumbs are query-time feedback.
  */
 function QualitySignalsTable({ models }: { models: ModelHealthSummary[] }) {
+  const c = useColors()
+  const level = useLevelColors()
   const columns: Column<ModelHealthSummary>[] = [
-    ...leadingColumns(),
+    ...modelLeadingColumns(),
     {
       key: "sat",
       header: "Saturation",
       width: 150,
       align: "left",
       render: (m) => {
-        const color = LEVEL_COLORS[saturationLevel(m.saturationRate ?? 0)]
+        const lvl = saturationLevel(m.saturationRate ?? 0)
+        const fill = lvl === "critical" ? semantic.red : lvl === "warn" ? semantic.amber : c.accent
         return (
-          <XStack ai="center" gap={8} flex={1} minWidth={0}>
-            <YStack flex={1} maxWidth={70} height={6} borderRadius={3} backgroundColor={mtokens.bgPress} overflow="hidden">
-              <YStack height="100%" width={`${Math.min(100, (m.saturationRate ?? 0) * 100)}%`} backgroundColor={color} borderRadius={3} />
-            </YStack>
-            <Text fontSize={12} fontFamily="$mono" color={color}>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}
+          >
+            <View
+              style={{
+                flex: 1,
+                maxWidth: 70,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: c.wash,
+                overflow: "hidden",
+              }}
+            >
+              <View
+                style={{
+                  height: "100%",
+                  width: `${Math.min(100, (m.saturationRate ?? 0) * 100)}%`,
+                  backgroundColor: fill,
+                  borderRadius: 3,
+                }}
+              />
+            </View>
+            <T step="code" color={lvl === "ok" ? c.text2 : level[lvl]}>
               {formatPct(m.saturationRate ?? 0)}
-            </Text>
-          </XStack>
+            </T>
+          </View>
         )
       },
     },
-    { key: "fallback", header: "Fallback", width: 100, align: "right", mono: true, color: (m) => LEVEL_COLORS[fallbackLevel(m.fallbackRate ?? 0)], render: (m) => formatPct(m.fallbackRate ?? 0) },
-    { key: "truncation", header: "Truncation", width: 108, align: "right", mono: true, color: (m) => (m.truncationRate == null ? mtokens.textTertiary : LEVEL_COLORS[truncationLevel(m.truncationRate)]), render: (m) => formatPct(m.truncationRate) },
-    { key: "toolerr", header: "Tool err", width: 96, align: "right", mono: true, color: (m) => LEVEL_COLORS[toolErrorLevel(m.toolErrorRate ?? 0)], render: (m) => (m.toolCallCount ? formatPct(m.toolErrorRate ?? 0) : "—") },
+    {
+      key: "fallback",
+      header: "Fallback",
+      width: 100,
+      align: "right",
+      mono: true,
+      color: (m) => level[fallbackLevel(m.fallbackRate ?? 0)],
+      render: (m) => formatPct(m.fallbackRate ?? 0),
+    },
+    {
+      key: "truncation",
+      header: "Truncation",
+      width: 108,
+      align: "right",
+      mono: true,
+      color: (m) => (m.truncationRate == null ? c.text3 : level[truncationLevel(m.truncationRate)]),
+      render: (m) => formatPct(m.truncationRate),
+    },
+    {
+      key: "toolerr",
+      header: "Tool err",
+      width: 96,
+      align: "right",
+      mono: true,
+      color: (m) => level[toolErrorLevel(m.toolErrorRate ?? 0)],
+      render: (m) => (m.toolCallCount ? formatPct(m.toolErrorRate ?? 0) : "—"),
+    },
     {
       key: "feedback",
       header: "👍 / 👎",
@@ -432,21 +298,29 @@ function QualitySignalsTable({ models }: { models: ModelHealthSummary[] }) {
         const tot = up + down
         if (!tot)
           return (
-            <Text fontSize={12} fontFamily="$mono" color={mtokens.textMuted} textAlign="right" width="100%">
+            <T step="code" tone="text3" style={{ textAlign: "right", width: "100%" }}>
               —
-            </Text>
+            </T>
           )
         const pct = Math.round((up / tot) * 100)
         return (
-          <XStack ai="center" gap={6} jc="flex-end" flex={1}>
-            <ThumbsUp size={13} color={metricTone("fb", pct)} />
-            <Text fontSize={12} fontFamily="$mono" fontWeight="560" color={metricTone("fb", pct)}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              justifyContent: "flex-end",
+              flex: 1,
+            }}
+          >
+            <Ph name="thumbs-up" size={13} color={metricTone("fb", pct)} />
+            <T step="code" color={metricTone("fb", pct)}>
               {pct}%
-            </Text>
-            <Text fontSize={10} fontFamily="$mono" color={mtokens.textMuted}>
+            </T>
+            <T step="code" tone="text3" style={{ fontSize: 10 }}>
               {formatCount(tot)}
-            </Text>
-          </XStack>
+            </T>
+          </View>
         )
       },
     },
@@ -477,27 +351,21 @@ function UpstreamBadge({ status }: { status: UpstreamStatus }) {
     (acc, [, ind]) => worseLevel(acc, UPSTREAM_INDICATOR_META[ind].level),
     "ok",
   )
+  const label = incidents
+    .map(([name, ind]) => `${name}: ${UPSTREAM_INDICATOR_META[ind].label}`)
+    .join(" · ")
   return (
-    <XStack
-      ai="center"
-      gap={6}
-      paddingVertical={4}
-      paddingHorizontal={10}
-      borderRadius={8}
-      backgroundColor={indicators.risk.bg}
-      borderColor={indicators.risk.border}
-      borderWidth={1}
-      aria-label={`Upstream incident: ${incidents
-        .map(([name, ind]) => `${name} ${UPSTREAM_INDICATOR_META[ind].label}`)
-        .join(", ")}`}
+    <View
+      {...({
+        "aria-label": `Upstream incident: ${incidents
+          .map(([name, ind]) => `${name} ${UPSTREAM_INDICATOR_META[ind].label}`)
+          .join(", ")}`,
+      } as any)}
     >
-      <AlertTriangle size={14} color={LEVEL_COLORS[worst]} />
-      <Text fontSize={12} fontWeight="600" color={LEVEL_COLORS[worst]}>
-        {incidents
-          .map(([name, ind]) => `${name}: ${UPSTREAM_INDICATOR_META[ind].label}`)
-          .join(" · ")}
-      </Text>
-    </XStack>
+      <Badge tone={LEVEL_TINT[worst]} icon="warning" pill>
+        {label}
+      </Badge>
+    </View>
   )
 }
 
@@ -508,6 +376,8 @@ export type ModelHealthWindowProps = {
 
 export function ModelHealthWindowContent({ initialPeriod }: ModelHealthWindowProps) {
   const c = useColors()
+  const level = useLevelColors()
+  const { width: winW } = useWindowDimensions()
   const client = getTerosClient()
   const openWindow = useTilingStore((s) => s.openWindow)
   const nav = (target: MonitoringTarget) => openWindow(target, { initialPeriod: period }, false)
@@ -529,19 +399,31 @@ export function ModelHealthWindowContent({ initialPeriod }: ModelHealthWindowPro
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tick slides the window to now
   }, [period, tick])
 
-  const { models, series, bucketTimeZone, periodMinutes, upstreamStatus, loading, refreshing, error } =
-    useModelHealthData({
-      client,
-      range,
-      groupBy: range.unit,
-    })
+  const {
+    models,
+    series,
+    bucketTimeZone,
+    periodMinutes,
+    upstreamStatus,
+    loading,
+    refreshing,
+    error,
+  } = useModelHealthData({
+    client,
+    range,
+    groupBy: range.unit,
+  })
   const inflightData = useInflightGauge(client)
   const { rows: upstreamErrors, loading: upstreamLoading } = useUpstreamErrors({ client, range })
 
   // Uniform time axis (N6): fill the buckets the range expects, so a quiet
   // hour/day is a visible zero instead of an invisible gap.
   const denseSeries = useMemo(
-    () => fillSeriesBuckets(series, range.from, range.to, range.unit, (iso) => ({ hourBucket: iso, models: [] })),
+    () =>
+      fillSeriesBuckets(series, range.from, range.to, range.unit, (iso) => ({
+        hourBucket: iso,
+        models: [],
+      })),
     [series, range],
   )
 
@@ -573,196 +455,217 @@ export function ModelHealthWindowContent({ initialPeriod }: ModelHealthWindowPro
     }
   }, [models])
 
+  /** A KPI figure's colour: muted-neutral when ok, the tint when it crosses a threshold. */
+  const tone = (lvl: HealthLevel) => (lvl === "ok" ? c.text : level[lvl])
+
   // In-flight is a live, range-independent signal — render it even in the empty
   // state, so "no rollups yet, but 2 streams running now" is still visible.
   const inflightCard = (
-    <Card title="In-flight LLM streams (live)" icon={Radio}>
+    <SectionCard title="In-flight LLM streams (live)">
       <InflightGauge
         inflight={inflightData.inflight}
         total={inflightData.total}
         capturedAt={inflightData.capturedAt}
         error={inflightData.error}
       />
-    </Card>
+    </SectionCard>
   )
 
-  return (
-    <YStack flex={1} backgroundColor="$background">
-      <MonitoringHeader
-        title="Model Health"
-        activeView="models"
-        statusLevel={kpis ? (kpis.global === "ok" ? "ok" : kpis.global === "warn" ? "degraded" : "error") : "ok"}
-        onNavigate={nav}
-      />
-      {/* Controls header (period · refresh · upstream) */}
-      <XStack
-        ai="center"
-        jc="space-between"
-        paddingHorizontal={16}
-        paddingVertical={12}
-        borderBottomColor={c.borderStrong}
-        borderBottomWidth={1}
-        gap={12}
-        flexWrap="wrap"
-      >
-        <XStack ai="center" gap={10}>
-          <Activity size={18} color={semanticColors.indigo} />
-          <Text fontSize={16} fontWeight="700" color={c.text}>
-            Model Health
-          </Text>
-          {kpis ? <StatusPill level={kpis.global} /> : null}
-          {upstreamStatus ? <UpstreamBadge status={upstreamStatus} /> : null}
-        </XStack>
-        <XStack ai="center" gap={6}>
+  const header = (
+    <MonitoringHeader
+      title="Model Health"
+      activeView="models"
+      statusLevel={
+        kpis ? (kpis.global === "ok" ? "ok" : kpis.global === "warn" ? "degraded" : "error") : "ok"
+      }
+      statusText={kpis ? LEVEL_LABELS[kpis.global] : undefined}
+      onNavigate={nav}
+      controls={
+        <>
           {PERIODS.map((p) => (
-            <Button
-              key={p.value}
-              size="$2"
-              theme={period === p.value ? "blue" : undefined}
-              onPress={() => setPeriod(p.value)}
-            >
+            <ChipBtn key={p.value} mono on={period === p.value} onPress={() => setPeriod(p.value)}>
               {p.label}
-            </Button>
+            </ChipBtn>
           ))}
-          <Button
-            size="$2"
-            icon={RefreshCw}
+          <IconBtn
+            plain
+            sm
+            icon="arrows-clockwise"
             disabled={refreshing}
             onPress={bump}
-            aria-label="Refresh"
+            title="Refresh"
+            {...({ "aria-label": "Refresh" } as any)}
           />
-          <Text fontSize={10} fontFamily="$mono" color={mtokens.textTertiary}>
+          <T step="codenote" tone="text3">
             auto 60s · {new Date(range.to).toLocaleTimeString("en-US", { hour12: false })}
-          </Text>
-        </XStack>
-      </XStack>
+          </T>
+        </>
+      }
+    />
+  )
 
-      {loading ? (
+  if (loading) {
+    return (
+      <Page>
+        {header}
         <FullscreenLoader />
-      ) : error ? (
-        <YStack flex={1} ai="center" jc="center" gap={12} padding={32}>
-          {error === "Admin privileges required" ? (
-            <Shield size={40} color={semanticColors.orange} />
-          ) : (
-            <AlertTriangle size={40} color={semanticColors.red} />
-          )}
-          <Text fontSize={15} fontWeight="600" color={c.text}>
-            {error}
-          </Text>
-          {error === "Admin privileges required" ? (
-            <Paragraph fontSize={13} color={c.text2} textAlign="center" maxWidth={420}>
-              This window is restricted to system admins (role ∈ admin | super).
-            </Paragraph>
-          ) : null}
-        </YStack>
-      ) : models.length === 0 ? (
-        <ScrollView flex={1} style={scrollbarThin as never}>
-          <YStack gap={16} padding={16}>
-            <YStack ai="center" jc="center" gap={10} paddingVertical={32}>
-              <Activity size={36} color={c.text3} />
-              <Text fontSize={14} color={c.text2}>
-                No model activity in the selected period.
-              </Text>
-            </YStack>
+      </Page>
+    )
+  }
+
+  if (error) {
+    const forbidden = error === "Admin privileges required"
+    return (
+      <Page>
+        {header}
+        <EmptyState
+          icon={forbidden ? "shield-check" : "warning"}
+          title={error}
+          text={
+            forbidden
+              ? "This window is restricted to system admins (role ∈ admin | super)."
+              : undefined
+          }
+        />
+      </Page>
+    )
+  }
+
+  const stackCharts = winW < 980
+
+  return (
+    <Page>
+      {header}
+      <View style={{ gap: 16 }}>
+        {upstreamStatus ? <UpstreamBadge status={upstreamStatus} /> : null}
+
+        {models.length === 0 ? (
+          <>
+            <EmptyState
+              icon="pulse"
+              title="No model activity"
+              text="No model activity in the selected period."
+            />
             {inflightCard}
-          </YStack>
-        </ScrollView>
-      ) : (
-        <ScrollView flex={1} style={scrollbarThin as never}>
-          <YStack gap={16} padding={16}>
+          </>
+        ) : (
+          <>
             {/* KPI strip */}
             {kpis ? (
-              <XStack gap={12} flexWrap="wrap">
+              <KpiStrip>
                 <KpiTile
-                  icon={Activity}
+                  icon="pulse"
                   label="Requests"
                   value={formatCount(kpis.totalReq)}
                   sub={`${kpis.modelCount} models · ${kpis.upstreams} upstreams`}
                 />
                 <KpiTile
-                  icon={TrendingUp}
+                  icon="trend-up"
                   label="Throughput"
                   value={formatRate(periodMinutes > 0 ? kpis.totalReq / periodMinutes : 0)}
                   sub="turns per minute"
                 />
                 <KpiTile
-                  icon={AlertTriangle}
+                  icon="warning"
                   label="Error rate"
                   value={formatPct(kpis.errorRate)}
-                  color={LEVEL_COLORS[errorRateLevel(kpis.errorRate)]}
+                  valueColor={tone(errorRateLevel(kpis.errorRate))}
                 />
                 <KpiTile
-                  icon={Timer}
+                  icon="timer"
                   label="Worst p95 latency"
                   value={formatMs(kpis.worstLatencyP95)}
-                  color={LEVEL_COLORS[latencyLevel("latency", kpis.worstLatencyP95)]}
+                  valueColor={tone(latencyLevel("latency", kpis.worstLatencyP95))}
                 />
                 <KpiTile
-                  icon={Zap}
+                  icon="lightning"
                   label="Worst p95 TTFT"
                   value={formatMs(kpis.worstTtftP95)}
-                  color={LEVEL_COLORS[latencyLevel("ttft", kpis.worstTtftP95)]}
+                  valueColor={tone(latencyLevel("ttft", kpis.worstTtftP95))}
                 />
                 <KpiTile
-                  icon={Gauge}
+                  icon="gauge"
                   label="Saturation"
                   value={formatPct(kpis.saturationRate)}
-                  color={LEVEL_COLORS[saturationLevel(kpis.saturationRate)]}
+                  valueColor={tone(saturationLevel(kpis.saturationRate))}
                   sub="rate-limited + overloaded"
                 />
                 <KpiTile
-                  icon={GitBranch}
+                  icon="git-branch"
                   label="Fallback"
                   value={formatPct(kpis.fallbackRate)}
-                  color={LEVEL_COLORS[fallbackLevel(kpis.fallbackRate)]}
+                  valueColor={tone(fallbackLevel(kpis.fallbackRate))}
                   sub="Fireworks → Together"
                 />
                 <KpiTile
-                  icon={ThumbsUp}
+                  icon="thumbs-up"
                   label="Feedback"
                   value={`${formatCount(kpis.thumbsUp)} / ${formatCount(kpis.thumbsDown)}`}
                   sub="👍 / 👎 in range"
                 />
-              </XStack>
+              </KpiStrip>
             ) : null}
 
-            <XStack gap={16} flexWrap="wrap">
-              <YStack flex={2} minWidth={380}>
-                <Card title={range.unit === "day" ? "Request volume over time (turns per day)" : "Request volume over time (turns per hour)"} icon={Clock}>
-                  <ModelHealthTimeseriesChart series={denseSeries} bucketTimeZone={bucketTimeZone} bucketUnit={range.unit} />
-                </Card>
-              </YStack>
-              <YStack flex={1} minWidth={260}>
-                {inflightCard}
-              </YStack>
-            </XStack>
+            <View
+              style={{
+                flexDirection: stackCharts ? "column" : "row",
+                gap: 16,
+                alignItems: "stretch",
+              }}
+            >
+              <View style={{ flex: stackCharts ? undefined : 2, minWidth: 0 }}>
+                <SectionCard
+                  title={
+                    range.unit === "day"
+                      ? "Request volume over time (turns per day)"
+                      : "Request volume over time (turns per hour)"
+                  }
+                >
+                  <ModelHealthTimeseriesChart
+                    series={denseSeries}
+                    bucketTimeZone={bucketTimeZone}
+                    bucketUnit={range.unit}
+                  />
+                </SectionCard>
+              </View>
+              <View style={{ flex: stackCharts ? undefined : 1, minWidth: 0 }}>{inflightCard}</View>
+            </View>
 
-            <Card title="LLM latency percentiles (p50→p99, ▬ = p95)" icon={Timer}>
+            <SectionCard title="LLM latency percentiles (p50→p99, ▬ = p95)">
               <PercentileBandChart models={models} metric="latency" />
-            </Card>
+            </SectionCard>
 
-            <Card title={range.unit === "day" ? "p95 latency by model & day" : "p95 latency by model & hour"} icon={Grid3x3}>
-              <LatencyHeatmap series={denseSeries} metric="latency" bucketTimeZone={bucketTimeZone} bucketUnit={range.unit} />
-            </Card>
+            <SectionCard
+              title={
+                range.unit === "day" ? "p95 latency by model & day" : "p95 latency by model & hour"
+              }
+            >
+              <LatencyHeatmap
+                series={denseSeries}
+                metric="latency"
+                bucketTimeZone={bucketTimeZone}
+                bucketUnit={range.unit}
+              />
+            </SectionCard>
 
-            <Card title="Time to first token by model" icon={Zap}>
+            <SectionCard title="Time to first token by model">
               <PercentileBandChart models={models} metric="ttft" />
-            </Card>
+            </SectionCard>
 
-            <Card title="Models — by request volume" icon={Activity}>
+            <SectionCard title="Models — by request volume">
               <ModelTable models={models} />
-            </Card>
+            </SectionCard>
 
-            <Card title="Recent upstream errors" icon={AlertTriangle}>
+            <SectionCard title="Recent upstream errors">
               <UpstreamErrorsTable rows={upstreamErrors} loading={upstreamLoading} />
-            </Card>
+            </SectionCard>
 
-            <Card title="Quality & saturation signals" icon={Gauge}>
+            <SectionCard title="Quality & saturation signals">
               <QualitySignalsTable models={models} />
-            </Card>
-          </YStack>
-        </ScrollView>
-      )}
-    </YStack>
+            </SectionCard>
+          </>
+        )}
+      </View>
+    </Page>
   )
 }

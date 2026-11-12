@@ -5,39 +5,17 @@
  *
  * Carril: data setup via window.teros (create/rename/open channel); the composer itself
  * is driven through the real UI. Selectors are stable testIDs added to the composer
- * (composer-input / composer-attach / composer-send) — RN-Web buttons are icon-only
+ * (composer-input / composer-attach / composer-send; send is always rendered since the DS
+ * TerosButton, ca7d76443/82e02b92e — "offered" = enabled, "not offered" = disabled) — RN-Web buttons are icon-only
  * <button class="is_Button"> with no text/aria, so testID is the robust anchor.
  */
 import { join } from "node:path"
 import { expect, test } from "../fixtures"
+import { composer, composerInput, openChat } from "../helpers/dom"
 import { evalTeros, getPrimaryIds } from "../helpers/teros"
 
 const FIXTURE = join(__dirname, "../fixtures/sample.txt")
 const FIXTURE2 = join(__dirname, "../fixtures/sample2.txt")
-
-/** Creates a channel, names it, opens it via the sidebar (→ /chat/<id>), waits for the composer. */
-async function openChat(
-  // biome-ignore lint/suspicious/noExplicitAny: Playwright Page
-  page: any,
-  agentId: string,
-  workspaceId: string,
-  label: string,
-): Promise<string> {
-  const channelId = await evalTeros(
-    page,
-    async ({ aid, wid, label }) => {
-      const r = await window.teros.channel.create({ agentId: aid, workspaceId: wid })
-      await window.teros.channel.rename(r.channelId, label)
-      return r.channelId
-    },
-    { aid: agentId, wid: workspaceId, label },
-  )
-  await page.waitForTimeout(2000) // let the sidebar receive the realtime channel
-  await page.getByText(label, { exact: false }).first().click({ timeout: 10_000 })
-  await page.waitForURL(`**/chat/${channelId}`, { timeout: 10_000 })
-  await page.getByTestId("composer-input").waitFor({ state: "visible", timeout: 10_000 })
-  return channelId
-}
 
 test.describe("composer @composer", () => {
   test("escribir y enviar con Enter → el mensaje aparece en el chat @llm", async ({
@@ -56,10 +34,10 @@ test.describe("composer @composer", () => {
     // la UI ya está; y el replay @llm hashea el texto del mensaje → debe ser
     // determinista para hacer match con la cassette. TER-563.
     const msg = "PW PING"
-    const input = terosPage.getByTestId("composer-input")
+    const input = composerInput(terosPage, channelId)
     await input.fill(msg)
     // send button surfaces once there's content (rightButton = send when hasInputContent)
-    await expect(terosPage.getByTestId("composer-send")).toBeVisible()
+    await expect(composer(terosPage, channelId).getByTestId("composer-send")).toBeEnabled()
     await input.press("Enter")
 
     // the user's message bubble renders in the chat, and the composer clears
@@ -94,20 +72,19 @@ test.describe("composer @composer", () => {
     )
 
     const draft = `borrador ${Date.now()}`
-    await terosPage.getByTestId("composer-input").fill(draft)
+    await composerInput(terosPage, channelId).fill(draft)
     await terosPage.waitForTimeout(900) // debounced save (500ms)
 
     await terosPage.reload({ waitUntil: "networkidle" })
     await terosPage.waitForTimeout(2500)
-    // the tiling state restores the chat window; if not, re-open it via the sidebar
-    if (!terosPage.url().includes(`/chat/${channelId}`)) {
-      await terosPage
-        .getByText(label, { exact: false })
-        .first()
-        .click({ timeout: 10_000 })
-        .catch(() => null)
-    }
-    const input = terosPage.getByTestId("composer-input")
+    // The tiling state usually restores the chat window (there is no /chat URL to check
+    // since 24b6ab36b); focusing it via the sidebar is harmless either way.
+    await terosPage
+      .getByText(label, { exact: false })
+      .first()
+      .click({ timeout: 10_000 })
+      .catch(() => null)
+    const input = composerInput(terosPage, channelId)
     await input.waitFor({ state: "visible", timeout: 15_000 })
     await expect(input, "el borrador se restauró tras recargar").toHaveValue(draft, {
       timeout: 10_000,
@@ -126,17 +103,17 @@ test.describe("composer @composer", () => {
     const wid = privateWorkspaceId as string
 
     const chA = await openChat(terosPage, aid, wid, `PWxA${Date.now()}`)
-    await terosPage.getByTestId("composer-input").fill(`solo en A ${Date.now()}`)
+    await composerInput(terosPage, chA).fill(`solo en A ${Date.now()}`)
     await terosPage.waitForTimeout(900)
 
     const chB = await openChat(terosPage, aid, wid, `PWxB${Date.now()}`)
     await expect(
-      terosPage.getByTestId("composer-input"),
+      composerInput(terosPage, chB),
       "el canal B arranca con el composer vacío",
     ).toHaveValue("")
 
     // cleanup both
-    await terosPage.getByTestId("composer-input").fill("")
+    await composerInput(terosPage, chB).fill("")
     await evalTeros(
       terosPage,
       async ({ a, b }) => {
@@ -159,7 +136,7 @@ test.describe("composer @composer", () => {
 
     const [chooser] = await Promise.all([
       terosPage.waitForEvent("filechooser"),
-      terosPage.getByTestId("composer-attach").click(),
+      composer(terosPage, channelId).getByTestId("composer-attach").click(),
     ])
     await chooser.setFiles(FIXTURE)
 
@@ -167,7 +144,7 @@ test.describe("composer @composer", () => {
     await expect(terosPage.getByText("sample.txt", { exact: false })).toBeVisible({
       timeout: 10_000,
     })
-    await expect(terosPage.getByTestId("composer-send")).toBeVisible()
+    await expect(composer(terosPage, channelId).getByTestId("composer-send")).toBeEnabled()
 
     await evalTeros(terosPage, (cid) => window.teros.channel.close(cid).then(() => null), channelId)
   })
@@ -183,11 +160,11 @@ test.describe("composer @composer", () => {
       privateWorkspaceId as string,
       `PWblank${Date.now()}`,
     )
-    const input = terosPage.getByTestId("composer-input")
+    const input = composerInput(terosPage, channelId)
     await input.fill("   ") // solo espacios → hasText=false (trim)
 
-    // el botón primario sigue siendo mic, no send (hasInputContent = trim-based)
-    await expect(terosPage.getByTestId("composer-send")).toHaveCount(0)
+    // send no se ofrece: queda deshabilitado (hasInputContent = trim-based)
+    await expect(composer(terosPage, channelId).getByTestId("composer-send")).toBeDisabled()
     await input.press("Enter")
 
     // no se envió nada al canal
@@ -214,7 +191,7 @@ test.describe("composer @composer", () => {
       privateWorkspaceId as string,
       `PWshift${Date.now()}`,
     )
-    const input = terosPage.getByTestId("composer-input")
+    const input = composerInput(terosPage, channelId)
     await input.fill("linea uno")
     await input.press("Shift+Enter")
     await input.type("linea dos")
@@ -248,7 +225,7 @@ test.describe("composer @composer", () => {
       privateWorkspaceId as string,
       label,
     )
-    const input = terosPage.getByTestId("composer-input")
+    const input = composerInput(terosPage, channelId)
     await input.fill("enviar y olvidar") // texto fijo para el replay @llm (TER-563)
     await terosPage.waitForTimeout(900) // el borrador se persiste (debounce)
     await input.press("Enter")
@@ -256,14 +233,14 @@ test.describe("composer @composer", () => {
 
     await terosPage.reload({ waitUntil: "networkidle" })
     await terosPage.waitForTimeout(2500)
-    if (!terosPage.url().includes(`/chat/${channelId}`)) {
-      await terosPage
-        .getByText(label, { exact: false })
-        .first()
-        .click({ timeout: 10_000 })
-        .catch(() => null)
-    }
-    const input2 = terosPage.getByTestId("composer-input")
+    // The tiling state usually restores the chat window (there is no /chat URL to check
+    // since 24b6ab36b); focusing it via the sidebar is harmless either way.
+    await terosPage
+      .getByText(label, { exact: false })
+      .first()
+      .click({ timeout: 10_000 })
+      .catch(() => null)
+    const input2 = composerInput(terosPage, channelId)
     await input2.waitFor({ state: "visible", timeout: 15_000 })
     // el borrador NO debe reaparecer: al enviar se borró del storage
     await expect(input2, "el borrador enviado no reaparece tras recargar").toHaveValue("")
@@ -280,7 +257,7 @@ test.describe("composer @composer", () => {
       privateWorkspaceId as string,
       `PWstop${Date.now()}`,
     )
-    const input = terosPage.getByTestId("composer-input")
+    const input = composerInput(terosPage, channelId)
     await input.fill("Cuenta del 1 al 40 despacio, un número por línea.")
     await input.press("Enter")
 
@@ -306,17 +283,17 @@ test.describe("composer @composer", () => {
     )
     const [chooser] = await Promise.all([
       terosPage.waitForEvent("filechooser"),
-      terosPage.getByTestId("composer-attach").click(),
+      composer(terosPage, channelId).getByTestId("composer-attach").click(),
     ])
     await chooser.setFiles(FIXTURE)
-    await expect(terosPage.getByTestId("composer-send")).toBeVisible({ timeout: 10_000 })
+    await expect(composer(terosPage, channelId).getByTestId("composer-send")).toBeEnabled({ timeout: 10_000 })
 
-    // enviar con el adjunto → upload + onSend; el composer se vacía (send vuelve a mic)
-    await terosPage.getByTestId("composer-send").click()
+    // enviar con el adjunto → upload + onSend; el composer se vacía (send deshabilitado)
+    await composer(terosPage, channelId).getByTestId("composer-send").click()
     await expect(
-      terosPage.getByTestId("composer-send"),
+      composer(terosPage, channelId).getByTestId("composer-send"),
       "el composer se vacía tras enviar",
-    ).toHaveCount(0, { timeout: 20_000 })
+    ).toBeDisabled({ timeout: 20_000 })
 
     // el mensaje del usuario quedó persistido en el canal
     const userMsgs = await evalTeros(
@@ -343,16 +320,16 @@ test.describe("composer @composer", () => {
     )
     const [chooser] = await Promise.all([
       terosPage.waitForEvent("filechooser"),
-      terosPage.getByTestId("composer-attach").click(),
+      composer(terosPage, channelId).getByTestId("composer-attach").click(),
     ])
     await chooser.setFiles(FIXTURE)
     await expect(terosPage.getByTestId("composer-attach-chip")).toHaveCount(1)
-    await expect(terosPage.getByTestId("composer-send")).toBeVisible()
+    await expect(composer(terosPage, channelId).getByTestId("composer-send")).toBeEnabled()
 
-    // quitar el adjunto → el chip desaparece y el send vuelve a mic (sin contenido)
+    // quitar el adjunto → el chip desaparece y send se deshabilita (sin contenido)
     await terosPage.getByTestId("composer-attach-remove").first().click()
     await expect(terosPage.getByTestId("composer-attach-chip")).toHaveCount(0)
-    await expect(terosPage.getByTestId("composer-send")).toHaveCount(0)
+    await expect(composer(terosPage, channelId).getByTestId("composer-send")).toBeDisabled()
 
     await evalTeros(terosPage, (cid) => window.teros.channel.close(cid).then(() => null), channelId)
   })
@@ -368,7 +345,7 @@ test.describe("composer @composer", () => {
     )
     const [chooser] = await Promise.all([
       terosPage.waitForEvent("filechooser"),
-      terosPage.getByTestId("composer-attach").click(),
+      composer(terosPage, channelId).getByTestId("composer-attach").click(),
     ])
     await chooser.setFiles([FIXTURE, FIXTURE2])
     await expect(terosPage.getByTestId("composer-attach-chip")).toHaveCount(2)
@@ -389,7 +366,7 @@ test.describe("composer @composer", () => {
     )
     const [chooser] = await Promise.all([
       terosPage.waitForEvent("filechooser"),
-      terosPage.getByTestId("composer-attach").click(),
+      composer(terosPage, channelId).getByTestId("composer-attach").click(),
     ])
     // MIME en la blacklist de validateFile (application/x-msdownload)
     await chooser.setFiles({
@@ -418,12 +395,12 @@ test.describe("composer @composer", () => {
     )
 
     // sin contenido, el botón primario es el mic
-    await expect(terosPage.getByTestId("composer-mic")).toBeVisible()
-    await terosPage.getByTestId("composer-mic").click()
+    await expect(composer(terosPage, channelId).getByTestId("composer-mic")).toBeVisible()
+    await composer(terosPage, channelId).getByTestId("composer-mic").click()
 
     // arranca la grabación (getUserMedia con fake device). Degradable: si el entorno
     // no expone un micrófono fake, saltar en vez de fallar.
-    const started = await terosPage
+    const started = await composer(terosPage, channelId)
       .getByTestId("composer-recording")
       .waitFor({ state: "visible", timeout: 8000 })
       .then(() => true)
@@ -432,8 +409,8 @@ test.describe("composer @composer", () => {
 
     await terosPage.waitForTimeout(1200) // graba un momento
     // descartar (X = primer botón de la barra de grabación) → vuelve a idle (mic reaparece)
-    await terosPage.getByTestId("composer-recording").getByRole("button").first().click()
-    await expect(terosPage.getByTestId("composer-mic")).toBeVisible({ timeout: 8000 })
+    await composer(terosPage, channelId).getByTestId("composer-recording").getByRole("button").first().click()
+    await expect(composer(terosPage, channelId).getByTestId("composer-mic")).toBeVisible({ timeout: 8000 })
 
     await evalTeros(terosPage, (cid) => window.teros.channel.close(cid).then(() => null), channelId)
   })
@@ -447,9 +424,15 @@ test.describe("composer @composer", () => {
       privateWorkspaceId as string,
       `PWconn${Date.now()}`,
     )
-    const input = terosPage.getByTestId("composer-input")
+    const input = composerInput(terosPage, channelId)
     await input.fill("mensaje sin conexión")
-    await expect(terosPage.getByTestId("composer-send")).toBeVisible()
+    await expect(composer(terosPage, channelId).getByTestId("composer-send")).toBeEnabled()
+
+    // Let the layout write land first: PersistedDriver debounces desktop-state.save
+    // by 1500ms and a save that fires while disconnected is lost; on reconnect
+    // load() refills the cache from the server and restoreFromStorage() would
+    // bring back a layout WITHOUT this chat window (seen in CI run 41804272203).
+    await terosPage.waitForTimeout(2500)
 
     // desconectar el WS (manual, sin auto-reconnect). Guardar la url para reconectar.
     const wsUrl = await terosPage.evaluate(() => {
@@ -459,13 +442,15 @@ test.describe("composer @composer", () => {
     })
 
     // el composer se deshabilita sin conexión (guard: no enviar mensajes que se perderían)
-    await expect(input, "el input se deshabilita sin conexión").toBeDisabled({ timeout: 10_000 })
+    // Not editable = disabled OR readonly: since 2aaed3228 the textarea goes readOnly
+    // (RN-web `editable={false}`) instead of carrying the `disabled` attribute.
+    await expect(input, "el input se deshabilita sin conexión").not.toBeEditable({ timeout: 10_000 })
 
     // reconectar para restaurar la sesión, y el composer se rehabilita
     await terosPage.evaluate((url) => {
       if (url) window.teros.connect(url)
     }, wsUrl)
-    await expect(input, "tras reconectar, el composer se rehabilita").toBeEnabled({
+    await expect(input, "tras reconectar, el composer se rehabilita").toBeEditable({
       timeout: 15_000,
     })
 

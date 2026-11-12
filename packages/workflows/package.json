@@ -1,0 +1,57 @@
+{
+  "name": "@teros/workflows",
+  "version": "1.0.0",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./models": {
+      "bun": "./src/models/index.ts",
+      "import": "./dist/models/index.js",
+      "types": "./dist/models/index.d.ts"
+    },
+    "./validator": {
+      "bun": "./src/validator/index.ts",
+      "import": "./dist/validator/index.js",
+      "types": "./dist/validator/index.d.ts"
+    },
+    "./engine": {
+      "bun": "./src/engine/index.ts",
+      "import": "./dist/engine/index.js",
+      "types": "./dist/engine/index.d.ts"
+    },
+    "./bridge": {
+      "bun": "./src/bridge/index.ts",
+      "import": "./dist/bridge/index.js",
+      "types": "./dist/bridge/index.d.ts"
+    },
+    "./handlers": {
+      "bun": "./src/handlers/index.ts",
+      "import": "./dist/handlers/index.js",
+      "types": "./dist/handlers/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test test/"
+  },
+  "dependencies": {
+    "@teros/shared": "*",
+    "mongodb": "^6.11.0",
+    "nanoid": "^5.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2"
+  }
+}

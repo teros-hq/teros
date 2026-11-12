@@ -24,7 +24,6 @@ import {
   EntityRow,
   ErrorBlock,
   ExternalLink,
-  colors as globalColors,
   IconChip,
   IconTile,
   KeyValueGrid,
@@ -33,6 +32,7 @@ import {
   parseOutput,
   ResourceCard,
   SuccessBlock,
+  useColors,
 } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
 import {
@@ -73,6 +73,7 @@ export function FocusTimeRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const raw = output ? parseOutput<MutationOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
   const event = parsed?.event ?? unwrap<CalendarEvent>(parsed, "event")
@@ -107,13 +108,13 @@ export function FocusTimeRenderer({
             <YStack gap={3}>
               <Text
                 textTransform="uppercase"
-                color={globalColors.muted}
+                color={c.text3}
                 fontSize={9}
                 fontFamily="$mono"
               >
                 auto-reply
               </Text>
-              <Text color={globalColors.primary} fontSize={11}>
+              <Text color={c.text} fontSize={11}>
                 "{props.declineMessage}"
               </Text>
             </YStack>
@@ -135,6 +136,7 @@ export function OutOfOfficeRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const raw = output ? parseOutput<MutationOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
   const event = parsed?.event ?? unwrap<CalendarEvent>(parsed, "event")
@@ -158,13 +160,13 @@ export function OutOfOfficeRenderer({
             <YStack gap={3}>
               <Text
                 textTransform="uppercase"
-                color={globalColors.muted}
+                color={c.text3}
                 fontSize={9}
                 fontFamily="$mono"
               >
                 auto-reply
               </Text>
-              <Text color={globalColors.primary} fontSize={11}>
+              <Text color={c.text} fontSize={11}>
                 "{props.declineMessage}"
               </Text>
             </YStack>
@@ -248,6 +250,7 @@ export function MoveEventRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const raw = output ? parseOutput<MoveOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
   const event = parsed?.event ?? unwrap<CalendarEvent>(parsed, "event")
@@ -264,8 +267,8 @@ export function MoveEventRenderer({
             left={{
               visual: (
                 <IconTile
-                  accent={globalColors.muted}
-                  icon={<Calendar size={12} color={globalColors.muted} />}
+                  accent={c.text3}
+                  icon={<Calendar size={12} color={c.text3} />}
                   size={28}
                 />
               ),
@@ -287,7 +290,7 @@ export function MoveEventRenderer({
             meta={event?.summary ?? "Event moved"}
           />
           {sendUpdates !== "none" && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               notifications: sent{" "}
               {sendUpdates === "all" ? "to all attendees" : "to external attendees only"}
             </Text>
@@ -325,6 +328,7 @@ export function ImportEventRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const raw = output ? parseOutput<ImportOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
   const event = parsed?.event ?? unwrap<CalendarEvent>(parsed, "event")
@@ -349,7 +353,7 @@ export function ImportEventRenderer({
           title={event?.summary ?? "Imported event"}
           subtitle={event ? formatEventTime(event) : undefined}
           verb="created"
-          meta={<IconChip text="imported" accent={globalColors.muted} outline />}
+          meta={<IconChip text="imported" accent={c.text3} outline />}
         >
           <KeyValueGrid
             rows={[
@@ -395,6 +399,7 @@ export function ListInstancesRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const raw = output ? parseOutput<ListInstancesOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
   const list = parsed ? unwrapList<CalendarEvent>(parsed, "instances") : { items: [] }
@@ -441,7 +446,7 @@ export function ListInstancesRenderer({
                     }
                     trailing={
                       instance.htmlLink ? (
-                        <ExternalLink size={12} color={globalColors.muted} />
+                        <ExternalLink size={12} color={c.text3} />
                       ) : undefined
                     }
                   />

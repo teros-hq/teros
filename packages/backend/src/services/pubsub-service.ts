@@ -21,13 +21,13 @@
 import type { WebSocket } from 'ws';
 import type { Db } from 'mongodb';
 import type { UserId } from '@teros/shared';
-import {
-  getChannelSubscriptionsCollection,
-  ensureChannelSubscriptionIndexes,
-} from '../models/channel-subscriptions';
+import { getChannelSubscriptionsCollection } from '../models/channel-subscriptions';
 import type { ScheduledEvent } from '../handlers/event-handler';
 import type { SessionManager } from './session-manager';
 import type { WorkspaceService } from './workspace-service';
+import { createLogger } from '../lib/logger';
+
+const log = createLogger('PubSubService');
 
 // ============================================================================
 // TYPES
@@ -64,6 +64,12 @@ export class PubSubService {
   // --------------------------------------------------------------------------
   private channelListeners = new Map<string, Set<ChannelMessageListener>>();
 
+  // Global channel listeners — invoked for EVERY channel broadcast, regardless
+  // of channelId. Used by the Terminal bridge to route events to G2 Terminal
+  // providers without needing per-channel registration.
+  // --------------------------------------------------------------------------
+  private globalChannelListeners = new Set<(channelId: string, message: string) => void>();
+
   // --------------------------------------------------------------------------
   // Lazy EventHandler reference (set after construction to avoid circular deps)
   // --------------------------------------------------------------------------
@@ -83,10 +89,10 @@ export class PubSubService {
   // ============================================================================
 
   /**
-   * Ensure MongoDB indexes exist. Call once at startup.
+   * Call once at startup. The channel_subscriptions indexes are applied by
+   * ensureAllIndexes after migrations (src/db/indexes.ts, GOV-4).
    */
   async init(): Promise<void> {
-    await ensureChannelSubscriptionIndexes(this.db);
     console.log('[PubSubService] Initialized');
   }
 
@@ -151,7 +157,7 @@ export class PubSubService {
 
   /**
    * Subscribe a WebSocket session to a topic.
-   * Topics: "channel:{channelId}", "board:{boardId}", "file:{filePath}"
+   * Topics: "channel:{channelId}", "board:{boardId}", "file:{volumeHash}:{filePath}" (fileWatchTopic)
    */
   subscribeSession(sessionId: string, topic: string): void {
     // Ensure session is registered
@@ -217,14 +223,25 @@ export class PubSubService {
           }
         }
       }
+      // Global listeners — invoked for every channel broadcast
+      for (const globalListener of this.globalChannelListeners) {
+        try {
+          globalListener(channelId, payload);
+        } catch (err) {
+          console.error(`[PubSubService] Error in global listener:`, err);
+        }
+      }
     }
 
     if (sentCount === 0 && closedCount === 0) {
-      // No subscribers — log at debug level only
-      console.log(`[PubSubService] No subscribers for topic "${topic}"`);
+      // No subscribers — fires on every broadcast without an active WS session
+      // (agents polling topics, etc.). Was a raw console.log and dominated the
+      // out log (~27k lines per 100MB); the comment above always said "debug
+      // level only" — now it actually is.
+      log.debug(`No subscribers for topic "${topic}"`);
     } else {
-      console.log(
-        `[PubSubService] Broadcast to topic "${topic}": ${sentCount} sent, ${closedCount} closed`,
+      log.debug(
+        `Broadcast to topic "${topic}": ${sentCount} sent, ${closedCount} closed`,
       );
     }
   }
@@ -286,7 +303,15 @@ export class PubSubService {
       console.log(`[PubSubService] broadcastToWorkspace: workspace ${workspaceId} not found`);
       return;
     }
-    const userIds = new Set<string>([workspace.ownerId, ...workspace.members.map((m) => m.userId)]);
+    // Get all user IDs for this workspace: owner + active members from workspace_members collection
+    const memberDocs = await this.db.collection('workspace_members')
+      .find({ workspaceId, status: { $in: ['active', null] } })
+      .project({ userId: 1, _id: 0 })
+      .toArray();
+    const memberUserIds = memberDocs
+      .map((m) => m.userId)
+      .filter((id): id is string => !!id);
+    const userIds = new Set<string>([workspace.ownerId, ...memberUserIds]);
     const payload = JSON.stringify(event);
     let totalSent = 0;
     for (const userId of userIds) {
@@ -315,6 +340,38 @@ export class PubSubService {
       }
     }
     return sent;
+  }
+
+  /**
+   * Broadcast a JSON event to EVERY registered WebSocket session, regardless of
+   * topic subscriptions or user identity. Used by the admin "refresh all
+   * browsers" action (deploy pipeline): the client.refresh signal must reach
+   * every connected device, not just sessions subscribed to some topic.
+   *
+   * Returns the number of sessions the payload was sent to (readyState OPEN
+   * only), so the admin surface can report how many clients were reached.
+   */
+  broadcastToAllSessions(event: Record<string, unknown>): number {
+    const payload = JSON.stringify(event);
+    let sent = 0;
+    for (const session of this.sessionMap.values()) {
+      if (session.ws.readyState === 1) {
+        session.ws.send(payload);
+        sent++;
+      }
+    }
+    console.log(
+      `[PubSubService] broadcastToAllSessions: ${sent}/${this.sessionMap.size} session(s) delivered`,
+    );
+    return sent;
+  }
+
+  /**
+   * Count of currently registered sessions (all readyStates) — companion to
+   * broadcastToAllSessions so callers can report sent vs total.
+   */
+  getRegisteredSessionCount(): number {
+    return this.sessionMap.size;
   }
 
   // ============================================================================
@@ -411,6 +468,21 @@ export class PubSubService {
     }
     this.channelListeners.get(channelId)!.add(listener);
     console.log(`[PubSubService] Listener added for channel ${channelId}`);
+  }
+
+  /**
+   * Register a global channel listener that is invoked for EVERY channel
+   * broadcast, regardless of channelId. Used by the Terminal bridge to route
+   * PubSub events to G2 Terminal providers without per-channel registration.
+   */
+  addGlobalChannelListener(listener: (channelId: string, message: string) => void): void {
+    this.globalChannelListeners.add(listener);
+    console.log('[PubSubService] Global channel listener added');
+  }
+
+  removeGlobalChannelListener(listener: (channelId: string, message: string) => void): void {
+    this.globalChannelListeners.delete(listener);
+    console.log('[PubSubService] Global channel listener removed');
   }
 
   /**

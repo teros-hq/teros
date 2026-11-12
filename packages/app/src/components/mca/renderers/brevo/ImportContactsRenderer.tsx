@@ -39,7 +39,7 @@ export function ImportContactsRenderer({ status, output, error, appIcon }: ToolC
   return (
     <ToolCallCard
       status={status}
-      verb="Import contacts"
+      description="Import contacts"
       badge={badge}
       iconUri={appIcon}
       animateExpand

@@ -11,6 +11,7 @@
  */
 
 import { HealthCheckBuilder, McaServer } from '@teros/mca-sdk';
+import { initializeWsClient } from './lib/provider-bridge';
 import {
   // Access Control
   accessGrant,
@@ -21,26 +22,29 @@ import {
   agentGet,
   // Agents
   agentList,
-  agentPreferredProviderSet,
+  agentModelReset,
+  agentModelSet,
   agentProvidersGet,
-  agentProvidersSet,
   agentUpdate,
   appAccessList,
   appCheckAuth,
+  appCopyAuth,
   appGet,
+  appGetSecret,
   appInstall,
   // Apps
-  appList,
   // Permissions
   appPermissionsGet,
   appPermissionsSet,
   appRename,
+  appSetSecret,
   appShowAuth,
   appUninstall,
   // Catalog
   catalogList,
   // Providers
   providerList,
+  providerSetDefault,
   // Skills
   skillCreate,
   skillDelete,
@@ -78,6 +82,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies connectivity to backend.',
   parameters: {
     type: 'object',
@@ -115,8 +120,8 @@ server.tool('update-agent', agentUpdate);
 server.tool('delete-agent', agentDelete);
 server.tool('list-agent-apps', agentAppsList);
 server.tool('get-agent-providers', agentProvidersGet);
-server.tool('set-agent-providers', agentProvidersSet);
-server.tool('set-agent-preferred-provider', agentPreferredProviderSet);
+server.tool('set-agent-model', agentModelSet);
+server.tool('reset-agent-model', agentModelReset);
 
 // =============================================================================
 // REGISTER TOOLS: WORKSPACES
@@ -135,13 +140,18 @@ server.tool('update-workspace-member-role', workspaceMemberUpdate);
 // REGISTER TOOLS: APPS
 // =============================================================================
 
-server.tool('list-apps', appList);
 server.tool('get-app', appGet);
 server.tool('install-app', appInstall);
 server.tool('uninstall-app', appUninstall);
 server.tool('rename-app', appRename);
 server.tool('check-app-auth', appCheckAuth);
 server.tool('show-app-auth', appShowAuth);
+// Agent secret tools (docs/specs/20261031_agent-secret-tools.md) —
+// set-app-secret is alwaysAsk; get-app-secret returns a masked preview only.
+server.tool('set-app-secret', appSetSecret);
+server.tool('get-app-secret', appGetSecret);
+// copy-app-auth (tn_aGVdSrVwIJi9mfvc) — alwaysAsk, masked summary only.
+server.tool('copy-app-auth', appCopyAuth);
 server.tool('list-app-access', appAccessList);
 server.tool('workspace-app-list', workspaceAppList);
 server.tool('workspace-agent-list', workspaceAgentList);
@@ -157,6 +167,7 @@ server.tool('list-catalog', catalogList);
 // =============================================================================
 
 server.tool('list-providers', providerList);
+server.tool('set-default-provider', providerSetDefault);
 
 // =============================================================================
 // REGISTER TOOLS: ACCESS CONTROL
@@ -189,12 +200,16 @@ server.tool('skill-get-agent-skills', skillGetAgentSkills);
 // START SERVER
 // =============================================================================
 
-server
-  .start()
-  .then(() => {
-    console.error('🔧 Teros Core MCA server running');
-  })
-  .catch((error) => {
-    console.error('Failed to start Teros Core MCA:', error);
-    process.exit(1);
-  });
+async function main(): Promise<void> {
+  // Provider bridge (backend provider.* actions over the MCA WebSocket).
+  // Degraded-mode tolerant: without MCA_WS_URL (e.g. the tools.json generator)
+  // the MCA still boots; provider tools fail fast if called.
+  await initializeWsClient();
+  await server.start();
+  console.error('🔧 Teros Core MCA server running');
+}
+
+main().catch((error) => {
+  console.error('Failed to start Teros Core MCA:', error);
+  process.exit(1);
+});

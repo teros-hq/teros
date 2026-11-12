@@ -1,7 +1,14 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { resolveUserToken } from '../lib/github-user-token';
-import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
+import {
+  assertIsRepo,
+  assertRemoteIsGithubHttps,
+  resolveRepoPath,
+  runGit,
+  stripEmbeddedCredentials,
+} from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Fetch refs from the remote without merging or rebasing. Differs from
@@ -12,7 +19,7 @@ import { throwClassifiedGitError } from './_git-error';
  *   git-fetch({ remote: 'origin', refspec: 'pull/123/head:pr-123' })
  *   git-checkout({ target: 'pr-123' })
  */
-export const gitFetch: ToolConfig = {
+export const gitFetch: ToolConfig = lockedGitTool('git-fetch', {
   annotations: { readOnlyHint: false },
   description:
     'Fetch refs from the remote without merging. Use `refspec` to fetch arbitrary refs (e.g. `pull/<n>/head:pr-<n>` for a PR head, `refs/tags/v1.0.0:refs/tags/v1.0.0` for a tag).',
@@ -49,8 +56,15 @@ export const gitFetch: ToolConfig = {
     };
     const repoPath = resolveRepoPath(a);
     assertIsRepo(repoPath);
+    // Lazy hygiene: strip credentials from legacy remote URLs (audit 2026-10-01).
+    await stripEmbeddedCredentials(repoPath);
 
     const remote = a.remote ?? 'origin';
+
+    // Token-exfiltration guard (audit 2026-10-01): the extraheader credential
+    // is attached to every URL git contacts — refuse before resolving the
+    // token unless the remote is a clean github.com HTTPS remote.
+    await assertRemoteIsGithubHttps(repoPath, remote);
 
     const token = await resolveUserToken(context);
     const authHeader = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`;
@@ -65,7 +79,7 @@ export const gitFetch: ToolConfig = {
     const argv = ['fetch', ...flags, remote];
     if (a.refspec) argv.push(a.refspec);
 
-    const result = runGit(repoPath, [...cfgFlags, ...argv]);
+    const result = await runGit(repoPath, [...cfgFlags, ...argv]);
     if (result.code !== 0) throwClassifiedGitError(result);
 
     return {
@@ -75,4 +89,4 @@ export const gitFetch: ToolConfig = {
       details: result.stdout.trim() || result.stderr.trim(),
     };
   },
-};
+});

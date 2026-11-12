@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -26,7 +29,40 @@
       "description": "List all devices connected to Homey with their zone, class, capabilities, and availability status",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "detailed": {
+            "type": "boolean",
+            "description": "Include full capabilitiesObj with values, timestamps, etc. Default: false (compact mode)."
+          },
+          "zone": {
+            "type": "string",
+            "description": "Filter by zone name (case-insensitive substring match) or zone ID."
+          },
+          "class": {
+            "type": "string",
+            "description": "Filter by device class (e.g. \"windowcoverings\", \"sensor\", \"light\", \"socket\")."
+          },
+          "capability": {
+            "type": "string",
+            "description": "Filter to devices that have this capability (e.g. \"windowcoverings_set\", \"onoff\", \"dim\")."
+          },
+          "available": {
+            "type": "boolean",
+            "description": "Filter by availability: true = only available devices, false = only unavailable."
+          },
+          "search": {
+            "type": "string",
+            "description": "Search device names (case-insensitive substring)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max devices to return (default 200)."
+          },
+          "offset": {
+            "type": "number",
+            "description": "Skip first N devices for pagination (default 0)."
+          }
+        }
       },
       "annotations": {
         "readOnlyHint": true
@@ -84,7 +120,35 @@
       "description": "List all flows (automations) configured in Homey",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Filter by enabled state."
+          },
+          "search": {
+            "type": "string",
+            "description": "Search flow names (case-insensitive substring)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "homey-get-flow",
+      "description": "Get detailed information about a specific Homey flow by ID, including full triggers, conditions, and actions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "flow_id": {
+            "type": "string",
+            "description": "Flow ID"
+          }
+        },
+        "required": [
+          "flow_id"
+        ]
       },
       "annotations": {
         "readOnlyHint": true

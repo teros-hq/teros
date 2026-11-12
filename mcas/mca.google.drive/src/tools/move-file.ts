@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ALL_DRIVES, ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { ALL_DRIVES, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const moveFile: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -20,7 +20,6 @@ export const moveFile: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const { fileId, newParentId } = args as { fileId: string; newParentId: string };
 

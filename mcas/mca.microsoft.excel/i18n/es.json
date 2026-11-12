@@ -1,0 +1,370 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "create-workbook": {
+      "name": "create-workbook",
+      "description": "Create a new, empty Excel workbook in OneDrive. Fails if a file already exists at that path unless overwrite is set. This is not a workbook API call: it uploads an empty .xlsx, after which the workbook endpoints become available on that item. Returns the drive item, whose id addresses every other Excel tool.",
+      "params": {
+        "name": "File name for the new workbook. \".xlsx\" is appended if missing. Pass a literal name, not a pre-encoded one.",
+        "parentPath": "Destination folder path relative to the drive root, e.g. \"Finance\". Defaults to the drive root. Pass literal folder names, not pre-encoded ones.",
+        "overwrite": "When true, replaces any existing file at that path with a new empty workbook, discarding its contents permanently. Defaults to false, which fails instead."
+      }
+    },
+    "get-workbook": {
+      "name": "get-workbook",
+      "description": "Get an Excel workbook: its file metadata and the list of worksheets it contains. Confirms the item is a usable .xlsx — this is the only tool that validates the extension when addressing by itemId, because it is the only one that fetches the item metadata; the others surface Graph's own error for a wrong item type.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root, e.g. \"Finance/Budget.xlsx\". Pass literal names, not pre-encoded ones."
+      }
+    },
+    "calculate-workbook": {
+      "name": "calculate-workbook",
+      "description": "Force Excel to recalculate a workbook. Use after writing formulas if dependent cells still show stale values.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "calculationType": "Calculation scope: \"Recalculate\" (default, changed cells only), \"Full\", or \"FullRebuild\"."
+      }
+    },
+    "list-worksheets": {
+      "name": "list-worksheets",
+      "description": "List every worksheet in an Excel workbook, with its position and visibility.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones."
+      }
+    },
+    "add-worksheet": {
+      "name": "add-worksheet",
+      "description": "Add a new worksheet to an Excel workbook.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "name": "Name for the new worksheet. Excel assigns one if omitted."
+      }
+    },
+    "delete-worksheet": {
+      "name": "delete-worksheet",
+      "description": "Delete a worksheet and everything on it. This cannot be undone by this app — the workbook must be restored from OneDrive version history.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id to delete"
+      }
+    },
+    "rename-worksheet": {
+      "name": "rename-worksheet",
+      "description": "Rename a worksheet, or change its position or visibility.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Current worksheet name or id",
+        "newName": "New name for the worksheet",
+        "position": "Optional zero-based tab position",
+        "visibility": "Optional visibility: \"Visible\", \"Hidden\", or \"VeryHidden\"."
+      }
+    },
+    "read-range": {
+      "name": "read-range",
+      "description": "Read a range of cells from a worksheet. Returns raw values, display text, and the underlying formulas.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Range in A1 notation, e.g. \"A1:C10\" or \"B2\"."
+      }
+    },
+    "read-used-range": {
+      "name": "read-used-range",
+      "description": "Read every populated cell on a worksheet without knowing its extent in advance. Use this to survey a sheet before reading specific ranges.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "valuesOnly": "When true, ignore cells that carry only formatting, so the range covers just cells with values."
+      }
+    },
+    "write-range": {
+      "name": "write-range",
+      "description": "Write cells into a worksheet range. Writes literal values by default; set formulas:true to write formula strings such as \"=A1*B1\". Pass a single cell like \"A1\" as the address and the range auto-expands to match the values array — no need to calculate the exact range dimensions. Set append:true to write at the first empty row after the used range, ignoring address. This app does not manage workbook sessions: each call runs as its own implicit session and there is no batching, so prefer one write over a wide range to many small ones.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Range in A1 notation, e.g. \"A1:C10\". A single cell like \"A1\" auto-expands to match the values array. Ignored when append is true.",
+        "values": "Rows of cells, e.g. [[\"Item\",\"Cost\"],[\"Widget\",9.5]]. Every row must be the same length.",
+        "formulas": "When true, the payload is written as formulas rather than literal values (default: false).",
+        "append": "When true, write at the first empty row after the used range. The address parameter is ignored (only the worksheet is used). Useful for building a sheet incrementally without tracking row offsets."
+      }
+    },
+    "clear-range": {
+      "name": "clear-range",
+      "description": "Clear a range: its contents, its formatting, or both. This cannot be undone by this app.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Range in A1 notation, e.g. \"A1:C10\".",
+        "applyTo": "What to clear: \"All\" (default), \"Contents\", or \"Formats\"."
+      }
+    },
+    "sort-range": {
+      "name": "sort-range",
+      "description": "Sort a range by one or more columns. Column indexes are zero-based and relative to the range, not the sheet.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Range in A1 notation, e.g. \"A1:C10\".",
+        "sortBy": "Sort keys applied in order. Each entry is { column: <zero-based index within the range>, ascending?: boolean } — ascending defaults to true.",
+        "hasHeaders": "When true, the first row is treated as headers and is not sorted.",
+        "matchCase": "Case-sensitive comparison (default: false)"
+      }
+    },
+    "format-range": {
+      "name": "format-range",
+      "description": "Apply number formatting and cell styling to a range: currency or date formats, bold, italic, font size and colour, fill colour, and alignment.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Range in A1 notation, e.g. \"B2:B10\".",
+        "numberFormat": "Excel number format applied to every cell in the range, e.g. \"$#,##0.00\", \"0.0%\", \"yyyy-mm-dd\".",
+        "bold": "Bold text",
+        "italic": "Italic text",
+        "fontSize": "Font size in points",
+        "fontColor": "Font colour as a hex string, e.g. \"#C00000\"",
+        "fillColor": "Cell background colour as a hex string, e.g. \"#FFF2CC\"",
+        "horizontalAlignment": "Horizontal alignment: \"General\", \"Left\", \"Center\", \"Right\"."
+      }
+    },
+    "insert-rows-or-columns": {
+      "name": "insert-rows-or-columns",
+      "description": "Insert blank rows or columns at a range, shifting existing cells out of the way. Use a whole-row address like \"3:4\" or a whole-column address like \"B:B\" to insert entire rows or columns.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Where to insert, in A1 notation. \"3:4\" inserts two rows at row 3; \"B:B\" inserts one column at B.",
+        "direction": "What to insert: \"rows\" or \"columns\"."
+      }
+    },
+    "delete-rows-or-columns": {
+      "name": "delete-rows-or-columns",
+      "description": "Delete rows or columns at a range, shifting the surviving cells to close the gap. This cannot be undone by this app.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "What to delete, in A1 notation. \"5:6\" deletes rows 5 and 6; \"B:B\" deletes column B.",
+        "direction": "What to delete: \"rows\" or \"columns\"."
+      }
+    },
+    "list-tables": {
+      "name": "list-tables",
+      "description": "List every Excel table in a workbook, across all worksheets. Table names address the add-table-rows tool.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones."
+      }
+    },
+    "add-table": {
+      "name": "add-table",
+      "description": "Turn a range of cells into an Excel table, so it can be appended to, sorted and filtered as a unit.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Range to convert, in A1 notation, e.g. \"A1:C10\".",
+        "hasHeaders": "Whether the first row of the range holds column headers (default: true)."
+      }
+    },
+    "add-table-rows": {
+      "name": "add-table-rows",
+      "description": "Append rows to an Excel table. The table grows automatically — no need to find the next free row.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "table": "Table name or id, as returned by list-tables. Pass the literal name, not a pre-encoded one.",
+        "values": "Rows to append, e.g. [[\"Widget\",9.5],[\"Gadget\",12]]. Each row must have one cell per table column.",
+        "index": "Optional zero-based position to insert at. Appends to the end when omitted."
+      }
+    },
+    "add-chart": {
+      "name": "add-chart",
+      "description": "Add a chart to a worksheet from a range of data. Use get-chart-image afterwards to see the result.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id the chart is added to",
+        "chartType": "Excel chart type, e.g. \"ColumnClustered\", \"Line\", \"Pie\", \"BarClustered\", \"XYScatter\", \"Area\".",
+        "sourceData": "Range supplying the chart data, in A1 notation, e.g. \"A1:B10\".",
+        "seriesBy": "Whether each series comes from \"Columns\" (default), \"Rows\", or \"Auto\"."
+      }
+    },
+    "get-chart-image": {
+      "name": "get-chart-image",
+      "description": "Render a chart as a PNG image, returned base64-encoded. Use this to visually check a chart you created. Pass width and height to keep the image small — a render over 5 MB is rejected.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id holding the chart",
+        "chart": "Chart name or id, e.g. \"Chart 1\". Pass the literal name, not a pre-encoded one.",
+        "width": "Optional image width in pixels",
+        "height": "Optional image height in pixels"
+      }
+    },
+    "list-charts": {
+      "name": "list-charts",
+      "description": "List all charts in a worksheet, with their name, type, and source data range.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id"
+      }
+    },
+    "delete-chart": {
+      "name": "delete-chart",
+      "description": "Delete a chart from a worksheet by its name or id. Use list-charts first to find the chart name.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "chart": "Chart name or id, e.g. \"Chart 1\". Pass the literal name, not a pre-encoded one."
+      }
+    },
+    "merge-cells": {
+      "name": "merge-cells",
+      "description": "Merge a range of cells into a single cell. Use unmerge:true to split a merged cell back into individual cells. Orientation controls how cells are combined: \"all\" (default) merges everything into one cell, \"across\" merges each row separately, \"down\" merges each column separately.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Range in A1 notation, e.g. \"A1:C10\".",
+        "orientation": "How to merge: \"all\" (default, everything into one cell), \"across\" (each row merged separately), or \"down\" (each column merged separately). Ignored when unmerge is true.",
+        "unmerge": "When true, unmerge the range instead of merging it. The orientation parameter is ignored."
+      }
+    },
+    "set-column-width": {
+      "name": "set-column-width",
+      "description": "Set the width of one or more columns, or auto-fit them to their contents. Pass a column range like \"A:C\" or a single column like \"A\" as the address. Omit width to auto-fit the columns to their content.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Column range in A1 notation, e.g. \"A:C\" for columns A through C, or \"A\" for a single column. Use the column letters only — no row numbers.",
+        "width": "Column width in Excel units (approximately the width of one character). Omit to auto-fit the columns to their content."
+      }
+    },
+    "set-row-height": {
+      "name": "set-row-height",
+      "description": "Set the height of one or more rows, or auto-fit them to their contents. Pass a row range like \"1:10\" or a single row like \"1\" as the address. Omit height to auto-fit the rows to their content.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Row range in A1 notation, e.g. \"1:10\" for rows 1 through 10, or \"1\" for a single row. Use the row numbers only — no column letters.",
+        "height": "Row height in points. Omit to auto-fit the rows to their content."
+      }
+    },
+    "add-borders": {
+      "name": "add-borders",
+      "description": "Apply borders to a range. Each border specifies a side (EdgeTop, EdgeBottom, EdgeLeft, EdgeRight, InsideHorizontal, InsideVertical), a style (None, Continuous, Dash, DashDot, DashDotDot, Dotted, Double, SlantDashDot), and an optional colour as a hex string.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Range in A1 notation, e.g. \"A1:C10\".",
+        "borders": "Array of border definitions. Each entry is { side, style, color? }. side: EdgeTop, EdgeBottom, EdgeLeft, EdgeRight, InsideHorizontal, InsideVertical. style: None, Continuous, Dash, DashDot, DashDotDot, Dotted, Double, SlantDashDot. color: hex string like \"#000000\"."
+      }
+    },
+    "add-conditional-format": {
+      "name": "add-conditional-format",
+      "description": "Add a conditional formatting rule to a range. Rule types: CellValue (compare cell values with operator + formula), ColorScale (3-color gradient), DataBar (in-cell data bars), IconSet (icon-based), TopBottom (top/bottom N), Custom (formula-based). Use list:true to list existing rules on the range, or deleteIndex to delete a rule by its zero-based index.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Range in A1 notation, e.g. \"A1:C10\".",
+        "list": "When true, list all conditional formatting rules on the range instead of adding one.",
+        "deleteIndex": "When set, delete the conditional formatting rule at this zero-based index instead of adding one.",
+        "ruleType": "Type of conditional formatting: \"CellValue\", \"ColorScale\", \"DataBar\", \"IconSet\", \"TopBottom\", \"Custom\".",
+        "operator": "Comparison operator for CellValue type: \"GreaterThan\", \"GreaterThanOrEqual\", \"LessThan\", \"LessThanOrEqual\", \"Between\", \"NotBetween\", \"EqualTo\", \"NotEqualTo\".",
+        "formula": "Formula or value for the rule, e.g. \"0\" for CellValue GreaterThan 0. For TopBottom, use a number like \"10\" for top 10.",
+        "fill": "Fill format for the rule, e.g. { color: \"#FF0000\" }.",
+        "font": "Font format for the rule, e.g. { color: \"#FFFFFF\", bold: true }."
+      }
+    },
+    "set-data-validation": {
+      "name": "set-data-validation",
+      "description": "Set data validation rules on a range — dropdown lists, number constraints, date ranges, text length limits, or custom formulas. Use clear:true to remove all data validation from the range.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Range in A1 notation, e.g. \"A1:A10\".",
+        "clear": "When true, remove all data validation from the range.",
+        "validationType": "Type of validation: \"List\" (dropdown), \"WholeNumber\", \"Decimal\", \"Date\", \"TextLength\", \"Custom\".",
+        "operator": "Comparison operator: \"GreaterThan\", \"GreaterThanOrEqual\", \"LessThan\", \"LessThanOrEqual\", \"Between\", \"NotBetween\", \"EqualTo\", \"NotEqualTo\". Required for all types except List and Custom.",
+        "formula1": "First formula or value. For List, a comma-separated list like \"Yes,No,Maybe\" or a range reference like \"=Sheet1!A1:A10\". For other types, the comparison value.",
+        "formula2": "Second formula for \"Between\" / \"NotBetween\" operators.",
+        "prompt": "Input prompt shown when the cell is selected.",
+        "errorAlert": "Error message shown when invalid data is entered."
+      }
+    },
+    "add-comment": {
+      "name": "add-comment",
+      "description": "Add a comment to a cell, or list / delete / update comments on a worksheet. Use list:true to list all comments, deleteId to delete a comment by its id, or updateId + content to update a comment.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "cell": "Target cell in A1 notation, e.g. \"A1\". Required when adding a comment.",
+        "content": "Comment text. Required when adding or updating a comment.",
+        "list": "When true, list all comments on the worksheet.",
+        "deleteId": "When set, delete the comment with this id.",
+        "updateId": "When set, update the comment with this id. Requires content."
+      }
+    },
+    "add-hyperlink": {
+      "name": "add-hyperlink",
+      "description": "Add a clickable hyperlink to a cell. This writes an Excel =HYPERLINK() formula into the target cell, which is the method supported by the Microsoft Graph Excel REST API. The cell displays the friendly text and links to the URL when clicked.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "address": "Target cell in A1 notation, e.g. \"A1\".",
+        "url": "The URL to link to, e.g. \"https://example.com\".",
+        "displayText": "Text to display in the cell instead of the raw URL. Defaults to the URL."
+      }
+    },
+    "protect-sheet": {
+      "name": "protect-sheet",
+      "description": "Protect a worksheet to prevent accidental edits, or remove protection. Use unprotect:true to unprotect the sheet. When protecting, you can optionally specify allowed operations.",
+      "params": {
+        "itemId": "Workbook drive item ID. Takes precedence over path.",
+        "path": "Workbook path relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "worksheet": "Worksheet name or id",
+        "unprotect": "When true, remove protection from the worksheet instead of applying it.",
+        "allowFormatCells": "Allow formatting cells while protected (default: false).",
+        "allowInsertColumns": "Allow inserting columns while protected (default: false).",
+        "allowInsertRows": "Allow inserting rows while protected (default: false).",
+        "allowDeleteColumns": "Allow deleting columns while protected (default: false).",
+        "allowDeleteRows": "Allow deleting rows while protected (default: false).",
+        "allowSort": "Allow sorting while protected (default: false).",
+        "allowAutoFilter": "Allow using auto-filter while protected (default: false)."
+      }
+    }
+  },
+  "name": "Excel",
+  "description": "Integración de Microsoft Excel a través de Microsoft Graph API",
+  "changelog": [
+    {
+      "notes": "Versión inicial — leer y escribir rangos, fórmulas, tablas y gráficos de Excel a través de Microsoft Graph"
+    }
+  ]
+}

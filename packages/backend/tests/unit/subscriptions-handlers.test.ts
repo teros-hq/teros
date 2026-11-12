@@ -63,12 +63,14 @@ describe('mca.subscribe-to-events', () => {
     expect(svc.createChannelSubscription).not.toHaveBeenCalled();
   });
 
-  it('happy: crea con defaults (rules=[], mode=notify) y payload exacto', async () => {
+  // Default flipped notify → wake (decision Pablo 2026-09-24): subscriptions wake
+  // by default everywhere; over-waking is monitored, silence is not the default.
+  it('happy: crea con defaults (rules=[], mode=wake) y payload exacto', async () => {
     const svc = makeSubService();
     const h = createSubscribeToEventsHandler(svc, makeChannelManager('ch_1'));
     const res = await h(ctx('u1'), { topic: 'github.push', channelId: 'ch_1' });
     expect(svc.createChannelSubscription).toHaveBeenCalledWith({
-      topic: 'github.push', channelId: 'ch_1', rules: [], mode: 'notify',
+      topic: 'github.push', channelId: 'ch_1', rules: [], mode: 'wake',
     });
     expect(res).toEqual({
       subscription: { id: 'sub_1', topic: 'github.push', channelId: 'ch_1', rules: [{ k: 'v' }], mode: 'notify', createdAt: '2026-01-01' },

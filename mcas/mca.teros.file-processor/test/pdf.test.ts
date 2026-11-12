@@ -6,10 +6,10 @@ import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { hasMeaningfulText, PDFProcessor } from '../src/processors/pdf.js';
 
 const digital = join(tmpdir(), 'fp-pdf-digital.pdf');
-const scanned = join(tmpdir(), 'fp-pdf-empty.pdf');
+const empty = join(tmpdir(), 'fp-pdf-empty.pdf');
 
 afterAll(() => {
-  for (const f of [digital, `${digital}.md`, scanned, `${scanned}.md`]) {
+  for (const f of [digital, `${digital}.md`, empty, `${empty}.md`]) {
     if (existsSync(f)) rmSync(f);
   }
 });
@@ -40,11 +40,17 @@ describe('PDFProcessor', () => {
     expect(result.metadata.tokensUsed).toBeUndefined(); // no LLM was used
   });
 
-  it('fails loud on a scanned/empty PDF when no LLM key is configured', async () => {
+  it('runs local OCR on a PDF with no text layer, without an LLM key', async () => {
     const doc = await PDFDocument.create();
-    doc.addPage(); // blank page → no text layer
-    writeFileSync(scanned, await doc.save());
+    doc.addPage(); // blank page → no text layer → the scanned-PDF path
+    writeFileSync(empty, await doc.save());
 
-    await expect(new PDFProcessor('').process(scanned)).rejects.toThrow(/NO_TEXT_LAYER/);
+    // This used to EXPECT a failure: local OCR always threw "The API version
+    // 4.10.38 does not match the Worker version 6.1.200" because unpdf (run
+    // first) registers its pdf.js 6 worker globally. With the worker isolated
+    // (vendor/teros-ocr), a blank page is OCR'd locally — no text, no LLM.
+    const result = await new PDFProcessor('').process(empty);
+    expect(result.metadata.tokensUsed).toBeUndefined(); // no LLM was used
+    expect(result.markdown).toContain('teros-ocr');
   });
 });

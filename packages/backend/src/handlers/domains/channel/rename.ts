@@ -3,6 +3,8 @@
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
+import type { WorkspaceService } from '../../../services/workspace-service'
+import { channelListScope } from '@teros/shared'
 import type { WsHandlerContext } from '@teros/shared'
 import type { ChannelManager } from '../../../services/channel-manager'
 import type { SessionManager } from '../../../services/session-manager'
@@ -17,6 +19,7 @@ export function createRenameChannelHandler(
   channelManager: ChannelManager,
   sessionManager: SessionManager,
   pubSubService: PubSubService,
+  workspaceService?: WorkspaceService | null,
 ) {
   return async function renameChannel(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as RenameChannelData
@@ -29,6 +32,17 @@ export function createRenameChannelHandler(
     const canAccess = await channelManager.canAccessChannel(data.channelId, ctx.userId)
     if (!canAccess) {
       throw new HandlerError('UNAUTHORIZED', 'Access denied')
+    }
+
+    // MUW-REQ-25: a shared conversation is renamed/archived only by its
+    // creator or a workspace owner/admin — not by any member who can read it.
+    if (channel.scope === 'shared' && channel.userId !== ctx.userId) {
+      const admin = workspaceService && channel.workspaceId
+        ? await workspaceService.canAdmin(channel.workspaceId, ctx.userId)
+        : false
+      if (!admin) {
+        throw new HandlerError('ACCESS_DENIED', 'Only the creator or a workspace admin can do this on a shared conversation')
+      }
     }
 
     await channelManager.renameChannel(data.channelId, data.name)
@@ -44,7 +58,7 @@ export function createRenameChannelHandler(
       status: renamed!.status,
       createdAt: renamed!.createdAt,
       updatedAt: renamed!.updatedAt,
-      workspaceId: renamed!.workspaceId,
+      ...channelListScope(renamed!),
     })
 
     // Broadcast channel_list_status to all user sessions (for conversation list)

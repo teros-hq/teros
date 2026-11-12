@@ -1,44 +1,62 @@
-import React, { useState, useCallback } from 'react'
-import { Platform } from 'react-native'
-import { Button, Input, Text, XStack, YStack, Sheet } from 'tamagui'
-import { ThumbsUp, ThumbsDown, Copy, Flag } from '@tamagui/lucide-icons'
-import { getTerosClient } from '../services/terosClientSingleton'
-import type { MessageFeedbackReason } from '../services/FeedbackApi'
-import { useToast } from './Toast'
-import { t } from '../lib/i18n'
-import { useColors } from './mca/primitives/useColors'
-import { AppSpinner } from './ui/AppSpinner'
+import React, { useState, useCallback } from "react"
+import { Platform, View } from "react-native"
+import { Sheet } from "tamagui"
+import { useTranslation } from "react-i18next"
+import { getTerosClient } from "../services/terosClientSingleton"
+import type { MessageFeedbackReason } from "../services/FeedbackApi"
+import { useToast } from "./Toast"
+import { useColors } from "./mca/primitives/useColors"
+import { AppSpinner } from "./ui/AppSpinner"
+import { Btn, ChipBtn, Field, IconBtn, T } from "./ui/ds"
 
 interface MessageFeedbackProps {
   messageId: string
   channelId: string
   messageText: string
-  currentRating?: 'up' | 'down'
+  currentRating?: "up" | "down"
+  /** Whether the current user is the channel owner (shows Redact button, REQ-4) */
+  isChannelOwner?: boolean
+  /** Callback to toggle redaction on a message (owner only, AC-5) */
+  onToggleRedaction?: (messageId: string, redacted: boolean) => void
 }
 
 const REASONS: MessageFeedbackReason[] = [
-  'inaccurate',
-  'incomplete',
-  'not_helpful',
-  'wrong_tone',
-  'did_not_follow_instructions',
-  'other',
+  "inaccurate",
+  "incomplete",
+  "not_helpful",
+  "wrong_tone",
+  "did_not_follow_instructions",
+  "other",
 ]
 
-export function MessageFeedback({ messageId, channelId, messageText, currentRating }: MessageFeedbackProps): React.ReactElement {
+/**
+ * `.msg-actions` — the quiet action row under an agent reply: thumbs up /
+ * down, copy, flag (+ redact for owners) as small plain IconBtns, 55%
+ * opacity at rest, full on hover / focus.
+ */
+function MessageFeedbackInner({
+  messageId,
+  channelId,
+  messageText,
+  currentRating,
+  isChannelOwner,
+  onToggleRedaction,
+}: MessageFeedbackProps): React.ReactElement {
+  const { t } = useTranslation()
   const c = useColors()
   const toast = useToast()
-  const [selectedRating, setSelectedRating] = useState<'up' | 'down' | undefined>(currentRating)
+  const [selectedRating, setSelectedRating] = useState<"up" | "down" | undefined>(currentRating)
   const [showReasons, setShowReasons] = useState(false)
   const [selectedReasons, setSelectedReasons] = useState<MessageFeedbackReason[]>([])
-  const [comment, setComment] = useState('')
+  const [comment, setComment] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [reportModalOpen, setReportModalOpen] = useState(false)
-  const [reportDescription, setReportDescription] = useState('')
+  const [reportDescription, setReportDescription] = useState("")
   const [isReporting, setIsReporting] = useState(false)
+  const [hover, setHover] = useState(false)
 
   const submitFeedback = useCallback(
-    async (rating: 'up' | 'down', reasons?: MessageFeedbackReason[], feedbackComment?: string) => {
+    async (rating: "up" | "down", reasons?: MessageFeedbackReason[], feedbackComment?: string) => {
       setIsSubmitting(true)
       try {
         await getTerosClient().feedback.submitMessageFeedback({
@@ -49,12 +67,12 @@ export function MessageFeedback({ messageId, channelId, messageText, currentRati
           comment: feedbackComment,
         })
         setSelectedRating(rating)
-        if (rating === 'up') {
-          toast.success(t('feedback.thankYou'))
+        if (rating === "up") {
+          toast.success(t("feedback.thankYou"))
         }
       } catch (err: any) {
-        console.error('[MessageFeedback] Failed to submit feedback:', err)
-        toast.error(t('feedback.submitError'), err?.message || t('feedback.tryAgain'))
+        console.error("[MessageFeedback] Failed to submit feedback:", err)
+        toast.error(t("feedback.submitError"), err?.message || t("feedback.tryAgain"))
       } finally {
         setIsSubmitting(false)
       }
@@ -63,23 +81,23 @@ export function MessageFeedback({ messageId, channelId, messageText, currentRati
   )
 
   const handleThumbsUp = useCallback(() => {
-    if (selectedRating === 'up' || isSubmitting) return
+    if (selectedRating === "up" || isSubmitting) return
     setShowReasons(false)
     setSelectedReasons([])
-    setComment('')
-    submitFeedback('up')
+    setComment("")
+    submitFeedback("up")
   }, [selectedRating, isSubmitting, submitFeedback])
 
   const handleThumbsDown = useCallback(() => {
-    if (selectedRating === 'down' || isSubmitting) return
+    if (selectedRating === "down" || isSubmitting) return
     setShowReasons(true)
     setSelectedReasons([])
-    setComment('')
-    submitFeedback('down')
+    setComment("")
+    submitFeedback("down")
   }, [selectedRating, isSubmitting, submitFeedback])
 
   const handleSubmitDownvoteDetails = useCallback(() => {
-    submitFeedback('down', selectedReasons, comment.trim() || undefined)
+    submitFeedback("down", selectedReasons, comment.trim() || undefined)
     setShowReasons(false)
   }, [submitFeedback, selectedReasons, comment])
 
@@ -91,18 +109,18 @@ export function MessageFeedback({ messageId, channelId, messageText, currentRati
 
   const handleCopy = useCallback(async () => {
     try {
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+      if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
         await navigator.clipboard.writeText(messageText)
       }
       await getTerosClient().feedback.submitMessageAction({
         messageId,
         channelId,
-        action: 'copy',
+        action: "copy",
       })
-      toast.success(t('feedback.copied'))
+      toast.success(t("feedback.copied"))
     } catch (err: any) {
-      console.error('[MessageFeedback] Failed to copy or log copy action:', err)
-      toast.error(t('feedback.copyError'), err?.message || t('feedback.tryAgain'))
+      console.error("[MessageFeedback] Failed to copy or log copy action:", err)
+      toast.error(t("feedback.copyError"), err?.message || t("feedback.tryAgain"))
     }
   }, [messageId, channelId, messageText, t, toast])
 
@@ -114,183 +132,218 @@ export function MessageFeedback({ messageId, channelId, messageText, currentRati
       await getTerosClient().feedback.submitMessageAction({
         messageId,
         channelId,
-        action: 'report',
+        action: "report",
         description,
       })
       setReportModalOpen(false)
-      setReportDescription('')
-      toast.success(t('feedback.reportSent'))
+      setReportDescription("")
+      toast.success(t("feedback.reportSent"))
     } catch (err: any) {
-      console.error('[MessageFeedback] Failed to submit report:', err)
-      toast.error(t('feedback.reportError'), err?.message || t('feedback.tryAgain'))
+      console.error("[MessageFeedback] Failed to submit report:", err)
+      toast.error(t("feedback.reportError"), err?.message || t("feedback.tryAgain"))
     } finally {
       setIsReporting(false)
     }
   }, [messageId, channelId, reportDescription, t, toast])
 
+  const keep = showReasons || hover || reportModalOpen
+
   return (
-    <YStack gap="$2" alignSelf="flex-start" width="100%">
-      <XStack alignItems="center" gap="$2">
+    <View style={{ alignSelf: "flex-start", width: "100%", gap: 8 }}>
+      <View
+        {...(Platform.OS === "web"
+          ? ({ onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false) } as any)
+          : {})}
+        style={[
+          {
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 2,
+            marginTop: 12,
+            marginLeft: -6,
+            opacity: keep ? 1 : 0.55,
+          },
+          Platform.OS === "web" ? ({ transition: "opacity 0.25s" } as any) : null,
+        ]}
+      >
         {isSubmitting ? (
-          <XStack alignItems="center" gap="$2" padding="$2">
-            <AppSpinner size="sm" variant="onDark" />
-            <Text fontSize="$2" color={c.text3}>
-              {t('feedback.sending')}
-            </Text>
-          </XStack>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 6 }}
+          >
+            <AppSpinner size="sm" />
+            <T step="12" tone="text3">
+              {t("feedback.sending")}
+            </T>
+          </View>
         ) : (
           <>
-            <Button
-              size="$2"
-              chromeless
+            <IconBtn
+              icon="thumbs-up"
+              plain
+              sm
+              on={selectedRating === "up"}
               disabled={isSubmitting}
               onPress={handleThumbsUp}
-              icon={ThumbsUp}
-              color={selectedRating === 'up' ? '$green10' : c.text3}
-              aria-label={t('feedback.thumbsUp')}
+              title={t("feedback.thumbsUp")}
+              aria-label={t("feedback.thumbsUp")}
             />
-            <Button
-              size="$2"
-              chromeless
+            <IconBtn
+              icon="thumbs-down"
+              plain
+              sm
+              on={selectedRating === "down"}
               disabled={isSubmitting}
               onPress={handleThumbsDown}
-              icon={ThumbsDown}
-              color={selectedRating === 'down' ? '$red10' : c.text3}
-              aria-label={t('feedback.thumbsDown')}
+              title={t("feedback.thumbsDown")}
+              aria-label={t("feedback.thumbsDown")}
             />
-            <Button
-              size="$2"
-              chromeless
+            <IconBtn
+              icon="copy"
+              plain
+              sm
               onPress={handleCopy}
-              icon={Copy}
-              color={c.text3}
-              aria-label={t('feedback.copy')}
+              title={t("feedback.copy")}
+              aria-label={t("feedback.copy")}
             />
-            <Button
-              size="$2"
-              chromeless
+            <IconBtn
+              icon="flag"
+              plain
+              sm
               onPress={() => setReportModalOpen(true)}
-              icon={Flag}
-              color={c.text3}
-              aria-label={t('feedback.report')}
+              title={t("feedback.report")}
+              aria-label={t("feedback.report")}
             />
+            {isChannelOwner && onToggleRedaction && (
+              <IconBtn
+                icon="shield"
+                plain
+                sm
+                onPress={() => onToggleRedaction(messageId, true)}
+                title={t("conversations.redacted.redact")}
+                aria-label={t("conversations.redacted.redact")}
+              />
+            )}
           </>
         )}
-      </XStack>
+      </View>
 
-      {showReasons && selectedRating !== 'up' && (
-        <YStack
-          gap="$2"
-          padding="$3"
-          borderRadius="$4"
-          backgroundColor={c.bgInner}
-          width="100%"
+      {showReasons && selectedRating !== "up" && (
+        <View
+          style={[
+            {
+              gap: 12,
+              padding: 16,
+              borderRadius: 16,
+              backgroundColor: c.bgStep,
+              width: "100%",
+              maxWidth: 560,
+            },
+            Platform.OS === "web" ? ({ boxShadow: c.liftSm } as any) : null,
+          ]}
         >
-          <Text fontSize="$3" color={c.text2}>
-            {t('feedback.why')}
-          </Text>
-          <XStack flexWrap="wrap" gap="$2">
+          <T step="sm" tone="text2">
+            {t("feedback.why")}
+          </T>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {REASONS.map((reason) => (
-              <Button
+              <ChipBtn
                 key={reason}
-                size="$1"
-                borderRadius="$6"
-                backgroundColor={selectedReasons.includes(reason) ? c.badges.info.bg : c.bgInner}
-                color={selectedReasons.includes(reason) ? c.badges.info.text : c.text2}
-                borderWidth={selectedReasons.includes(reason) ? 1 : 0}
-                borderColor={c.badges.info.border}
+                on={selectedReasons.includes(reason)}
                 onPress={() => toggleReason(reason)}
                 aria-label={t(`feedback.reasons.${reason}`)}
               >
                 {t(`feedback.reasons.${reason}`)}
-              </Button>
+              </ChipBtn>
             ))}
-          </XStack>
-          <Input
-            size="$3"
-            placeholder={t('feedback.commentPlaceholder')}
+          </View>
+          <Field
+            area
+            minHeight={72}
+            placeholder={t("feedback.commentPlaceholder")}
             value={comment}
             onChangeText={setComment}
-            multiline
-            numberOfLines={3}
             maxLength={2000}
-            color={c.text}
-            placeholderTextColor={c.text3}
-            backgroundColor={c.bgInner}
-            borderColor={c.border}
           />
-          <XStack gap="$2" justifyContent="flex-end">
-            <Button
-              size="$2"
-              chromeless
-              onPress={() => setShowReasons(false)}
-              color={c.text2}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              size="$2"
+          <View style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end" }}>
+            <Btn variant="ghost" size="sm" onPress={() => setShowReasons(false)}>
+              {t("common.cancel")}
+            </Btn>
+            <Btn
+              variant="primary"
+              size="sm"
               disabled={isSubmitting}
+              loading={isSubmitting}
               onPress={handleSubmitDownvoteDetails}
-              backgroundColor={c.border}
-              color={c.text}
-              icon={isSubmitting ? () => <AppSpinner size="xs" variant="onDark" /> : undefined}
             >
-              {isSubmitting ? t('feedback.sending') : t('feedback.submit')}
-            </Button>
-          </XStack>
-        </YStack>
+              {isSubmitting ? t("feedback.sending") : t("feedback.submit")}
+            </Btn>
+          </View>
+        </View>
       )}
 
-      <Sheet
-        modal
-        open={reportModalOpen}
-        onOpenChange={setReportModalOpen}
-        snapPoints={[40]}
-        dismissOnSnapToBottom
-      >
-        <Sheet.Frame padding="$4" gap="$3">
-          <Sheet.Handle />
-          <Text fontSize="$4" color={c.text}>
-            {t('feedback.report')}
-          </Text>
-          <Text fontSize="$2" color={c.text3}>
-            {t('feedback.reportDescriptionLabel')}
-          </Text>
-          <Input
-            size="$3"
-            placeholder={t('feedback.reportPlaceholder')}
-            value={reportDescription}
-            onChangeText={setReportDescription}
-            multiline
-            numberOfLines={4}
-            color={c.text}
-            placeholderTextColor={c.text3}
-            backgroundColor={c.bgInner}
-            borderColor={c.border}
+      {/* Report dialog — conditionally rendered so only ONE Sheet exists in the
+          DOM at a time (when open). Previously the Sheet was always mounted per-
+          message, causing 8+ duplicate dialog instances in the DOM even when
+          closed. Now: 0 nodes when closed, 1 node when open. */}
+      {reportModalOpen && (
+        <Sheet
+          modal
+          open={reportModalOpen}
+          onOpenChange={setReportModalOpen}
+          snapPoints={[40]}
+          dismissOnSnapToBottom
+        >
+          <Sheet.Overlay
+            animation="medium"
+            enterStyle={{ opacity: 0 }}
+            exitStyle={{ opacity: 0 }}
+            backgroundColor="rgba(32,28,39,0.45)"
           />
-          <XStack gap="$2" justifyContent="flex-end">
-            <Button
-              size="$3"
-              chromeless
-              onPress={() => setReportModalOpen(false)}
-              color={c.text2}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              size="$3"
-              disabled={isReporting || !reportDescription.trim()}
-              onPress={handleReport}
-              backgroundColor={c.border}
-              color={c.text}
-              icon={isReporting ? () => <AppSpinner size="xs" variant="onDark" /> : undefined}
-            >
-              {isReporting ? t('feedback.sending') : t('feedback.submitReport')}
-            </Button>
-          </XStack>
-        </Sheet.Frame>
-      </Sheet>
-    </YStack>
+          <Sheet.Frame
+            padding={20}
+            gap={12}
+            backgroundColor={c.bgStep}
+            borderTopLeftRadius={16}
+            borderTopRightRadius={16}
+          >
+            <Sheet.Handle backgroundColor={c.borderStrong} />
+            <T step="hsm">{t("feedback.report")}</T>
+            <T step="sm" tone="text3">
+              {t("feedback.reportDescriptionLabel")}
+            </T>
+            <Field
+              area
+              minHeight={96}
+              placeholder={t("feedback.reportPlaceholder")}
+              value={reportDescription}
+              onChangeText={setReportDescription}
+            />
+            <View style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end" }}>
+              <Btn variant="ghost" onPress={() => setReportModalOpen(false)}>
+                {t("common.cancel")}
+              </Btn>
+              <Btn
+                variant="primary"
+                disabled={isReporting || !reportDescription.trim()}
+                loading={isReporting}
+                onPress={handleReport}
+              >
+                {isReporting ? t("feedback.sending") : t("feedback.submitReport")}
+              </Btn>
+            </View>
+          </Sheet.Frame>
+        </Sheet>
+      )}
+    </View>
   )
 }
+
+/**
+ * Memoized export — the parent (AgentTextBlock) re-renders on every typewriter
+ * frame while the last message's text reveals (~40 rAF ticks per turn). Without
+ * this memo every frame also re-rendered the feedback row of N messages, each
+ * calling t() and (pre-migration) logging a missing-key warning 3000+ times
+ * per turn. Props are all stable primitives/callbacks, so shallow compare holds.
+ */
+export const MessageFeedback = React.memo(MessageFeedbackInner)
+MessageFeedback.displayName = "MessageFeedback"

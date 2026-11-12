@@ -166,7 +166,15 @@ export class GeminiLLMAdapter implements ILLMClient {
             // Text content
             await callbacks?.onText?.(part.text)
           } else if (part.functionCall) {
-            // Tool call — fire immediately as chunk arrives
+            // Tool call — fire immediately as chunk arrives.
+            // Gemini sends complete functionCall parts (not streamed argument
+            // deltas like OpenAI), so onToolInputDelta is not a real per-fragment
+            // stream. But the model can still spend a long time generating tool
+            // args internally before this part arrives — fire onToolInputDelta as
+            // a stall-watchdog heartbeat so the turn's stall guard counts the
+            // tool-call part as progress, consistent with all other adapters.
+            // TER-650.
+            await callbacks?.onToolInputDelta?.(JSON.stringify(part.functionCall.args ?? {}))
             hasToolCalls = true
             const thoughtSignature = (part as any).thoughtSignature
             log.debug("GeminiLLM", "Tool call chunk", {
@@ -225,7 +233,7 @@ export class GeminiLLMAdapter implements ILLMClient {
         ...(cachedReadTokens > 0 ? { cacheReadInputTokens: cachedReadTokens } : {}),
       }
 
-      log.info("GeminiLLM", "Response complete", {
+      log.debug("GeminiLLM", "Response complete", {
         stopReason,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,

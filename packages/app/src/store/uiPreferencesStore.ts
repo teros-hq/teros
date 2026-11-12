@@ -43,12 +43,17 @@ interface UiPreferencesState {
   reset: () => void;
 }
 
-// Web localStorage when available, AsyncStorage on native (or web SSR
-// before window is defined). Falls back to a no-op storage if neither
-// is reachable so the store still works without persistence.
+// Web localStorage when available, AsyncStorage on native. During SSR
+// (expo export --static) window is undefined on web — return a no-op
+// storage so the store works without persistence and doesn't crash.
+const noopStorage = {
+  getItem: async () => null,
+  setItem: async () => {},
+  removeItem: async () => {},
+};
 const platformStorage = () => {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return window.localStorage;
+  if (Platform.OS === 'web') {
+    return typeof window !== 'undefined' ? window.localStorage : noopStorage;
   }
   return AsyncStorage;
 };

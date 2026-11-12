@@ -3,8 +3,10 @@
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
+import { toIsoString } from '../../../auth/types'
 import type { WsHandlerContext } from '@teros/shared'
 import type { UserService } from '../../../auth/user-service'
+import { TEROS_EDITION, type TerosEdition } from '@teros/shared'
 
 interface ProfileData {
   userId: string
@@ -14,12 +16,22 @@ interface ProfileData {
   description?: string
   locale?: string
   timezone?: string
+  /** Show the agent's summary on a new conversation (CSUM-REQ-2). */
+  conversationSummary: boolean
   createdAt: string
   termsAcceptedAt?: string
   onboardingCompletedAt?: string
   accessGranted: boolean
+  /** Deployment edition, decided by the backend at runtime (ONB-REQ-1). */
+  edition: TerosEdition
   badges?: Array<'founding_partner' | 'early_bird'>
   lastChangelogSeen?: string
+  /** Opt-in for anonymized conversation evaluation (default false) */
+  consent?: {
+    evaluationOptIn: boolean
+    evaluationConsentAt?: string
+    evaluationConsentVersion?: string
+  }
 }
 
 export function createGetProfileHandler(userService: UserService) {
@@ -38,12 +50,19 @@ export function createGetProfileHandler(userService: UserService) {
       description: user.profile.description,
       locale: user.profile.locale,
       timezone: user.profile.timezone,
+      conversationSummary: user.profile.conversationSummary,
       createdAt: user.createdAt.toISOString(),
-      termsAcceptedAt: user.termsAcceptedAt?.toISOString(),
-      onboardingCompletedAt: user.onboardingCompletedAt?.toISOString(),
+      termsAcceptedAt: toIsoString(user.termsAcceptedAt),
+      onboardingCompletedAt: toIsoString(user.onboardingCompletedAt),
       accessGranted: user.accessGranted ?? false,
+      edition: TEROS_EDITION,
       badges: user.badges ?? [],
       lastChangelogSeen: user.lastChangelogSeen,
+      consent: {
+        evaluationOptIn: user.consent?.evaluationOptIn ?? false,
+        evaluationConsentAt: toIsoString(user.consent?.evaluationConsentAt),
+        evaluationConsentVersion: user.consent?.evaluationConsentVersion,
+      },
     }
   }
 }

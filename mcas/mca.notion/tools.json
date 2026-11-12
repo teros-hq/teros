@@ -10,9 +10,7 @@
         "properties": {}
       },
       "annotations": {
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "readOnlyHint": true
       }
     },
     {
@@ -65,10 +63,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -98,10 +95,9 @@
         ]
       },
       "annotations": {
-        "version": "2.0.0",
-        "stability": "stable",
         "readOnlyHint": true,
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -117,10 +113,6 @@
           "includeTranscript": {
             "type": "boolean",
             "description": "Inline transcripts of meeting_notes blocks. Default false."
-          },
-          "includeRaw": {
-            "type": "boolean",
-            "description": "Return raw API response. Default false."
           }
         },
         "required": [
@@ -128,10 +120,9 @@
         ]
       },
       "annotations": {
-        "version": "2.0.0",
+        "version": "1.0.0",
         "stability": "stable",
-        "readOnlyHint": true,
-        "openWorldHint": true
+        "readOnlyHint": true
       }
     },
     {
@@ -188,8 +179,7 @@
       "annotations": {
         "readOnlyHint": false,
         "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "stability": "stable"
       }
     },
     {
@@ -232,9 +222,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -282,9 +271,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "experimental"
       }
     },
     {
@@ -329,9 +317,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -367,9 +354,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -408,9 +394,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "experimental"
       }
     },
     {
@@ -421,7 +406,7 @@
         "properties": {
           "databaseId": {
             "type": "string",
-            "description": "Database UUID."
+            "description": "Database UUID or its Notion URL (the table link)."
           },
           "fields": {
             "type": "array",
@@ -440,10 +425,9 @@
         ]
       },
       "annotations": {
-        "version": "2.0.0",
-        "stability": "stable",
         "readOnlyHint": true,
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -501,10 +485,9 @@
         "required": []
       },
       "annotations": {
-        "version": "2.0.0",
-        "stability": "stable",
         "readOnlyHint": true,
-        "openWorldHint": true
+        "version": "2.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -515,7 +498,7 @@
         "properties": {
           "parentPageId": {
             "type": "string",
-            "description": "Parent page UUID."
+            "description": "Parent page UUID or its Notion URL (page share link)."
           },
           "title": {
             "type": "string",
@@ -546,19 +529,18 @@
       "annotations": {
         "readOnlyHint": false,
         "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "stability": "stable"
       }
     },
     {
       "name": "update-database-schema",
-      "description": "Add/modify/remove database columns and optionally rename. Schema mutations target the data source (Notion API 2025-09-03 split). Pass `dataSourceId` for multi-source DBs; otherwise the first one is used. Set a property value to `null` to remove it. Returns the curated updated database { id, schema, title, description, lastEditedTime }. Idempotent per-field.",
+      "description": "Add/modify/remove database columns and optionally rename. Schema mutations target the data source (Notion API 2025-09-03 split). Pass `dataSourceId` for multi-source DBs; otherwise the first one is used. Set a property value to `null` to remove it. Relation columns: pass `{ relation: { database_id: <id-or-url> } }` — the data_source_id and single_property envelope are resolved server-side. Returns the curated updated database { id, schema, title, description, lastEditedTime }. Idempotent per-field.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "databaseId": {
             "type": "string",
-            "description": "Database UUID."
+            "description": "Database UUID or its Notion URL (the table link with ?v=…)."
           },
           "dataSourceId": {
             "type": "string",
@@ -596,8 +578,7 @@
       "annotations": {
         "readOnlyHint": false,
         "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "stability": "stable"
       }
     },
     {
@@ -608,7 +589,7 @@
         "properties": {
           "databaseId": {
             "type": "string",
-            "description": "Database UUID."
+            "description": "Database UUID or its Notion URL (the table link)."
           },
           "dataSourceId": {
             "type": "string",
@@ -637,9 +618,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "version": "1.0.0",
+        "stability": "experimental"
       }
     },
     {
@@ -678,9 +658,9 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "version": "1.0.0",
+        "stability": "experimental",
+        "idempotentHint": true
       }
     },
     {
@@ -710,10 +690,9 @@
         ]
       },
       "annotations": {
-        "version": "2.0.0",
-        "stability": "stable",
         "readOnlyHint": true,
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -729,10 +708,6 @@
           "includeBlockIds": {
             "type": "boolean",
             "description": "Embed `<!-- block: id -->` comments in the markdown. Default false."
-          },
-          "includeRaw": {
-            "type": "boolean",
-            "description": "Return raw API response. Default false."
           }
         },
         "required": [
@@ -740,10 +715,10 @@
         ]
       },
       "annotations": {
-        "version": "2.0.0",
-        "stability": "stable",
         "readOnlyHint": true,
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "deprecated",
+        "deprecationMessage": "Use `get-page-content` for markdown output or `get-blocks` for paginated raw blocks with plainText extracted per block."
       }
     },
     {
@@ -781,10 +756,9 @@
         ]
       },
       "annotations": {
-        "version": "2.0.0",
-        "stability": "stable",
         "readOnlyHint": true,
-        "openWorldHint": true
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -828,8 +802,7 @@
       "annotations": {
         "readOnlyHint": false,
         "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "stability": "stable"
       }
     },
     {
@@ -870,9 +843,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -903,10 +875,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "destructiveHint": true,
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -945,9 +915,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "experimental"
       }
     },
     {
@@ -996,8 +965,7 @@
       "annotations": {
         "readOnlyHint": false,
         "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "stability": "experimental"
       }
     },
     {
@@ -1024,18 +992,13 @@
           "includeRaw": {
             "type": "boolean",
             "description": "Return raw Notion response. Default false."
-          },
-          "cursor": {
-            "type": "string",
-            "description": "Pagination cursor from previous response."
           }
         }
       },
       "annotations": {
-        "version": "2.0.0",
-        "stability": "stable",
         "readOnlyHint": true,
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -1065,10 +1028,9 @@
         ]
       },
       "annotations": {
-        "version": "2.0.0",
-        "stability": "stable",
         "readOnlyHint": true,
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -1091,10 +1053,9 @@
         }
       },
       "annotations": {
-        "version": "2.0.0",
-        "stability": "stable",
         "readOnlyHint": true,
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -1125,10 +1086,6 @@
           "includeRaw": {
             "type": "boolean",
             "description": "Return raw Notion response. Default false."
-          },
-          "cursor": {
-            "type": "string",
-            "description": "Pagination cursor from previous response."
           }
         },
         "required": [
@@ -1136,10 +1093,9 @@
         ]
       },
       "annotations": {
-        "version": "2.0.0",
-        "stability": "stable",
         "readOnlyHint": true,
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -1178,9 +1134,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -1222,9 +1177,9 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
+        "version": "1.0.0",
         "stability": "stable",
-        "openWorldHint": true
+        "idempotentHint": true
       }
     },
     {
@@ -1244,10 +1199,10 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
+        "version": "1.0.0",
         "stability": "stable",
         "destructiveHint": true,
-        "openWorldHint": true
+        "idempotentHint": true
       }
     },
     {
@@ -1285,9 +1240,8 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "openWorldHint": true
+        "version": "1.0.0",
+        "stability": "experimental"
       }
     }
   ]

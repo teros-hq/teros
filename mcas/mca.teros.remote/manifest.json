@@ -1,0 +1,58 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.remote",
+  "name": "Teros Remote",
+  "version": "0.1.0",
+  "description": "Operate a paired remote machine (bash + filesystem) through an outbound tunnel — no inbound ports, no VPN. Setup once per machine: install the daemon with `curl -fsSL https://get.teros.ai/remote.sh | sh`, run `teros-remote pair`, and paste the printed key into this app (TEROS_REMOTE_KEY). Until then tools answer MACHINE_UNREACHABLE with the step to run. Filesystem tools are confined to the allowed roots; bash runs only if the daemon enables it, with the daemon user's full permissions.",
+  "type": "utility",
+  "icon": "icon.svg",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": [
+        "TEROS_REMOTE_KEY"
+      ]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "remote",
+    "tunnel",
+    "bash",
+    "filesystem",
+    "machine",
+    "server",
+    "ssh",
+    "daemon"
+  ],
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "date": "2026-10-18",
+      "notes": "Initial release — pair a machine with teros-remote and operate its files and shell from an agent"
+    }
+  ]
+}

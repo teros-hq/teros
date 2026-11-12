@@ -301,10 +301,10 @@
       "name": "subscribe-to-events",
       "description": "Suscribir la conversación actual a eventos MCA sobre un tema. Los eventos que coinciden con el tema se entregan a la conversación a medida que ocurren. Usa reglas para reducir eventos. Devuelve: { subscription: { id, topic, channelId, rules, mode, createdAt } }. Usa unsubscribe-from-events para detener.",
       "params": {
-        "topic": "Tema del evento al que suscribirse (por ejemplo, \"mca.teros.scheduler.reminder\")",
+        "topic": "Tema del evento al que suscribirse (por ejemplo, \"telegram.message.received\")",
         "channelId": "ID del canal para recibir eventos (por defecto a la conversación actual)",
         "rules": "Reglas de filtro opcionales para reducir eventos entregados",
-        "mode": "Modo de entrega: notify = notificación silenciosa, wake = activar respuesta del agente. Por defecto: notify",
+        "mode": "Modo de entrega: notify = notificación silenciosa, wake = activar respuesta del agente (turno de respuesta). Por defecto: wake",
         "includeRaw": "Devolver documento completo de la suscripción"
       }
     },

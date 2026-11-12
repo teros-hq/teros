@@ -6,16 +6,19 @@
  * SAME pattern as `ConfirmDialog`, never `position:'fixed'`), moves focus to the
  * dialog on open, closes on Esc, and confirms deletes through `ConfirmDialog`
  * (no native alert/confirm dialogs). Failures surface as an inline `FormError`, not a
- * native dialog. Colours are monitoring tokens only.
+ * native dialog. Presentation: a ds sheet on a scrim, hairline rows, `Field` /
+ * `Btn` form controls; colours from `useColors()`.
  */
 
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Text, XStack, YStack } from "tamagui"
-import { tokens } from "../../../components/monitoring/colors"
+import { View } from "react-native"
+import { XStack, YStack } from "tamagui"
+import { useColors } from "../../../components/mca/primitives/useColors"
+import { Badge, Btn, IconBtn, T } from "../../../components/ui/ds"
 import type { TerosProviderConfig } from "../../../services/AdminApi"
 import { getTerosClient } from "../../../services/terosClientSingleton"
-import { ConfirmDialog } from "../detail/ConfirmDialog"
+import { ConfirmDialog, useScrimColor, useSheetWeb } from "../detail/ConfirmDialog"
 import { Button, FieldLabel, FormError, TextField } from "./formPrimitives"
 
 export interface TerosProviderConfigModalProps {
@@ -35,6 +38,9 @@ export function TerosProviderConfigModal({
 }: TerosProviderConfigModalProps) {
   const { t } = useTranslation()
   const client = getTerosClient()
+  const c = useColors()
+  const scrim = useScrimColor()
+  const sheetWeb = useSheetWeb()
   const dialogRef = useRef<{ focus?: () => void } | null>(null)
 
   const [pendingDelete, setPendingDelete] = useState<TerosProviderConfig | null>(null)
@@ -77,21 +83,20 @@ export function TerosProviderConfigModal({
       jc="center"
       padding={24}
       zIndex={1000}
-      backgroundColor={`${tokens.bg}E6`}
+      backgroundColor={scrim}
       onPress={onClose}
     >
       <YStack
         ref={dialogRef as never}
         width="100%"
-        maxWidth={460}
-        maxHeight="80%"
+        maxWidth={480}
+        maxHeight="85%"
         gap={16}
         padding={20}
-        borderRadius={14}
-        borderWidth={1}
-        borderColor={tokens.borderHover}
-        backgroundColor={tokens.bgPress}
+        borderRadius={16}
+        backgroundColor={c.bgStep}
         onPress={(e: { stopPropagation?: () => void }) => e.stopPropagation?.()}
+        {...sheetWeb}
         {...({
           role: "dialog",
           "aria-modal": true,
@@ -102,46 +107,38 @@ export function TerosProviderConfigModal({
           },
         } as Record<string, unknown>)}
       >
-        <XStack ai="center" jc="space-between">
-          <Text fontSize={16} fontWeight="650" color={tokens.text}>
-            {t("windows.usersPanel.billing.configTitle")}
-          </Text>
-          <XStack
+        <XStack ai="center" jc="space-between" gap={12}>
+          <T step="xl">{t("windows.usersPanel.billing.configTitle")}</T>
+          <IconBtn
             testID="teros-config-close"
-            padding={4}
-            cursor="pointer"
+            icon="x"
+            plain
             onPress={onClose}
-            {...({
-              role: "button",
-              tabIndex: 0,
-              "aria-label": t("windows.usersPanel.billing.close"),
-            } as Record<string, unknown>)}
-          >
-            <Text fontSize={16} color={tokens.textTertiary}>
-              ✕
-            </Text>
-          </XStack>
+            title={t("windows.usersPanel.billing.close")}
+            aria-label={t("windows.usersPanel.billing.close")}
+          />
         </XStack>
 
         {error ? <FormError message={error} testID="teros-config-error" /> : null}
 
-        <YStack gap={8}>
+        <View style={{ borderRadius: 12, backgroundColor: c.nest, overflow: "hidden" }}>
           {configs.length === 0 ? (
-            <Text fontSize={13} color={tokens.textMuted} paddingVertical={10} textAlign="center">
+            <T step="sm" tone="text3" center style={{ paddingVertical: 14 }}>
               {t("windows.usersPanel.billing.configEmpty")}
-            </Text>
+            </T>
           ) : (
-            configs.map((cfg) => (
+            configs.map((cfg, i) => (
               <ConfigRow
                 key={cfg._id}
                 config={cfg}
+                first={i === 0}
                 defaultLabel={t("windows.usersPanel.billing.configDefault")}
                 deleteLabel={t("windows.usersPanel.billing.delete")}
                 onDelete={() => setPendingDelete(cfg)}
               />
             ))
           )}
-        </YStack>
+        </View>
 
         <CreateConfigForm
           onCreated={onCreated}
@@ -169,51 +166,57 @@ export function TerosProviderConfigModal({
 
 function ConfigRow({
   config,
+  first,
   defaultLabel,
   deleteLabel,
   onDelete,
 }: {
   config: TerosProviderConfig
+  first: boolean
   defaultLabel: string
   deleteLabel: string
   onDelete: () => void
 }) {
+  const c = useColors()
   return (
-    <XStack
+    <View
       testID={`teros-config-row-${config._id}`}
-      ai="center"
-      jc="space-between"
-      gap={10}
-      padding={10}
-      borderRadius={8}
-      borderWidth={1}
-      borderColor={tokens.border}
-      backgroundColor={tokens.bgInner}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderTopWidth: first ? 0 : 1,
+        borderTopColor: c.border,
+      }}
     >
-      <YStack flex={1} minWidth={0} gap={2}>
-        <XStack ai="center" gap={6}>
-          <Text fontSize={13} fontWeight="600" color={tokens.text} numberOfLines={1}>
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <T step="sm" ellipsis style={{ flexShrink: 1 }}>
             {config.name}
-          </Text>
+          </T>
           {config.isDefault ? (
-            <Text fontSize={10} fontWeight="600" color={tokens.success}>
+            <Badge tone="g" sm>
               {defaultLabel}
-            </Text>
+            </Badge>
           ) : null}
-        </XStack>
-        <Text fontFamily="$mono" fontSize={10} color={tokens.textMuted} numberOfLines={1}>
+        </View>
+        <T step="code" tone="text3" ellipsis>
           {config._id}
-        </Text>
-      </YStack>
+        </T>
+      </View>
       {config.isDefault ? null : (
         <Button
           testID={`teros-config-delete-${config._id}`}
           label={deleteLabel}
           tone="danger"
+          icon="trash"
           onPress={onDelete}
         />
       )}
-    </XStack>
+    </View>
   )
 }
 
@@ -228,6 +231,7 @@ function CreateConfigForm({
 }) {
   const { t } = useTranslation()
   const client = getTerosClient()
+  const c = useColors()
   const [name, setName] = useState("")
   const [key, setKey] = useState("")
   const [busy, setBusy] = useState(false)
@@ -250,9 +254,11 @@ function CreateConfigForm({
     }
   }
 
+  const canCreate = !!name.trim() && !!key.trim()
+
   return (
-    <YStack gap={8} paddingTop={14} borderTopWidth={1} borderTopColor={tokens.border}>
-      <YStack>
+    <View style={{ gap: 12, paddingTop: 16, borderTopWidth: 1, borderTopColor: c.border }}>
+      <View>
         <FieldLabel>{t("windows.usersPanel.billing.configName")}</FieldLabel>
         <TextField
           testID="teros-config-name"
@@ -260,8 +266,8 @@ function CreateConfigForm({
           onChangeText={setName}
           placeholder={t("windows.usersPanel.billing.configNamePlaceholder")}
         />
-      </YStack>
-      <YStack>
+      </View>
+      <View>
         <FieldLabel>{t("windows.usersPanel.billing.configKey")}</FieldLabel>
         <TextField
           testID="teros-config-key"
@@ -270,15 +276,19 @@ function CreateConfigForm({
           placeholder={t("windows.usersPanel.billing.configKeyPlaceholder")}
           secure
         />
-      </YStack>
-      <Button
-        testID="teros-config-create"
-        label={t("windows.usersPanel.billing.configCreate")}
-        tone="positive"
-        busy={busy}
-        disabled={!name.trim() || !key.trim()}
-        onPress={create}
-      />
-    </YStack>
+      </View>
+      <View style={{ alignItems: "flex-start" }}>
+        <Btn
+          testID="teros-config-create"
+          variant="primary"
+          icon="plus"
+          disabled={!canCreate}
+          loading={busy}
+          onPress={create}
+        >
+          {t("windows.usersPanel.billing.configCreate")}
+        </Btn>
+      </View>
+    </View>
   )
 }

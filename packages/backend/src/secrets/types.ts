@@ -40,11 +40,15 @@ export interface OAuthConfigSecret {
   github?: {
     clientId: string
     clientSecret: string
+    /** Redirect URI for GitHub OAuth callback. If not set, defaults to localhost. */
+    redirectUri?: string
   }
   microsoft?: {
     clientId: string
     clientSecret: string
     tenantId?: string
+    /** Redirect URI for Microsoft OAuth callback. If not set, defaults to localhost. */
+    redirectUri?: string
   }
   /** URL of the frontend app (for OAuth redirects) */
   appUrl?: string
@@ -64,6 +68,15 @@ export interface ElevenLabsSecret {
   apiKey: string
 }
 
+/**
+ * Deepgram system secret — streaming STT (Nova-3) for the native voice loop
+ * (Voice Mode v2, spec v1.1.0 REQ-1). Provisioned in `.secrets/system/deepgram.json`
+ * → `{ "apiKey": "..." }` (auto-discovered at boot, same pattern as elevenlabs.json).
+ */
+export interface DeepgramSecret {
+  apiKey: string
+}
+
 export interface AdminSecret {
   apiKey: string
 }
@@ -80,6 +93,23 @@ export interface EmailSecret {
 export interface TranscriptionSecret {
   /** Provider to use: 'whisper' (OpenAI) or 'elevenlabs' */
   provider: "whisper" | "elevenlabs"
+  /**
+   * Default language code (ISO-639-1) to pass to the transcription provider.
+   * When set, the provider will NOT auto-detect the language — it will use
+   * this code instead. This prevents Whisper from misidentifying Spanish
+   * as Catalan/Galician/Portuguese (a well-known issue with similar languages).
+   * Set to null or omit to keep auto-detection.
+   * Default: "es" (Pablo speaks Spanish).
+   */
+  languageCode?: string | null
+  /**
+   * Custom vocabulary terms (domain-specific names, product names, acronyms)
+   * to pass to the STT provider for better transcription accuracy.
+   * - Whisper: joined into a comma-separated `prompt` string
+   * - ElevenLabs Scribe: passed as individual `keyterms` entries
+   * Set to null or omit to disable vocabulary biasing.
+   */
+  vocabulary?: string[] | null
 }
 
 export interface FireworksSecret {
@@ -94,6 +124,15 @@ export interface FireworksSecret {
  * `resolveRetention` guard).
  */
 export interface TogetherSecret {
+  apiKey: string
+}
+
+/**
+ * Helmcode system secret — the EU upstream of the `teros` provider (TPROV-REQ-3).
+ * Provisioned via `.secrets/system/helmcode.json`. Flat-rate key; routed only
+ * through the Teros upstream resolver (ZDR-classified in data-retention.ts).
+ */
+export interface HelmcodeSecret {
   apiKey: string
 }
 
@@ -134,6 +173,7 @@ export interface SystemSecretsRegistry {
   "anthropic-oauth": AnthropicOAuthSecret
   openai: OpenAISecret
   elevenlabs: ElevenLabsSecret
+  deepgram: DeepgramSecret
   email: EmailSecret
   transcription: TranscriptionSecret
   database: DatabaseSecret
@@ -143,6 +183,7 @@ export interface SystemSecretsRegistry {
   mca: MCASecret
   fireworks: FireworksSecret
   together: TogetherSecret
+  helmcode: HelmcodeSecret
   stripe: StripeSecret
 }
 

@@ -35,6 +35,7 @@ import {
 } from "./DocumentExtractor"
 import { isContextLengthExceeded } from "./context-length-error"
 import type { ILLMClient, LLMResponse, StreamMessageOptions, ToolCall } from "./ILLMClient"
+import { splitSystemPromptForCache } from "./ILLMClient"
 import { ImagePipeline, type ProcessedImage } from "./ImagePipeline"
 import { populateRateLimitContext } from "./rate-limit-context"
 import { uncachedInputTokens } from "./usage-normalize"
@@ -136,6 +137,7 @@ export class OpenRouterLLMAdapter implements ILLMClient {
       messages,
       tools,
       systemPrompt,
+      systemPromptVolatile,
       model,
       temperature,
       maxTokens,
@@ -154,6 +156,7 @@ export class OpenRouterLLMAdapter implements ILLMClient {
       supportsCache ? cacheBreakpointIndex : undefined,
       supportsCache,
       requestedModel,
+      systemPromptVolatile,
     )
 
     // Convert tools to OpenAI format (with cache support if applicable)
@@ -374,8 +377,13 @@ export class OpenRouterLLMAdapter implements ILLMClient {
         cacheCreationInputTokens: cacheWriteTokens || undefined,
       }
 
-      log.info("OpenRouterLLM", "Response complete", {
+      // maxTokensSent (2026-09-24 silent-turn incident): final max_tokens sent
+      // upstream; rawFinishReason: finish_reason before mapping — see
+      // OpenAICompatibleLLMAdapter for the rationale.
+      log.debug("OpenRouterLLM", "Response complete", {
         stopReason,
+        maxTokensSent: maxTokens || this.defaultMaxTokens,
+        rawFinishReason: finishReason,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         cacheRead: usage.cacheReadInputTokens,
@@ -441,23 +449,25 @@ export class OpenRouterLLMAdapter implements ILLMClient {
     cacheBreakpointIndex?: number,
     useCache: boolean = false,
     requestedModel?: string,
+    systemPromptVolatile?: string,
   ): Promise<OpenAI.ChatCompletionMessageParam[]> {
     const openaiMessages: OpenAI.ChatCompletionMessageParam[] = []
 
     // Add system prompt if provided
     if (systemPrompt) {
       if (useCache) {
-        // Use multipart format with cache_control for Anthropic
-        openaiMessages.push({
-          role: "system",
-          content: [
-            {
-              type: "text" as const,
-              text: systemPrompt,
-              cache_control: { type: "ephemeral" as const },
-            } as any, // OpenRouter accepts this
-          ],
-        })
+        // Use multipart format with cache_control for Anthropic. Split off the
+        // per-request volatile suffix so cache_control covers only the stable
+        // prefix; the volatile tail is a separate, non-cached text part (TER-618).
+        const { stable, volatile } = splitSystemPromptForCache(systemPrompt, systemPromptVolatile)
+        const content: any[] = []
+        if (stable) {
+          content.push({ type: "text" as const, text: stable, cache_control: { type: "ephemeral" as const } })
+        }
+        if (volatile) {
+          content.push({ type: "text" as const, text: volatile })
+        }
+        openaiMessages.push({ role: "system", content })
       } else {
         // Simple string format for non-Anthropic models
         openaiMessages.push({

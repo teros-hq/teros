@@ -5,20 +5,25 @@
  * When user selects a role, creates the agent and opens agent config.
  */
 
-import { UserPlus } from '@tamagui/lucide-icons';
-import i18n from '../../i18n';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { CreateAgentWindowContent } from './CreateAgentWindowContent';
+import { UserPlus } from "@tamagui/lucide-icons"
+import i18n from "../../i18n"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const CreateAgentWindowContent = lazyWithRetry(() =>
+  import("./CreateAgentWindowContent").then((m) => ({ default: m.CreateAgentWindowContent })),
+)
 
 export interface CreateAgentWindowProps {
-  workspaceId?: string;
+  workspaceId?: string
 }
 
 export const createAgentWindowDefinition: WindowTypeDefinition<CreateAgentWindowProps> = {
-  type: 'create-agent',
-  displayName: 'Crear Agente',
+  type: "create-agent",
+  audience: "user",
+  displayName: "Crear Agente",
   icon: UserPlus,
-  color: '#8B5CF6',
+  phIcon: "user-plus",
+  color: "#8B5CF6",
   component: CreateAgentWindowContent,
 
   defaultSize: { width: 600, height: 500 },
@@ -30,4 +35,4 @@ export const createAgentWindowDefinition: WindowTypeDefinition<CreateAgentWindow
 
   serialize: (props) => ({ workspaceId: props.workspaceId }),
   deserialize: (data) => ({ workspaceId: data.workspaceId }),
-};
+}

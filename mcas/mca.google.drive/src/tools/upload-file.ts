@@ -1,7 +1,7 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { createReadStream, existsSync } from 'fs';
 import { basename } from 'path';
-import { ALL_DRIVES, ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { ALL_DRIVES, initializeGoogleClients, withAuthRetry } from '../lib';
 import { extToMime, GOOGLE_NATIVE_MIME, type GoogleNativeTarget } from './_mime';
 
 export const uploadFile: ToolConfig = {
@@ -34,7 +34,6 @@ export const uploadFile: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const { filePath, parentFolderId, fileName, convertTo } = args as {
       filePath: string;

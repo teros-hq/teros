@@ -68,7 +68,7 @@ export const importEvent: ToolConfig = {
       requestBody.attendees = a.attendees.map((emailAddr) => ({ email: emailAddr }))
     }
 
-    const response = await runCalendarCall(() =>
+    const response = await runCalendarCall(context, () =>
       calendar.events.import({ calendarId, sendUpdates, requestBody }),
     )
     const raw = response.data

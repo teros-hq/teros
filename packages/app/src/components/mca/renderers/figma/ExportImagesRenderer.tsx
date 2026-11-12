@@ -17,7 +17,6 @@ import { Image, Text, XStack, YStack } from "tamagui"
 import {
   Empty,
   ErrorBlock,
-  colors as globalColors,
   IconChip,
   IconTile,
   parseOutput,
@@ -44,6 +43,7 @@ export function ExportImagesRenderer({
   duration,
   input,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const { t } = useTranslation()
   const parsed = output
     ? (parseOutput<ExportImagesResponse>(output) as ExportImagesResponse | null)
@@ -72,7 +72,7 @@ export function ExportImagesRenderer({
           </XStack>
 
           {items.length > INLINE_RENDER_CAP && (
-            <Text color={globalColors.muted} fontSize={9}>
+            <Text color={c.text3} fontSize={9}>
               + {items.length - INLINE_RENDER_CAP} more — see raw JSON for full list.
             </Text>
           )}
@@ -80,7 +80,7 @@ export function ExportImagesRenderer({
           <XStack gap={4}>
             <IconChip text={`${items.length} images`} accent={FIGMA_PALETTE.orange} />
             {parsed?.expiresInMinutes != null && (
-              <IconChip text={`expires ~${parsed.expiresInMinutes}m`} accent={globalColors.muted} />
+              <IconChip text={`expires ~${parsed.expiresInMinutes}m`} accent={c.text3} />
             )}
           </XStack>
         </YStack>
@@ -103,7 +103,7 @@ function PolaroidCard({ img }: { img: FigmaExportedImage }) {
       width={THUMB_WIDTH}
       borderRadius={6}
       borderWidth={1}
-      borderColor={globalColors.border}
+      borderColor={c.border}
       backgroundColor={c.bgInner}
       overflow="hidden"
     >
@@ -128,7 +128,7 @@ function PolaroidCard({ img }: { img: FigmaExportedImage }) {
             icon={<FileImage size={28} color={FIGMA_PALETTE.orange} />}
             size={56}
           />
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono" marginTop={6}>
+          <Text color={c.text3} fontSize={9} fontFamily="$mono" marginTop={6}>
             {f.toUpperCase()} · open externally
           </Text>
         </YStack>
@@ -142,10 +142,10 @@ function PolaroidCard({ img }: { img: FigmaExportedImage }) {
         justifyContent="space-between"
       >
         <YStack flex={1} gap={2}>
-          <Text color={globalColors.primary} fontSize={10} fontFamily="$mono" numberOfLines={1}>
+          <Text color={c.text} fontSize={10} fontFamily="$mono" numberOfLines={1}>
             {img.nodeId}
           </Text>
-          <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+          <Text color={c.text2} fontSize={9} fontFamily="$mono">
             {img.format.toUpperCase()} · {img.scale}x
           </Text>
         </YStack>
@@ -157,7 +157,7 @@ function PolaroidCard({ img }: { img: FigmaExportedImage }) {
             borderRadius={3}
             hoverStyle={{ backgroundColor: c.borderStrong }}
           >
-            <ExternalLink size={14} color={globalColors.secondary} />
+            <ExternalLink size={14} color={c.text2} />
           </XStack>
         )}
       </XStack>

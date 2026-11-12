@@ -4,25 +4,30 @@
  * Dashboard view for a single project — shows stats, active tasks, and context editor.
  */
 
-import { FolderKanban } from '@tamagui/lucide-icons';
-import i18n from '../../i18n';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { ProjectWindowContent } from './ProjectWindowContent';
+import { FolderKanban } from "@tamagui/lucide-icons"
+import i18n from "../../i18n"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const ProjectWindowContent = lazyWithRetry(() =>
+  import("./ProjectWindowContent").then((m) => ({ default: m.ProjectWindowContent })),
+)
 
 export interface ProjectWindowProps {
   /** Project ID to display */
-  projectId: string;
+  projectId: string
   /** Project name (used for tab title) */
-  projectName?: string;
+  projectName?: string
   /** Workspace ID (optional context) */
-  workspaceId?: string;
+  workspaceId?: string
 }
 
 export const projectWindowDefinition: WindowTypeDefinition<ProjectWindowProps> = {
-  type: 'project',
-  displayName: 'Project',
+  type: "project",
+  audience: "user",
+  displayName: "Project",
   icon: FolderKanban,
-  color: '#E8A838',
+  phIcon: "kanban",
+  color: "#E8A838",
 
   component: ProjectWindowContent,
 
@@ -45,4 +50,4 @@ export const projectWindowDefinition: WindowTypeDefinition<ProjectWindowProps> =
     projectName: data.projectName,
     workspaceId: data.workspaceId,
   }),
-};
+}

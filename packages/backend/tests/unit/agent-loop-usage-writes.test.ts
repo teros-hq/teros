@@ -48,7 +48,9 @@ function makeHarness(): Harness {
     },
     usageService: {
       updateUsage,
-      calculateBudget: mock(async () => null), // sin budget → sin broadcast
+      // 81fbbab5c: el broadcast token_budget se eliminó — el budget ya no se
+      // calcula en handleMessageComplete (los admins leen admin-api).
+      calculateBudget: mock(async () => null),
     },
     usageTrackingService: { trackUsage },
     agentUsageSessionService: { recordDelta },
@@ -56,6 +58,9 @@ function makeHarness(): Harness {
     broadcastChannelListStatus: mock(() => {}),
     broadcastChannelStatus: mock(() => {}),
     maybeAutonameChannel: mock(async () => {}),
+    // 153a4a82f: sugerencias contextuales del composer — miembro REQUERIDO del
+    // AgentLoopContext (fire-and-forget; el builder real lo provee siempre).
+    maybeGenerateSuggestedPrompts: mock(async () => {}),
   }
   return { ctx, updateUsage, trackUsage, recordDelta, broadcastToChannel }
 }
@@ -294,8 +299,10 @@ describe("handleMessageComplete → recordDelta", () => {
       throw new Error("buffer caído")
     })
     await run(h, baseData({ sessionUsageId: "susage_1" }))
-    // El flujo continuó hasta el budget (calculateBudget se llamó)
-    expect(h.ctx.usageService.calculateBudget).toHaveBeenCalled()
+    // El flujo continuó: 81fbbab5c eliminó el cálculo de budget tras el bloque
+    // de usage, así que la señal de continuación es maybeAutonameChannel
+    // (se invoca justo después del bloque, dentro del mismo turno).
+    expect(h.ctx.maybeAutonameChannel).toHaveBeenCalled()
   })
 
   it("budget NULL no broadcastea token_budget (gap A9)", async () => {
@@ -308,7 +315,13 @@ describe("handleMessageComplete → recordDelta", () => {
     expect(tokenBudgetCalls).toEqual([])
   })
 
-  it("budget no nulo se broadcastea como token_budget", async () => {
+  // 81fbbab5c (31-oct): el broadcast `token_budget` a los suscriptores del canal
+  // se ELIMINÓ — el uso de tokens pasó a ser admin-only y los admins leen el
+  // budget on-demand vía admin-api.channel-token-budget (requireAdmin-guarded).
+  // Los dos tests originales de broadcast se adaptan: la cobertura semántica
+  // equivalente es que NINGÚN token_budget sale por broadcastToChannel, con
+  // budget calculable o sin él.
+  it("budget no nulo TAMPOCO se broadcastea como token_budget (usage admin-only, 81fbbab5c)", async () => {
     const h = makeHarness()
     h.ctx.usageService.calculateBudget.mockImplementation(async () => ({
       totalUsed: 100,
@@ -316,11 +329,11 @@ describe("handleMessageComplete → recordDelta", () => {
       percentUsed: 0.05,
     }))
     await run(h, baseData())
-    expect(h.broadcastToChannel).toHaveBeenCalledWith(CHANNEL_ID, {
-      type: "token_budget",
-      channelId: CHANNEL_ID,
-      budget: { totalUsed: 100, modelLimit: 200000, percentUsed: 0.05 },
-    })
+    const tokenBudgetCalls = h.broadcastToChannel.mock.calls.filter(
+      // biome-ignore lint/suspicious/noExplicitAny: inspección de llamadas
+      (c: any[]) => c[1]?.type === "token_budget",
+    )
+    expect(tokenBudgetCalls).toEqual([])
   })
 })
 

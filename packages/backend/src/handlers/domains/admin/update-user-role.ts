@@ -1,18 +1,24 @@
 /**
- * admin.update-user-role — Update a user's role (super only)
+ * admin.update-user-role — Update a user's role (super only, step-up required)
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { UserService } from '../../../auth/user-service'
+import type { SessionService } from '../../../auth/session-service'
 import type { User } from '../../../auth/types'
+import { auditLogger } from '../../../lib/audit-logger'
+import { requireStepUp } from './require-step-up'
 
 interface UpdateUserRoleData {
   targetUserId: string
   role: User['role']
 }
 
-export function createUpdateUserRoleHandler(userService: UserService) {
+export function createUpdateUserRoleHandler(
+  userService: UserService,
+  sessionService: SessionService,
+) {
   return async function updateUserRole(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as UpdateUserRoleData
 
@@ -34,12 +40,22 @@ export function createUpdateUserRoleHandler(userService: UserService) {
       throw new HandlerError('SELF_DEMOTION', 'Cannot demote yourself')
     }
 
+    // Step-up auth: require recent re-authentication (Req 2.4.1)
+    await requireStepUp(ctx, sessionService)
+
     const updatedUser = await userService.updateRole(targetUserId, role)
     if (!updatedUser) {
       throw new HandlerError('USER_NOT_FOUND', 'User not found')
     }
 
-    console.log(`✅ User ${targetUserId} role updated to ${role} by ${ctx.userId}`)
+    // Audit log: user role changed (Req 6.5.1)
+    await auditLogger.log({
+      event: 'role.change',
+      actorUserId: ctx.userId,
+      targetUserId,
+      ip: ctx.ip,
+      detail: { newRole: role, previousRole: caller.role },
+    })
 
     return {
       user: {

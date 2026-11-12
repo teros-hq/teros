@@ -12,13 +12,13 @@ import { Text, XStack, YStack } from "tamagui"
 
 import {
   ErrorBlock,
-  colors as globalColors,
   IconChip,
   IconTile,
   KeyValueGrid,
   type KeyValueRow,
   parseOutput,
   ResourceCard,
+  useColors,
 } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
 import { CalendarToolShell, COLOR_DEFAULT } from "./shared"
@@ -157,6 +157,7 @@ export function GetColorsRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const { t } = useTranslation()
   const raw = output ? parseOutput<ColorsOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
@@ -187,7 +188,7 @@ export function GetColorsRenderer({
             <YStack gap={3}>
               <Text
                 textTransform="uppercase"
-                color={globalColors.muted}
+                color={c.text3}
                 fontSize={9}
                 fontFamily="$mono"
               >
@@ -208,7 +209,7 @@ export function GetColorsRenderer({
             <YStack gap={3}>
               <Text
                 textTransform="uppercase"
-                color={globalColors.muted}
+                color={c.text3}
                 fontSize={9}
                 fontFamily="$mono"
               >

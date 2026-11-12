@@ -11,9 +11,7 @@
  * decides whether the irreversibility indicator should appear.
  *
  * Same shape applies to:
- *   • `mca.teros.admin.bash:bash` — same input contract as user bash.
- *   • `mca.teros.docker-env:env-exec` — runs commands inside a container.
- *   • `mca.teros.playwright:browser-run-code` / `browser-evaluate` —
+ *   • `mca.teros.browser:browser-run-code` / `browser-evaluate` —
  *     executes arbitrary JS in the browser context.
  *   • `mca.browserbase:evaluate` — equivalent JS-in-browser tool.
  *
@@ -58,23 +56,11 @@ const irreversibilityHeuristics: Record<string, IrreversibilityDecider> = {
     const command = (input as { command?: string } | null | undefined)?.command;
     return isBashCommandIrreversible(command);
   },
-  'mca.teros.admin.bash:bash': (input) => {
-    const command = (input as { command?: string } | null | undefined)?.command;
-    return isBashCommandIrreversible(command);
-  },
-  // Docker-env shell exec runs the same shell idioms as bash. If
-  // container-specific patterns ever emerge (host-volume operations,
-  // nested docker exec, etc.), introduce a dedicated helper at THAT
-  // point — not preemptively.
-  'mca.teros.docker-env:env-exec': (input) => {
-    const command = (input as { command?: string } | null | undefined)?.command;
-    return isBashCommandIrreversible(command);
-  },
   // Playwright / Browserbase — JS evaluated in the page context. The
   // destructive surface is browser storage, not shell idioms.
-  'mca.teros.playwright:browser-run-code': (input) =>
+  'mca.teros.browser:browser-run-code': (input) =>
     isPlaywrightCodeIrreversible(input as PlaywrightCodeInput | undefined),
-  'mca.teros.playwright:browser-evaluate': (input) =>
+  'mca.teros.browser:browser-evaluate': (input) =>
     isPlaywrightCodeIrreversible(input as PlaywrightCodeInput | undefined),
   'mca.browserbase:evaluate': (input) =>
     isPlaywrightCodeIrreversible(input as PlaywrightCodeInput | undefined),
@@ -132,17 +118,9 @@ const riskHeuristics: Record<string, RiskDecider> = {
     const command = (input as { command?: string } | null | undefined)?.command;
     return isBashElevatedRisk(command);
   },
-  'mca.teros.admin.bash:bash': (input) => {
-    const command = (input as { command?: string } | null | undefined)?.command;
-    return isBashElevatedRisk(command);
-  },
-  'mca.teros.docker-env:env-exec': (input) => {
-    const command = (input as { command?: string } | null | undefined)?.command;
-    return isBashElevatedRisk(command);
-  },
-  'mca.teros.playwright:browser-run-code': (input) =>
+  'mca.teros.browser:browser-run-code': (input) =>
     isPlaywrightElevatedRisk(input as PlaywrightCodeInput | undefined),
-  'mca.teros.playwright:browser-evaluate': (input) =>
+  'mca.teros.browser:browser-evaluate': (input) =>
     isPlaywrightElevatedRisk(input as PlaywrightCodeInput | undefined),
   'mca.browserbase:evaluate': (input) =>
     isPlaywrightElevatedRisk(input as PlaywrightCodeInput | undefined),

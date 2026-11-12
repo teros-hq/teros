@@ -24,18 +24,42 @@ export type PermissionResolution = 'granted' | 'denied'
 
 /** In-memory record of a pending permission request. */
 export interface PendingPermission {
+  /**
+   * v4 permission cut (2026-10-27, Pablo direction): the ask REGISTERED the
+   * pending permission and returned the 'permission_requested' marker — the
+   * agent's turn already ended with real duration. There is no executor
+   * promise parked to resolve on grant/deny: the resolution runs server-side
+   * (tool execution + wake in a new turn) through handleResponse's
+   * restored-style path. Every ask is nonBlocking now (the field stays so
+   * restored/v1 rows keep their old semantics).
+   */
   resolve: (resolution: PermissionResolution) => void
   reject: (error: Error) => void
   toolName: string
   appId: string
+  /** Catalog id of the app, carried by tool_permission_request. @spec PERMW-REQ-2 */
+  mcaId?: string
   input: Record<string, any>
   channelId: string
   messageId?: string
   toolCallId?: string
   restored?: boolean
+  /**
+   * v4 permission cut (2026-10-27, Pablo direction): true when the ask ended
+   * the turn (the 'permission_requested' marker) — there is no parked
+   * executor promise, so grant/deny resolves SERVER-SIDE (restored-style:
+   * tool execution + wake in a new turn). Restored pendings (turn died with
+   * a restart) behave the same way; plain v1 rows (pre-v4, impossible after
+   * deploy) kept the promise semantics.
+   */
+  nonBlocking?: boolean
   userId?: string
   irreversible?: boolean
   createdAt?: number
+  /** Workspace where the tool was originally invoked. Persisted so restored
+   *  executions target the exact workspace-scoped app instance instead of
+   *  re-resolving by name (incident-2026-08-14). */
+  workspaceId?: string
 }
 
 /** Summary projection used by the navbar indicator broadcast. */

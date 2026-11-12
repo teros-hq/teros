@@ -9,7 +9,7 @@
 import type { Db } from 'mongodb'
 import type { WsHandlerContext } from '@teros/shared'
 import { HandlerError } from '../../../ws-framework/WsRouter'
-import { canAccessAgent, canAccessWorkspace } from '../../../auth/workspace-access'
+import { canAccessAgent, canWriteWorkspace } from '../../../auth/workspace-access'
 import type { SkillService } from '../../../services/skill-service'
 
 interface GrantSkillAccessData {
@@ -37,7 +37,7 @@ export function createGrantSkillAccessHandler(skillService: SkillService, db: Db
     if (!(await canAccessAgent(db, ctx.userId, agentId))) {
       throw new HandlerError('FORBIDDEN_AGENT', `No access to agent ${agentId}`)
     }
-    if (!(await canAccessWorkspace(db, ctx.userId, skill.workspaceId))) {
+    if (!(await canWriteWorkspace(db, ctx.userId, skill.workspaceId))) {
       throw new HandlerError('FORBIDDEN_WORKSPACE', `No access to workspace ${skill.workspaceId}`)
     }
 

@@ -1,34 +1,33 @@
 /**
  * UserDetailView — the per-user drill-in for the admin Users panel (TER-684 · PR3).
  *
- * A fragmented, tabbed detail: identity header + Resumen / Facturación / Acceso.
+ * A fragmented, tabbed detail in the OS prototype vocabulary: `Page` → a
+ * `PageHead` with the user's `Avatar` + name (role / status badges in the lead)
+ * and a ghost "← Usuarios" back action → `PTabs` Resumen / Facturación / Acceso.
  * The expensive per-user enrichment (agents/workspaces/cost/tokens + full billing)
  * is loaded lazily on mount with an EXPLICIT { loading | error | loaded } state —
- * replacing UserCard's implicit `stats.agents !== undefined` marker — so an error
- * shows a recoverable banner in Resumen instead of blanking the view.
+ * so an error shows a recoverable banner in Resumen instead of blanking the view.
  *
- * The caller's role/id (for gating the Acceso actions) come from the auth store,
- * the SAME source UserCard used; impersonation is orchestrated here (it swaps the
- * session token + reconnects). Colours are monitoring tokens end-to-end.
+ * The caller's role/id (for gating the Acceso actions) come from the auth store;
+ * impersonation is orchestrated here (it swaps the session token + reconnects).
  */
 
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ScrollView, Text, XStack, YStack } from "tamagui"
-import { Avatar, Badge } from "../../../components/mca/primitives"
-import { scrollbarThin, tokens } from "../../../components/monitoring/colors"
-import { SegmentedTabs } from "../../../components/monitoring/SegmentedTabs"
+import { View, useWindowDimensions } from "react-native"
+import { Avatar } from "../../../components/Avatar"
+import { Badge, Btn, Page, PageHead, PTabs, T } from "../../../components/ui/ds"
 import type { UserDetailEnrichment, UserRole, UserSummary } from "../../../services/AdminApi"
 import { getTerosClient } from "../../../services/terosClientSingleton"
 import { useAuthStore } from "../../../store/authStore"
 import { useNavbarStore } from "../../../store/navbarStore"
 import { useTilingStore } from "../../../store/tilingStore"
 import { useWorkspaceStore } from "../../../store/workspaceStore"
-import { UsersHeader } from "../UsersHeader"
-import { roleBadgeVariant, userStatusMeta } from "../usersModel"
+import { roleTone, userStatusMeta, userStatusTone } from "../usersModel"
 import { AccesoTab } from "./AccesoTab"
 import { FacturacionTab } from "./FacturacionTab"
 import { ResumenTab } from "./ResumenTab"
+import { wsUrl } from "../../../config/runtime"
 
 type TerosClient = ReturnType<typeof getTerosClient>
 
@@ -61,8 +60,8 @@ async function startImpersonationFlow(
   startImpersonation: StartImpersonation,
   actor: Actor,
 ) {
-  const serverUrl = process.env.EXPO_PUBLIC_WS_URL
-  if (!serverUrl) throw new Error("EXPO_PUBLIC_WS_URL is not defined")
+  const serverUrl = wsUrl()
+  if (!serverUrl) throw new Error("WebSocket URL is not configured")
   const result = await client.admin.impersonate(targetUserId)
   startImpersonation(
     {
@@ -143,24 +142,25 @@ export function UserDetailView({ user, onBack, onUpdate }: UserDetailViewProps) 
     user.profile.displayName ?? user.profile.email ?? t("windows.usersPanel.detail.thisUser")
 
   const tabs = [
-    { key: "resumen", label: t("windows.usersPanel.detail.tabs.resumen") },
-    { key: "facturacion", label: t("windows.usersPanel.detail.tabs.billing") },
-    { key: "acceso", label: t("windows.usersPanel.detail.tabs.access") },
+    { key: "resumen" as const, label: t("windows.usersPanel.detail.tabs.resumen"), icon: "user" },
+    {
+      key: "facturacion" as const,
+      label: t("windows.usersPanel.detail.tabs.billing"),
+      icon: "credit-card",
+    },
+    {
+      key: "acceso" as const,
+      label: t("windows.usersPanel.detail.tabs.access"),
+      icon: "shield-check",
+    },
   ]
 
   return (
-    <YStack flex={1} backgroundColor={tokens.bg}>
-      <UsersHeader
-        crumbs={[{ label: t("windows.usersPanel.title"), onPress: onBack }, { label: displayName }]}
-      />
-      <ScrollView
-        flex={1}
-        // @ts-expect-error — RN-Web thin scrollbar (Teros standard)
-        style={scrollbarThin}
-      >
-        <YStack padding={24} gap={20} testID="user-detail-view">
-          <IdentityRow user={user} displayName={displayName} />
-          <SegmentedTabs tabs={tabs} active={tab} onChange={(k) => setTab(k as TabKey)} />
+    <Page>
+      <View testID="user-detail-view">
+        <IdentityHead user={user} displayName={displayName} onBack={onBack} />
+        <PTabs<TabKey> items={tabs} value={tab} onChange={setTab} />
+        <View style={{ marginTop: 16 }}>
           <DetailBody
             tab={tab}
             user={user}
@@ -174,9 +174,9 @@ export function UserDetailView({ user, onBack, onUpdate }: UserDetailViewProps) 
             isImpersonating={impersonation?.isImpersonating === true}
             onImpersonate={handleImpersonate}
           />
-        </YStack>
-      </ScrollView>
-    </YStack>
+        </View>
+      </View>
+    </Page>
   )
 }
 
@@ -233,37 +233,52 @@ function DetailBody({
   )
 }
 
-function IdentityRow({ user, displayName }: { user: UserSummary; displayName: string }) {
+/** `PageHead` with the user's avatar beside the eyebrow + serif name. */
+function IdentityHead({
+  user,
+  displayName,
+  onBack,
+}: {
+  user: UserSummary
+  displayName: string
+  onBack: () => void
+}) {
   const { t } = useTranslation()
+  const { width } = useWindowDimensions()
   const statusMeta = userStatusMeta(user.status)
+  const avatarSize = width <= 620 ? 44 : 56
 
   return (
-    <XStack ai="center" gap={14} flexWrap="wrap">
-      <Avatar src={user.profile.avatarUrl} name={displayName} size={48} />
-      <YStack gap={4} minWidth={0} flex={1}>
-        <XStack ai="center" gap={8} flexWrap="wrap">
-          <Text fontSize={20} fontWeight="650" color={tokens.text} numberOfLines={1}>
-            {displayName}
-          </Text>
-          <Badge
-            text={t(`windows.usersPanel.role.${user.role}`)}
-            variant={roleBadgeVariant(user.role)}
-          />
-        </XStack>
-        <XStack ai="center" gap={10} flexWrap="wrap">
-          {user.profile.email ? (
-            <Text fontSize={13} color={tokens.textTertiary} numberOfLines={1}>
-              {user.profile.email}
-            </Text>
-          ) : null}
-          <XStack ai="center" gap={6}>
-            <YStack width={7} height={7} borderRadius={9999} backgroundColor={statusMeta.color} />
-            <Text fontSize={12} color={tokens.textSecondary}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 20 }}>
+      <Avatar name={displayName} imageUrl={user.profile.avatarUrl} size={avatarSize} />
+      <PageHead
+        style={{ flex: 1, marginBottom: 0 }}
+        eyebrow={t("users.eyebrow", { defaultValue: "ADMINISTRACIÓN DE LA PLATAFORMA" })}
+        title={displayName}
+        lead={
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {user.profile.email ? (
+              <T step="sm" tone="text3" numberOfLines={1}>
+                {user.profile.email}
+              </T>
+            ) : null}
+            <Badge tone={roleTone(user.role)}>{t(`windows.usersPanel.role.${user.role}`)}</Badge>
+            <Badge tone={userStatusTone(user.status)} dot>
               {t(statusMeta.labelKey)}
-            </Text>
-          </XStack>
-        </XStack>
-      </YStack>
-    </XStack>
+            </Badge>
+          </View>
+        }
+        actions={
+          <Btn
+            variant="ghost"
+            icon="arrow-left"
+            onPress={onBack}
+            aria-label={`Back to ${t("windows.usersPanel.title")}`}
+          >
+            {t("windows.usersPanel.title")}
+          </Btn>
+        }
+      />
+    </View>
   )
 }

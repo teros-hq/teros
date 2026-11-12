@@ -1,9 +1,10 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertGitHubSegment, assertOwnerRepo } from '../lib';
+import { PAGE_PARAMS, PAGED_RESULT_NOTE, type PageArgs, curateRun, fieldPayload, pagedRequest } from '../lib/curate';
 
 export const listWorkflowRuns: ToolConfig = {
   annotations: { readOnlyHint: true },
-  description: 'List workflow runs for a repository',
+  description: `List workflow runs for a repository. ${PAGED_RESULT_NOTE}`,
   parameters: {
     type: 'object',
     properties: {
@@ -15,17 +16,18 @@ export const listWorkflowRuns: ToolConfig = {
         enum: ['completed', 'action_required', 'cancelled', 'failure', 'neutral', 'skipped', 'stale', 'success', 'timed_out', 'in_progress', 'queued', 'requested', 'waiting'],
         description: 'Filter by status',
       },
-      per_page: { type: 'number', description: 'Results per page (default: 30, max: 100)' },
+      branch: { type: 'string', description: 'Only runs for this branch' },
+      ...PAGE_PARAMS,
     },
     required: ['owner', 'repo'],
   },
   handler: async (args, context) => {
-    const { owner, repo, workflow_id, status, per_page } = args as {
-      owner: string; repo: string; workflow_id?: string; status?: string; per_page?: number;
-    };
-    const endpoint = workflow_id
-      ? `/repos/${owner}/${repo}/actions/workflows/${workflow_id}/runs`
-      : `/repos/${owner}/${repo}/actions/runs`;
-    return await githubRequest(context, endpoint, { params: { status, per_page } });
+    const a = args as PageArgs & { owner: string; repo: string; workflow_id?: string; status?: string; branch?: string };
+    assertOwnerRepo(a.owner, a.repo);
+    assertGitHubSegment(a.workflow_id, 'workflow_id');
+    const endpoint = a.workflow_id
+      ? `/repos/${a.owner}/${a.repo}/actions/workflows/${a.workflow_id}/runs`
+      : `/repos/${a.owner}/${a.repo}/actions/runs`;
+    return pagedRequest(context, endpoint, a, { status: a.status, branch: a.branch }, fieldPayload('workflow_runs'), curateRun);
   },
 };

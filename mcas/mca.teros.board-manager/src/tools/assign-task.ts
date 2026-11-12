@@ -16,16 +16,20 @@ export const assignTask: ToolConfig = {
     },
     required: ['taskId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
     const wsClient = getWsClient();
     const taskId = args?.taskId as string;
     if (!taskId) throw new Error('taskId is required');
 
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
+
     const result = await withTimeout(
       wsClient.queryConversations<any>('assign_task', {
         taskId,
         agentId: args?.agentId ?? null,
+        callerAgentId,
       }),
       15_000,
       'assign_task',

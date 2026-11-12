@@ -7,7 +7,7 @@
  *
  * TTL 180d (matches `agent_usage_events`).
  *
- *
+ * Design doc: docs/usage-instrumentation.md §6 — Event sourcing
  */
 
 import type { Collection, Db } from "mongodb"
@@ -42,5 +42,13 @@ export class AgentUsageEventApplicationsRepository {
       }
       throw err
     }
+  }
+
+  /**
+   * Undo a claim whose apply failed, so a retry (buffer retry, dead-letter
+   * replay, rebuild) applies the event instead of skipping it as done (MOD-7).
+   */
+  async release(eventId: string): Promise<void> {
+    await this.col.deleteOne({ eventId })
   }
 }

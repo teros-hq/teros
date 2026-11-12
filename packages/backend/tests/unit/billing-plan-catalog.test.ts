@@ -6,7 +6,11 @@
  *   2. Migration — reconciles an existing DB: corrects reused ids, remaps subs
  *      off retired plans, deletes retired plan docs; idempotent.
  *   3. Structural invariant (lint-as-test) — the entry-plan id is centralised in
- *      STARTER_PLAN_ID; no code re-hardcodes the literal 'plan_basic'.
+ *      DEFAULT_PLAN_ID; no code re-hardcodes the literal 'plan_basic'.
+ *
+ * Catalogue as of the 2026-10-09 pricing update (41978ec18 + migration
+ * 20261009_001): Seed 0€/2h (entry), Starter €19/8h, Growth €89/40h,
+ * Pro €159/80h, Ultra €349/200h, Enterprise (contact sales).
  */
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
@@ -14,7 +18,7 @@ import { join } from 'node:path'
 import {
   BILLING_PLANS_SEED,
   RETIRED_PLAN_REMAP,
-  STARTER_PLAN_ID,
+  DEFAULT_PLAN_ID,
 } from '../../src/models/billing'
 import migration from '../../src/migrations/20260622_002_reconcile_plan_catalog'
 import { InMemoryDb } from './_stripe-test-helpers'
@@ -22,8 +26,9 @@ import { InMemoryDb } from './_stripe-test-helpers'
 const byId = (id: string) => BILLING_PLANS_SEED.find((p) => p._id === id)
 
 describe('catalogue data — mirrors the public pricing page', () => {
-  test('exactly the 5 PUBLIC web tiers, in order (hidden tiers excluded)', () => {
+  test('exactly the 6 PUBLIC web tiers, in order (hidden tiers excluded)', () => {
     expect(BILLING_PLANS_SEED.filter((p) => p.isPublic).map((p) => p._id)).toEqual([
+      'plan_seed',
       'plan_starter',
       'plan_growth',
       'plan_pro',
@@ -32,11 +37,19 @@ describe('catalogue data — mirrors the public pricing page', () => {
     ])
   })
 
-  test('Starter — free entry tier, 10h, includes teros, €9 after beta', () => {
-    const p = byId('plan_starter')!
+  test('Seed — free entry tier, 2h, includes teros', () => {
+    const p = byId('plan_seed')!
     expect(p.price).toBe(0)
-    expect(p.postBetaPrice).toBe(9)
-    expect(p.agentHoursLimit).toBe(10)
+    expect(p.agentHoursLimit).toBe(2)
+    expect(p.features.terosModel).toBe(true)
+    expect(p.isPublic).toBe(true)
+  })
+
+  test('Starter — paid tier, €19, 8h, includes teros', () => {
+    const p = byId('plan_starter')!
+    expect(p.price).toBe(19)
+    expect(p.postBetaPrice).toBeUndefined()
+    expect(p.agentHoursLimit).toBe(8)
     expect(p.features.terosModel).toBe(true)
     expect(p.isPublic).toBe(true)
   })
@@ -48,9 +61,9 @@ describe('catalogue data — mirrors the public pricing page', () => {
     expect(p.popular).toBe(true)
   })
 
-  test('Pro — €179, 80h (reused id, repriced from €89)', () => {
+  test('Pro — €159, 80h (reused id, repriced from €179 by the 2026-10-09 pricing update)', () => {
     const p = byId('plan_pro')!
-    expect(p.price).toBe(179)
+    expect(p.price).toBe(159)
     expect(p.agentHoursLimit).toBe(80)
   })
 
@@ -67,24 +80,18 @@ describe('catalogue data — mirrors the public pricing page', () => {
     expect(p.features.terosModel).toBe(true)
   })
 
-  test('Unlimited — hidden internal tier: unmetered, not public, admin-assignable', () => {
-    const p = byId('plan_unlimited')!
-    expect(p).toBeDefined() // it IS seeded...
-    expect(p.isPublic).toBe(false) // ...but hidden from the public catalogue
-    expect(p.contactSales ?? false).toBe(false) // assignable, not a contact-sales card
-    expect(p.agentHoursLimit).toBe(0) // 0 + terosModel ⇒ unmetered in the gate
-    expect(p.features.terosModel).toBe(true)
-    expect(p.price).toBe(0)
+  test('the retired plan_unlimited is NOT seeded (migration 20261009_001 deletes it; seeding would re-create it)', () => {
+    expect(byId('plan_unlimited')).toBeUndefined()
   })
 
-  test('STARTER_PLAN_ID is the entry tier and exists in the catalogue', () => {
-    expect(STARTER_PLAN_ID).toBe('plan_starter')
-    expect(byId(STARTER_PLAN_ID)).toBeDefined()
+  test('DEFAULT_PLAN_ID is the entry tier and exists in the catalogue', () => {
+    expect(DEFAULT_PLAN_ID).toBe('plan_seed')
+    expect(byId(DEFAULT_PLAN_ID)).toBeDefined()
   })
 
   test('retired ids are gone from the catalogue and map to real successors', () => {
     expect(RETIRED_PLAN_REMAP).toEqual({
-      plan_basic: 'plan_starter',
+      plan_basic: 'plan_seed',
       plan_max: 'plan_ultra',
       plan_infinity: 'plan_enterprise',
     })
@@ -130,7 +137,7 @@ describe('migration — reconciles an existing DB', () => {
 
   const SCHEDULED_AT = new Date('2026-07-01T00:00:00Z')
 
-  test('upserts the 5 new plans, deletes the 3 retired, reprices reused plan_pro', async () => {
+  test('upserts the 6 new plans, deletes the 3 retired, reprices reused plan_pro', async () => {
     const db = seedOldDb()
     await migration.up(db as any)
     const plans = db.collection('billing_plans')
@@ -140,17 +147,17 @@ describe('migration — reconciles an existing DB', () => {
     expect(await plans.findOne({ _id: 'plan_max' })).toBeNull()
     expect(await plans.findOne({ _id: 'plan_infinity' })).toBeNull()
 
-    // the 5 canonical plans exist
-    for (const id of ['plan_starter', 'plan_growth', 'plan_pro', 'plan_ultra', 'plan_enterprise']) {
+    // the 6 canonical plans exist
+    for (const id of ['plan_seed', 'plan_starter', 'plan_growth', 'plan_pro', 'plan_ultra', 'plan_enterprise']) {
       expect(await plans.findOne({ _id: id })).not.toBeNull()
     }
 
     // reused plan_pro repriced in place ($set, not $setOnInsert)
-    expect((await plans.findOne({ _id: 'plan_pro' }))!.price).toBe(179)
-    // starter carries its new meaning (10h + teros), not the old basic (0h)
-    const starter = (await plans.findOne({ _id: 'plan_starter' }))!
-    expect(starter.agentHoursLimit).toBe(10)
-    expect(starter.features.terosModel).toBe(true)
+    expect((await plans.findOne({ _id: 'plan_pro' }))!.price).toBe(159)
+    // the entry tier carries its new meaning (2h + teros), not the old basic (0h)
+    const seed = (await plans.findOne({ _id: 'plan_seed' }))!
+    expect(seed.agentHoursLimit).toBe(2)
+    expect(seed.features.terosModel).toBe(true)
   })
 
   test('remaps subscriptions off retired plans to their successor', async () => {
@@ -160,7 +167,7 @@ describe('migration — reconciles an existing DB', () => {
 
     expect((await subs.findOne({ _id: 'sub_pro' }))!.planId).toBe('plan_pro') // reused, unchanged
     expect((await subs.findOne({ _id: 'sub_max' }))!.planId).toBe('plan_ultra')
-    expect((await subs.findOne({ _id: 'sub_basic' }))!.planId).toBe('plan_starter')
+    expect((await subs.findOne({ _id: 'sub_basic' }))!.planId).toBe('plan_seed')
     expect((await subs.findOne({ _id: 'sub_infinity' }))!.planId).toBe('plan_enterprise')
   })
 
@@ -168,7 +175,7 @@ describe('migration — reconciles an existing DB', () => {
     const db = seedOldDb()
     await migration.up(db as any)
     await migration.up(db as any)
-    // The reconcile upserts every canonical plan (incl. the hidden plan_unlimited)
+    // The reconcile upserts every canonical plan
     // and removes the retired ones → the DB holds exactly the seed, no duplicates.
     expect(await db.collection('billing_plans').countDocuments()).toBe(BILLING_PLANS_SEED.length)
     expect((await db.collection('billing_subscriptions').findOne({ _id: 'sub_max' }))!.planId).toBe('plan_ultra')
@@ -211,8 +218,8 @@ describe('structural invariant — entry plan centralised, no re-hardcoded liter
     'models/billing.ts',
   ]
 
-  test('STARTER_PLAN_ID resolves to plan_starter', () => {
-    expect(STARTER_PLAN_ID).toBe('plan_starter')
+  test('DEFAULT_PLAN_ID resolves to plan_seed', () => {
+    expect(DEFAULT_PLAN_ID).toBe('plan_seed')
   })
 
   test('no source file re-hardcodes the literal \'plan_basic\'', () => {
@@ -222,9 +229,9 @@ describe('structural invariant — entry plan centralised, no re-hardcoded liter
     }
   })
 
-  test('the gate/reset/admin sites reference STARTER_PLAN_ID', () => {
+  test('the gate/reset/admin sites reference DEFAULT_PLAN_ID', () => {
     for (const f of ['services/billing-gate.ts', 'services/billing-reset-cron.ts', 'handlers/domains/admin/update-billing-subscription.ts']) {
-      expect(SRC(f)).toContain('STARTER_PLAN_ID')
+      expect(SRC(f)).toContain('DEFAULT_PLAN_ID')
     }
   })
 })

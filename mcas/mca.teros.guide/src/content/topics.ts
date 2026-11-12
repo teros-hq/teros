@@ -2,7 +2,7 @@
  * Teros platform guide — agent-oriented distillation.
  *
  * This is the SOURCE the agent consumes to instruct the user on how to use
- * Teros. It is NOT the human-facing prose of 
+ * Teros. It is NOT the human-facing prose of `docs/context/USER_GUIDE.md`
  * ("click here…"); it is rewritten as "for need X → use window/action Y" so the
  * agent can translate it into natural language for the user, in the user's own
  * language.
@@ -170,6 +170,11 @@ Open the **Agent** window (agent editor). Tabs:
 - **Skills** — which reusable instruction blocks are assigned.
 - **Model** — which provider and model it uses; leave it on **System Default** to use the default provider/model automatically.
 
+### Model policy (how the default works)
+The **default model you configure on a provider is the source of truth** and takes priority. Resolution order for any run: an explicit per-agent pin → the provider's own default model → the system fallback. An agent with no specific reason to differ stays on **System Default** — do not pin a model for it just because a coordinator agent suggests it.
+
+Changing an agent's model is a **considered decision**, not a routine operation: every change should have a recorded reason (the \`set-agent-model\` tool accepts a \`reason\` field for the audit log). Some models are **reserved** for exclusive assignment (e.g. \`teros-glm-5p3-fast\` is reserved for Alice) — a shared provider's default never points at a reserved model, and pinning another agent to one requires an explicit operator decision.
+
 The agent can be deleted from the same editor (with confirmation).
 
 ## Good practice to suggest
@@ -208,7 +213,7 @@ Open the **Providers** window. Teros supports **16 provider types**: Anthropic, 
 To add one: **+ Add Provider** → choose type → fill key/OAuth/URL → **Add Provider**. The connection is **tested automatically** when you add it (a Test button is also there to re-check and discover models). Green **Active** = ready; red **Error** = key invalid/expired. You can pick a **default model** per provider, set a provider as default for new agents, or assign one per agent in the agent's **Model** tab.
 
 > When an agent uses the **Browserbase** app to drive a web browser, a **Browserbase Live View** window opens so you can watch it navigate in real time.`,
-    related: ['agents', 'chat-and-voice', 'roles-and-troubleshooting'],
+    related: ['agents', 'chat-and-voice', 'roles-and-troubleshooting', 'terminal-claude-code'],
   },
   {
     id: 'boards-and-autorun',
@@ -336,7 +341,7 @@ Ask an agent in natural language: *"remind me tomorrow at 9 to review the PR"*, 
 For recurring schedules Teros uses **5-field cron** (\`minute hour day month weekday\`), e.g. \`0 9 * * *\` = every day at 09:00. **Seconds are not supported, and shortcuts like \`@daily\` are not accepted.** Time is interpreted in **your timezone** (set in the Profile window).
 
 ## Managing them
-**List, snooze, pause or cancel** reminders and recurring tasks just by asking the agent.
+**List, snooze, pause or cancel** reminders and recurring tasks just by asking the agent. Everything the agent creates also appears in the **Automate** window, where you can edit, pause or delete it, and where you can create webhooks and event triggers yourself.
 
 ## Event triggers (proactive)
 Beyond time, a conversation can **subscribe to an app's events** so the agent reacts when something happens — e.g. *"ping me here when a new email arrives"*. Two modes: **notify** (a silent message lands in the chat) or **wake** (the agent is actually woken to act on it).`,
@@ -392,5 +397,77 @@ Open the **Profile** window for your account settings:
 ## Key limits to know
 Chat message text ~4000 chars (a counter shows in the **native app**; the **web composer does not hard-limit**) · uploaded file 100 MB · avatar 5 MB · agent reasoning steps (maxSteps) 20 by default (**0 = unlimited**) · tool-call output 40,000 chars · session 30 days · auto-wakes 5. **Teros has no message rate limiting of its own** — the real limit is the LLM provider's plan.`,
     related: ['apps-and-providers', 'workspaces', 'boards-and-autorun'],
+  },
+  {
+    id: 'terminal-claude-code',
+    title: 'Terminal & Claude Code',
+    summary: 'Claude Code in a terminal the user watches, on their own Claude sign-in: when to propose it (once), remembering the answer, enabling it, and driving a session.',
+    keywords: ['terminal', 'claude code', 'coding agent', 'codex', 'opencode', 'shell', 'cli', 'repo', 'repository', 'subscription', 'pro', 'max', 'wheel', 'sign in claude', 'bash'],
+    body: `# Terminal & Claude Code
+
+## What it is
+- The **Terminal** app (in the **Catalog**; it needs the **Bash** app installed in the same workspace — same Linux machine and files) lets an agent open sessions there: a shell, or **Claude Code** (also Codex and opencode).
+- Claude Code runs on the **user's own sign-in**: **Sign in with Claude** (their Pro/Max subscription), an **API key**, or **Use Teros** (one of their Teros providers). You never see or type the secret.
+- The user watches every session in their **Terminal window** beside the chat (or floating over it) and can type in it. **The wheel**: whoever has it types. The user can take it and give it back, with an optional note for you.
+- You have it when you have \`terminal-*\` tools.
+
+## When it fits
+- Fits: coding in a repository (fix a bug, build a feature, run the tests, refactor), long command-line work (builds, migrations, scripts, data jobs), work the user wants to watch.
+- Doesn't fit: quick questions, small edits or lookups you can do with your own tools, tasks with no code or CLI.
+
+## Proposing it — once, never insisting
+1. Check the remembered preference first: memory already shown to you this turn, or search your memory (category \`user_preferences\`, e.g. "Claude Code terminal"). A no → don't propose. A scoped yes (e.g. "only for repo X") → only inside that scope.
+2. At most one mention per conversation, in one line, with the concrete benefit, in the user's language — e.g. "Puedo abrir Claude Code en tu terminal con tu suscripción y lo verás al lado del chat. ¿Quieres?" Then go on with the task either way.
+3. Save the answer to memory as a \`user_preferences\` item, with the scope the user gave and no narrower ("don't use it or propose it" is a general no, not "no for this bug"): "Prefers not to use Claude Code in the terminal; don't propose it", or "Yes to Claude Code in the terminal for coding tasks in repo X". Update it if they change their mind.
+4. After a no: no more mentions in this conversation, and in later ones only if the context clearly changes or the user brings it up. Another coding task, in this or another repo, is not a change of context; the user asking for something only Claude Code can do well, or saying they changed their mind, is. Without memory tools, still respect it for this conversation.
+
+## Enabling it (only after the user's explicit yes)
+- **You have platform tools** (\`install-app\`, \`grant-app-access\`): offer to set it up, say what you'll install, and act only after a yes in chat — install **Bash** and **Terminal** in this workspace and grant **Terminal** to the agent that will use it.
+- **Otherwise** give the steps: **Catalog** → install **Bash** and **Terminal** in this workspace → agent editor → **Apps** tab → turn **Terminal** ON for the agent. The tools appear in the next message.
+- **Sign-in** (once per person): **Terminal** window → new session → **Claude Code** → **Sign in with Claude** (Pro/Max), **API key** or **Use Teros**, with **"Share with this workspace's agents"** on — without it, sessions an agent opens don't get the sign-in. To change it later: a Claude Code session's menu → "Claude Code sign-in". Never ask for or type passwords, codes or keys.
+
+## Driving a session
+- Tell the user in one line what you're doing ("Abro Claude Code en tu terminal para arreglar el test de login").
+- \`terminal-list\` first and reuse your own session; otherwise \`terminal-create agent="claude"\` with a clear title. Give it the task with \`terminal-prompt\`; \`terminal-wait until="turn"\` while it works; answer its permission prompts only within the task.
+- If the tools say the user's sign-in is missing or not shared, ask the user to do the sign-in steps above, then \`terminal-wait until="ready"\`.
+- **The wheel**: if the user has it, don't type — wait (\`terminal-wait\` returns when they give it back) or ask in chat. When it comes back, read their note and follow it.
+- Report the outcome in chat in a few lines: the user saw the details.
+- When done, close the sessions you opened (\`terminal-destroy\`) unless the user wants to keep them. Never close the user's sessions.`,
+    related: ['apps-and-providers', 'agents', 'files'],
+  },
+  {
+    id: 'github',
+    title: 'GitHub',
+    summary: 'GitHub for agents: connect vs install, reading repos only through tools, reconnect (never Disconnect), own clones, workflow permission, size limits.',
+    keywords: ['github', 'repo', 'repository', 'pull request', 'pr', 'issue', 'push', 'commit', 'clone', 'branch', 'workflow', 'github actions', 'reconnect', 'not found', 'install', 'organization', 'too large', 'muy pesada'],
+    body: `# GitHub
+
+## What it is
+- The **GitHub** app (in the **Catalog**) lets agents work on repositories with each user's **own** GitHub account: issues, pull requests, branches, Actions, files, and local git (clone, commit, push).
+- Two steps, both by the user: **Connect** in Teros (Apps → GitHub → Connect, signs in with GitHub) and **install the Teros GitHub App** on each account or organization whose repositories agents should reach (choose the repositories there).
+- Every member connects their own GitHub. An agent acts as the user of the conversation, never as the workspace owner.
+
+## Rules for you
+- Call a GitHub tool first for anything about a repository. If the call fails, say so. Never reconstruct or invent a README, file, issue or pull request.
+- Errors arrive as \`[CODE] message\` + \`What to do:\`. Do that step; tell the user in one line. Do not retry permission or connection errors.
+- Not connected / expired → the user goes to **Apps → GitHub → Connect** (Reconnect). Never suggest **Disconnect**: it only removes the connection.
+- "Not Found" on a private repo, or an empty repo list → the Teros GitHub App is probably not installed on that owner, or that repo is not selected. The GitHub panel shows the installations and has the install link.
+- No GitHub tools at all → GitHub is not granted to you: the user turns it on in the agent editor → **Apps**. Don't send them to install or connect again.
+- Each agent works in its **own clone** (clone-repo returns it); other agents' branches never move under you. Ask the user before git-reset, force pushes or rewriting commits.
+- Unused clones are removed by themselves (after the PR is merged or closed, after 7 idle days, or with git-cleanup). Work not on GitHub is first pushed to a \`teros/saved/<agent>/<branch>-<date>\` branch of the same repo; a result that says so names the branch. Look there before redoing work.
+- Commits are signed as the connected user automatically. Never set user.name or user.email.
+- Lists come in pages (\`has_next_page\`); ask for the next page instead of a bigger one.
+
+## Limits that explain "too big"
+- Files over **100 MB** can't be pushed (git-push names them before sending). Keep big media out of the repo or in Git LFS.
+- PR, issue and comment bodies: 65,536 characters. Summarise and link a file for the rest.
+- get-file-content reads up to 150,000 characters; for more, clone and use git-read-file.
+
+## Workflow files (GitHub Actions)
+- Changing \`.github/workflows/\` needs the Teros App's **Workflows** permission. An owner of the account or organization accepts it once on GitHub (the error gives the link; the GitHub panel shows it as pending). Until then, push the rest without the workflow files.
+
+## Who can see cloned code
+- Clones live in the workspace's files, so other agents of the workspace with Terminal or Bash can read them. Tell the user if that matters for a private repository.`,
+    related: ['apps-and-providers', 'terminal-claude-code'],
   },
 ];

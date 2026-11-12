@@ -92,7 +92,7 @@ export const listEvents: ToolConfig = {
       }
     }
 
-    const response = await wrapCalendarCall(() =>
+    const response = await wrapCalendarCall(context, () =>
       calendar.events.list({
         calendarId: a.calendarId ?? "primary",
         maxResults,

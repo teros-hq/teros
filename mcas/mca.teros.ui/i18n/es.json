@@ -1,0 +1,175 @@
+{
+  "name": "UI Control",
+  "description": "Vea qué está viendo el usuario ahora mismo — sus ventanas abiertas (chats, sesiones de terminal, boards…), layout, foco y dispositivos — y controle su interfaz en tiempo real: abrir, cerrar, actualizar, enfocar ventanas y cambiar de escritorio en sus pantallas.",
+  "changelog": [
+    {
+      "notes": "Versión inicial (spec 20261022_ui-state-mca.md, REQ-5) — ui-state lee el escritorio en vivo del usuario por dispositivo (ventanas, layout, foco, catálogo dinámico de tipos de ventana, nombres enriquecidos); ui-open / ui-close / ui-update-props difunden cambios de ventanas a todos los dispositivos; ui-focus / ui-set-desktop son acciones de frontend sobre el dispositivo activo. Wrapper fino sobre el dominio ui.* del backend vía el puente admin_request."
+    }
+  ],
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Health check interno. Verifica la conectividad WebSocket con la API ui.* del backend."
+    },
+    "ui-state": {
+      "name": "ui-state",
+      "description": "Lee el estado vivo de la interfaz del usuario — qué está mirando AHORA MISMO, en cada dispositivo conectado. Por dispositivo: sus ventanas abiertas con tipo + props (chats con canal/agente, sesiones de terminal, boards, …) enriquecidas con nombres legibles (agentName, channelTitle, títulos de sesión, projectName), el árbol de layout de escritorios con ratios de split, la ventana con foco, el escritorio activo, la etiqueta del dispositivo y el catálogo vivo de tipos de ventana (windowTypes — la lista dinámica de tipos que ese dispositivo soporta; consúltalo antes de ui-open). Úsalo para responder \"¿qué está viendo el usuario?\", para obtener windowIds (ui-close / ui-update-props / ui-focus), desktopIds (ui-set-desktop) y deviceIds (comandos dirigidos). devices vacío = el usuario está desconectado (sin cliente conectado).",
+      "params": {}
+    },
+    "ui-open": {
+      "name": "ui-open",
+      "description": "Abre una ventana en la pantalla del usuario. DIFUSIÓN por defecto (target 'all'): la ventana se abre Y se enfoca en TODOS los dispositivos conectados — todas las pantallas aplican el mismo cambio. Si ya existe una ventana del mismo tipo+props en un dispositivo, se enfoca allí, no se duplica. Los tipos de ventana son DINÁMICOS — llama a ui-state primero y lee su catálogo `windowTypes` (cada entrada tiene type + displayName); ejemplos comunes: chat {agentId | channelId}, terminal, board {projectId}. Pasa los props del tipo exactamente como ui-state los muestra. Con focus (por defecto true) cada dispositivo que recibe enfoca la ventana. Si el resultado dice delivered: 0, NO se abrió nada en ninguna pantalla — el usuario no tiene cliente conectado.",
+      "params": {
+        "windowType": "Tipo de ventana a abrir — del catálogo vivo `windowTypes` de ui-state (p. ej. 'chat', 'terminal', 'board'). Los tipos desconocidos se ignoran en el cliente.",
+        "props": "Qué carga la ventana — los props del tipo, exactamente como ui-state los reporta para ventanas existentes de ese tipo. Ejemplos: chat {agentId} o {channelId}, board {projectId}.",
+        "focus": "Enfocar la ventana en cada dispositivo que la recibe (por defecto: true). Con false se abre en segundo plano en todos.",
+        "target": "Qué dispositivos reciben el comando: 'all' (todos los conectados), 'active' (el más recientemente activo) o un deviceId explícito de ui-state. El valor por defecto depende del comando — ver la descripción de la tool."
+      }
+    },
+    "ui-close": {
+      "name": "ui-close",
+      "description": "Cierra una ventana en la pantalla del usuario. DIFUSIÓN por defecto (target 'all'): la ventana se cierra en TODOS los dispositivos conectados. El windowId viene de ui-state (las ventanas se identifican por windowId por dispositivo). Si la ventana ya se cerró en un dispositivo mientras tanto, ese dispositivo ignora el comando (entrega ≠ aplicación) — el resultado sigue reportando cuántos clientes lo recibieron. delivered: 0 significa que el usuario no tiene cliente conectado y no se cerró nada en ninguna pantalla.",
+      "params": {
+        "windowId": "La ventana a cerrar — un windowId de ui-state.",
+        "target": "Qué dispositivos reciben el comando: 'all' (todos los conectados), 'active' (el más recientemente activo) o un deviceId explícito de ui-state. El valor por defecto depende del comando — ver la descripción de la tool."
+      }
+    },
+    "ui-update-props": {
+      "name": "ui-update-props",
+      "description": "Actualiza qué carga una ventana en la pantalla del usuario. DIFUSIÓN por defecto (target 'all'): los props se MEZCLAN (no se reemplazan) en TODOS los dispositivos conectados — pasa solo las claves a cambiar. El windowId viene de ui-state. Usos típicos: cambiar la sesión activa de una ventana de terminal, apuntar una ventana de board a otro proyecto. Si la ventana ya no existe en un dispositivo, ese dispositivo ignora el comando (entrega ≠ aplicación). delivered: 0 significa que el usuario no tiene cliente conectado y no se cambió nada en ninguna pantalla.",
+      "params": {
+        "windowId": "La ventana a actualizar — un windowId de ui-state.",
+        "props": "Props a MEZCLAR en la ventana (solo las claves a cambiar) — misma forma que ui-state reporta para ese tipo de ventana.",
+        "target": "Qué dispositivos reciben el comando: 'all' (todos los conectados), 'active' (el más recientemente activo) o un deviceId explícito de ui-state. El valor por defecto depende del comando — ver la descripción de la tool."
+      }
+    },
+    "ui-focus": {
+      "name": "ui-focus",
+      "description": "Trae una ventana al primer plano en la pantalla del usuario. ACCIÓN DE FRONTEND: a diferencia de ui-open/ui-close/ui-update-props afecta a UN solo dispositivo — por defecto el más recientemente activo (target 'active'); pasa un deviceId explícito de ui-state para enfocar en un dispositivo concreto. El windowId viene de ui-state. Si la ventana se cerró mientras tanto, el cliente ignora el comando (entrega ≠ aplicación). delivered: 0 significa que el usuario no tiene cliente conectado — no se enfocó nada en ninguna pantalla.",
+      "params": {
+        "windowId": "La ventana a enfocar — un windowId de ui-state.",
+        "target": "Qué dispositivos reciben el comando: 'all' (todos los conectados), 'active' (el más recientemente activo) o un deviceId explícito de ui-state. El valor por defecto depende del comando — ver la descripción de la tool."
+      }
+    },
+    "ui-set-desktop": {
+      "name": "ui-set-desktop",
+      "description": "Cambia el escritorio virtual que está viendo el usuario. ACCIÓN DE FRONTEND: afecta a UN solo dispositivo — por defecto el más recientemente activo (target 'active'); pasa un deviceId explícito de ui-state para un dispositivo concreto. El desktopId viene de ui-state (desktops[].desktopId del dispositivo objetivo). Los demás dispositivos no se tocan. delivered: 0 significa que el usuario no tiene cliente conectado — no cambió nada en ninguna pantalla.",
+      "params": {
+        "desktopId": "El escritorio al que cambiar — un desktopId de ui-state.",
+        "target": "Qué dispositivos reciben el comando: 'all' (todos los conectados), 'active' (el más recientemente activo) o un deviceId explícito de ui-state. El valor por defecto depende del comando — ver la descripción de la tool."
+      }
+    },
+    "browser-open-tab": {
+      "name": "browser-open-tab",
+      "description": "Abre una pestaña NUEVA del navegador dentro de la app de escritorio de Teros y carga una URL — por defecto en su propio panel a la DERECHA de lo que mira el usuario (pane: left | right | top | bottom; un desktopId de ui-state la abre en ese escritorio). Devuelve el tabId en cuanto el dispositivo reporta la ventana; después usa browser-get-state / browser-click / browser-type / browser-scroll / browser-press-key / browser-screenshot y browser-close-tab al terminar. Actuar en la pestaña requiere el interruptor de consentimiento del usuario (apagado por defecto; mirar no lo requiere). tabId: null con una nota significa que el dispositivo aún no la ha reportado — llama a browser-list-tabs. delivered: 0 significa que el usuario no tiene la app de escritorio abierta.",
+      "params": {
+        "url": "La URL a cargar (se añade https:// si falta).",
+        "pane": "En qué lado del panel activo del usuario se abre la pestaña. Por defecto: right.",
+        "desktopId": "Abrir en este escritorio (desktops[].desktopId de ui-state) en vez del activo.",
+        "target": "deviceId opcional de ui-state cuando el usuario tiene varios dispositivos — por defecto el activo."
+      }
+    },
+    "browser-list-tabs": {
+      "name": "browser-list-tabs",
+      "description": "Lista las pestañas del navegador abiertas en la app de escritorio de Teros, por dispositivo conectado: tabId (lo que aceptan las demás tools de navegador), url, título y si es la ventana enfocada. Úsala para encontrar la pestaña que mira el usuario o cuando browser-open-tab devolvió tabId: null. Sin pestañas y sin dispositivo online significa que el usuario no tiene la app de escritorio abierta.",
+      "params": {
+        "target": "deviceId opcional de ui-state cuando el usuario tiene varios dispositivos — por defecto el activo."
+      }
+    },
+    "browser-close-tab": {
+      "name": "browser-close-tab",
+      "description": "Cierra una pestaña del navegador en la app de escritorio de Teros (el tabId de browser-open-tab o browser-list-tabs). Si ya estaba cerrada, el cliente ignora el comando. Cierra las pestañas que abriste cuando termines tu tarea.",
+      "params": {
+        "tabId": "La pestaña del navegador sobre la que actuar — el windowId de una ventana de tipo 'browser' en ui-state (o el tabId de browser-open-tab / browser-list-tabs). Solo funciona en la app de escritorio de Teros.",
+        "target": "deviceId opcional de ui-state cuando el usuario tiene varios dispositivos — por defecto el activo."
+      }
+    },
+    "browser-scroll": {
+      "name": "browser-scroll",
+      "description": "Hace scroll en la pestaña del navegador del usuario con un evento de rueda real: direction up | down | left | right, amount opcional en píxeles CSS (por defecto el 80% de la vista), opcionalmente sobre un ref (un elemento desplazable de browser-get-state). Requiere consentimiento (apagado por defecto) y que la persona no esté usando la pestaña. Devuelve un snapshot de accesibilidad fresco por defecto.",
+      "params": {
+        "tabId": "La pestaña del navegador sobre la que actuar — el windowId de una ventana de tipo 'browser' en ui-state (o el tabId de browser-open-tab / browser-list-tabs). Solo funciona en la app de escritorio de Teros.",
+        "direction": "Hacia dónde hacer scroll.",
+        "amount": "Píxeles CSS (1-10000). Por defecto: el 80% del alto o ancho de la vista.",
+        "ref": "[ref=eNN] opcional sobre el que hacer scroll (un panel desplazable).",
+        "observe": "Qué devolver después: el snapshot de accesibilidad completo (por defecto), solo el resumen de la página, o nada.",
+        "target": "deviceId opcional de ui-state cuando el usuario tiene varios dispositivos — por defecto el activo."
+      }
+    },
+    "browser-press-key": {
+      "name": "browser-press-key",
+      "description": "Pulsa UNA tecla en la pestaña del navegador del usuario con entrada real: una tecla con nombre (Enter, Escape, Tab, Backspace, Delete, ArrowUp/ArrowDown/ArrowLeft/ArrowRight, Home, End, PageUp, PageDown, Space) o un solo carácter, con modificadores opcionales (Alt, Control, Meta, Shift). Opcionalmente hace clic en un ref antes para enfocarlo. Úsala para Escape (cerrar diálogos), Tab (mover el foco), Enter (enviar), flechas en menús. Requiere consentimiento (apagado por defecto) y que la persona no esté usando la pestaña.",
+      "params": {
+        "tabId": "La pestaña del navegador sobre la que actuar — el windowId de una ventana de tipo 'browser' en ui-state (o el tabId de browser-open-tab / browser-list-tabs). Solo funciona en la app de escritorio de Teros.",
+        "key": "La tecla: un nombre (Enter, Escape, Tab, ArrowDown, …) o un carácter.",
+        "modifiers": "Modificadores mantenidos al pulsar (máx. 4).",
+        "ref": "[ref=eNN] opcional en el que hacer clic/enfocar antes de pulsar.",
+        "observe": "Qué devolver después: el snapshot de accesibilidad completo (por defecto), solo el resumen de la página, o nada.",
+        "target": "deviceId opcional de ui-state cuando el usuario tiene varios dispositivos — por defecto el activo."
+      }
+    },
+    "browser-get-state": {
+      "name": "browser-get-state",
+      "description": "Lee lo que el usuario está viendo en una de sus pestañas del navegador DENTRO de Teros (app de escritorio): url/título de la página, el estado de control, y el árbol de accesibilidad como líneas indentadas con etiquetas [ref=eNN] con las que puedes hacer clic o escribir. MIRAR siempre está permitido — incluso con el consentimiento apagado o mientras el usuario usa la pestaña. Con screenshot:true adjunta un JPEG reducido. Úsala antes de cualquier clic/escritura para tener refs frescos.",
+      "params": {
+        "tabId": "La pestaña del navegador sobre la que actuar — el windowId de una ventana de tipo 'browser' en ui-state (o el tabId de browser-open-tab / browser-list-tabs). Solo funciona en la app de escritorio de Teros.",
+        "screenshot": "Adjuntar también una captura de la pestaña (JPEG reducido). Por defecto false.",
+        "maxChars": "Máximo de caracteres del árbol de accesibilidad (500-100000, por defecto 12000).",
+        "target": "deviceId opcional de ui-state cuando el usuario tiene varios dispositivos — por defecto el activo."
+      }
+    },
+    "browser-click": {
+      "name": "browser-click",
+      "description": "Hace clic en un elemento de la pestaña del navegador del usuario (entrada real: la página ve un clic de verdad). Objetivo: ref (un [ref=eNN] de browser-get-state — preferido) o coordenadas x,y en la pestaña. Requiere el consentimiento del usuario (apagado por defecto) y que no esté usando la pestaña — si no, recibes agent_control_disabled / human_has_control y debes avisarle. Devuelve un snapshot fresco por defecto.",
+      "params": {
+        "tabId": "La pestaña del navegador sobre la que actuar — el windowId de una ventana de tipo 'browser' en ui-state (o el tabId de browser-open-tab / browser-list-tabs). Solo funciona en la app de escritorio de Teros.",
+        "ref": "El [ref=eNN] a pulsar — de un browser-get-state reciente de esta pestaña.",
+        "x": "Coordenada X (con y) al pulsar por posición.",
+        "y": "Coordenada Y (con x) al pulsar por posición.",
+        "observe": "Qué devolver después: el snapshot de accesibilidad completo (por defecto), solo el resumen de la página, o nada.",
+        "target": "deviceId opcional de ui-state cuando el usuario tiene varios dispositivos — por defecto el activo."
+      }
+    },
+    "browser-type": {
+      "name": "browser-type",
+      "description": "Escribe texto en la pestaña del navegador del usuario — en un campo elegido por ref (se pulsa, enfoca y vacía primero) o en el elemento que tenga el foco. Entrada real. submit:true pulsa Enter después (buscadores, chats). Requiere consentimiento (apagado por defecto) y que la persona no esté usando la pestaña. Devuelve un snapshot fresco por defecto.",
+      "params": {
+        "tabId": "La pestaña del navegador sobre la que actuar — el windowId de una ventana de tipo 'browser' en ui-state (o el tabId de browser-open-tab / browser-list-tabs). Solo funciona en la app de escritorio de Teros.",
+        "text": "El texto a escribir (máx. 5000 caracteres por llamada).",
+        "ref": "[ref=eNN] opcional del campo — se pulsa/enfoca y se vacía antes de escribir.",
+        "clear": "Vaciar el campo antes de escribir cuando se da ref (por defecto true).",
+        "submit": "Pulsar Enter después de escribir (por defecto false).",
+        "observe": "Qué devolver después: el snapshot de accesibilidad completo (por defecto), solo el resumen de la página, o nada.",
+        "target": "deviceId opcional de ui-state cuando el usuario tiene varios dispositivos — por defecto el activo."
+      }
+    },
+    "browser-screenshot": {
+      "name": "browser-screenshot",
+      "description": "Captura la pestaña del navegador del usuario (JPEG reducido, adjunto al resultado). MIRAR siempre está permitido — sin consentimiento, incluso mientras el usuario usa la pestaña. Útil para páginas con poco árbol de accesibilidad (canvas, imágenes) o para verificar visualmente qué hizo un clic.",
+      "params": {
+        "tabId": "La pestaña del navegador sobre la que actuar — el windowId de una ventana de tipo 'browser' en ui-state (o el tabId de browser-open-tab / browser-list-tabs). Solo funciona en la app de escritorio de Teros.",
+        "width": "Ancho objetivo en px (320-2560, por defecto 1024).",
+        "quality": "Calidad JPEG 10-100 (por defecto 60).",
+        "target": "deviceId opcional de ui-state cuando el usuario tiene varios dispositivos — por defecto el activo."
+      }
+    },
+    "browser-open-url": {
+      "name": "browser-open-url",
+      "description": "Navega la pestaña del navegador del usuario a una URL (navegación de primer nivel — la pestaña es un navegador real dentro de Teros). Requiere consentimiento (apagado por defecto) y que la persona no esté usando la pestaña. Devuelve url + título de la página cargada y un snapshot fresco.",
+      "params": {
+        "tabId": "La pestaña del navegador sobre la que actuar — el windowId de una ventana de tipo 'browser' en ui-state (o el tabId de browser-open-tab / browser-list-tabs). Solo funciona en la app de escritorio de Teros.",
+        "url": "La URL a cargar (se añade https:// si falta).",
+        "target": "deviceId opcional de ui-state cuando el usuario tiene varios dispositivos — por defecto el activo."
+      }
+    },
+    "browser-control": {
+      "name": "browser-control",
+      "description": "Estado de consentimiento + valla de una pestaña del navegador, y los verbos informativos take/release. verb 'status' (por defecto) lee quién tiene el control y si el control del agente está habilitado; 'take' declara que quieres actuar (informativo — la persona SIEMPRE gana al interactuar); 'release' devuelve la prioridad. agent_control_disabled significa que el usuario debe activar el interruptor en la barra de la pestaña — tú no puedes activarlo.",
+      "params": {
+        "tabId": "La pestaña del navegador sobre la que actuar — el windowId de una ventana de tipo 'browser' en ui-state (o el tabId de browser-open-tab / browser-list-tabs). Solo funciona en la app de escritorio de Teros.",
+        "verb": "'status' (por defecto) lee el estado; 'take'/'release' son verbos informativos de control.",
+        "target": "deviceId opcional de ui-state cuando el usuario tiene varios dispositivos — por defecto el activo."
+      }
+    }
+  }
+}

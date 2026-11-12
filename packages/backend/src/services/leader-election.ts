@@ -37,7 +37,7 @@
  *   - Multiple instances start simultaneously: only one wins the upsert;
  *     the others see `tryAcquire === false` and skip the tick.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §13 (multi-instance addendum)
  */
 
 import type { Collection, Db } from "mongodb"
@@ -163,6 +163,19 @@ export class LeaderElectionService {
     const doc = await this.col.findOne({ name })
     return !!doc && doc.ownerId === this.ownerId && doc.expiresAt > now
   }
+
+  /**
+   * Non-expired locks whose name starts with `prefix`, excluding our own.
+   * Used by the instance registry to answer "is any other instance alive?"
+   * (DEP-REQ-6). Read-only.
+   */
+  async listLiveOthers(prefix: string): Promise<LeaderLockDocument[]> {
+    const now = new Date()
+    const docs = await this.col
+      .find({ expiresAt: { $gt: now }, ownerId: { $ne: this.ownerId } })
+      .toArray()
+    return docs.filter((d) => d.name.startsWith(prefix))
+  }
 }
 
 /**
@@ -177,10 +190,14 @@ export const LEADER_LOCKS = {
   // por task/reminder cubre la ventana de fallover; este lock evita el trabajo
   // duplicado (y dispatches duplicados) en multi-instancia en el caso normal.
   Scheduler: "scheduler-tick",
+  // Same rule for the Automate runner (cron / once starters): one instance ticks.
+  Automate: "automate-tick",
   AgentHoursTracker: "agent-hours-tracker",
   BillingResetCron: "billing-reset-cron",
   BillingReconciliation: "billing-reconciliation-daily",
   BillingChargeCron: "billing-charge-cron",
+  // Migrations run on boot of every instance; only one may apply them (INF-5).
+  Migrations: "migrations",
 } as const
 
 export type LeaderLockName = (typeof LEADER_LOCKS)[keyof typeof LEADER_LOCKS]

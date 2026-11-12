@@ -33,6 +33,16 @@ import {
   type StripeInvoiceRef,
 } from './stripe-api.js'
 
+export interface StripePaymentServiceOptions {
+  /**
+   * Enable Stripe Tax (`automatic_tax`) on invoices of customers with a known
+   * country. Requires Stripe Tax activated in the account; if finalization
+   * fails on tax location / registration the user would be dunned, so
+   * BILLING_STRIPE_AUTOMATIC_TAX=false is the kill switch.
+   */
+  automaticTax?: boolean
+}
+
 /** Outcome of a chargeInvoice attempt. */
 export interface ChargeResult {
   status: 'paid' | 'failed'
@@ -64,6 +74,7 @@ export class StripePaymentService {
     private readonly db: Db,
     private readonly stripe: StripeApi | null,
     private readonly publishableKey: string | null = null,
+    private readonly options: StripePaymentServiceOptions = {},
   ) {}
 
   isEnabled(): boolean {
@@ -184,6 +195,10 @@ export class StripePaymentService {
       s.createSetupIntent({
         customer: customer.stripeCustomerId,
         usage: 'off_session',
+        // Only methods invoices.pay collects synchronously off-session. SEPA and
+        // other async methods would leave the invoice "processing" while
+        // chargeInvoice reads it as paid.
+        payment_method_types: ['card', 'link'],
       }),
     )
     return {
@@ -216,6 +231,64 @@ export class StripePaymentService {
     )
     const updated = await col.findOne({ _id: userId })
     return updated as BillingCustomer
+  }
+
+  /**
+   * Finish vaulting after a redirect-based confirmation (3DS / SCA): the
+   * frontend comes back with `setup_intent=<id>` in the URL and nothing else.
+   * Read the intent back, check it belongs to THIS user's customer and
+   * succeeded, then store its payment method as the default — the same effect
+   * `setDefaultPaymentMethod` has on the inline path.
+   */
+  async completeSetupIntent(userId: string, setupIntentId: string): Promise<BillingCustomer> {
+    const customer = await this.createOrSyncCustomer(userId)
+    const si = await this.call((s) => s.retrieveSetupIntent(setupIntentId))
+    if (si.customer && si.customer !== customer.stripeCustomerId) {
+      throw new StripePaymentError({
+        code: 'SETUP_INTENT_FOREIGN',
+        category: 'request',
+        retryable: false,
+        message: 'This payment setup does not belong to your account.',
+      })
+    }
+    if (si.status !== 'succeeded' || !si.payment_method) {
+      throw new StripePaymentError({
+        code: 'SETUP_INTENT_NOT_SUCCEEDED',
+        category: 'card',
+        retryable: true,
+        message: `The card setup did not complete (status: ${si.status}). Please try again.`,
+      })
+    }
+    return this.setDefaultPaymentMethod(userId, si.payment_method)
+  }
+
+  /**
+   * Billing details that drive Stripe Tax and the legal invoice header: the
+   * customer's country (ISO-3166-1 alpha-2) and an optional tax id (VAT / CIF).
+   * Persisted on billing_customers so chargeInvoice enables automatic_tax.
+   */
+  async setBillingDetails(
+    userId: string,
+    details: { country: string; taxId?: string | null; taxIdType?: string | null },
+  ): Promise<BillingCustomer> {
+    const col = getBillingCustomersCollection(this.db)
+    const customer = await this.createOrSyncCustomer(userId)
+    const country = details.country.trim().toUpperCase()
+    await this.call((s) => s.updateCustomer(customer.stripeCustomerId, { address: { country } }))
+    const taxId = details.taxId?.trim() || null
+    const taxIdType = taxId ? (details.taxIdType?.trim() || null) : null
+    if (taxId && taxIdType && (customer.taxId !== taxId || customer.taxIdType !== taxIdType)) {
+      await this.call((s) =>
+        s.createCustomerTaxId(
+          customer.stripeCustomerId,
+          { type: taxIdType, value: taxId },
+          { idempotencyKey: `taxid:${userId}:${taxIdType}:${taxId}` },
+        ),
+      )
+    }
+    const now = new Date()
+    await col.updateOne({ _id: userId }, { $set: { country, taxId, taxIdType, updatedAt: now } })
+    return (await col.findOne({ _id: userId })) as BillingCustomer
   }
 
   /**
@@ -296,8 +369,9 @@ export class StripePaymentService {
               collection_method: 'charge_automatically',
               auto_advance: false,
               default_payment_method: customer.defaultPaymentMethodId ?? undefined,
-              // Stripe Tax needs a customer tax location; only enable when known.
-              automatic_tax: { enabled: Boolean(customer.country) },
+              // Stripe Tax needs a customer tax location AND an activated account;
+              // gated by config (see StripePaymentServiceOptions.automaticTax).
+              automatic_tax: { enabled: Boolean(this.options.automaticTax && customer.country) },
               description: invoice.description,
               metadata: { terosInvoiceId: id },
             },

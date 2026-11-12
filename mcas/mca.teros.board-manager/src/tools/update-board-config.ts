@@ -18,8 +18,10 @@ export const updateBoardConfig: ToolConfig = {
     },
     required: ['projectId', 'config'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const projectId = args?.projectId as string;
     const config = args?.config as Record<string, unknown>;
@@ -34,11 +36,12 @@ export const updateBoardConfig: ToolConfig = {
       wsClient.queryConversations<any>('update_board_config', {
         projectId,
         config,
+        callerAgentId,
       }),
       15_000,
       'update_board_config',
     );
 
-    return { projectId, config: result.config };
+    return { projectId, config: result.config, callerAgentId};
   },
 };

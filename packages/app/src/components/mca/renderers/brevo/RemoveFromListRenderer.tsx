@@ -27,7 +27,7 @@ export function RemoveFromListRenderer({ input, status, output, error, appIcon }
   return (
     <ToolCallCard
       status={status}
-      verb="Remove from list"
+      description="Remove from list"
       iconUri={appIcon}
       animateExpand
       defaultExpanded={status === 'completed'}

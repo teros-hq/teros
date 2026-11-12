@@ -1,564 +1,520 @@
 /**
  * Skills Window Content
  *
- * CRUD UI for workspace-level skills (reusable instruction blocks for agents).
- * Uses the same transport.request pattern as AgentWindowContent for skill API calls.
+ * CRUD UI for workspace-level skills (reusable instruction blocks for agents),
+ * in the OS prototype's language: page head + "New skill" pill, a 3-column
+ * grid of skill Cards (Tile · serif name · load-mode badge · description ·
+ * mono preview · edit/delete), and inline create/edit forms built from the
+ * `ui/ds` Field primitives. Uses the same transport.request pattern as
+ * AgentWindowContent for skill API calls.
  */
 
-import { BookOpen, Plus, Pencil, Trash2, Check, X, ChevronDown, ChevronUp } from '@tamagui/lucide-icons';
-import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, TextInput, TouchableOpacity, View } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
-import { useTranslation } from 'react-i18next';
-import { getTerosClient } from '../../services/terosClientSingleton';
-import { useToast } from '../../components/Toast';
-import { useWorkspaceStore } from '../../store/workspaceStore';
-import { FullscreenLoader } from '../../components/ui';
-import { ContextEditor } from '../../components/ContextEditor';
-import type { SkillsWindowProps } from './definition';
-import { useColors } from '../../components/mca/primitives/useColors';
-import { colors as semanticColors, surface } from '../../components/mca/primitives/colors';
+import { useCallback, useEffect, useState } from "react"
+import { Platform, Pressable, View } from "react-native"
+import { useTranslation } from "react-i18next"
+import { getTerosClient } from "../../services/terosClientSingleton"
+import { useToast } from "../../components/Toast"
+import { useWorkspaceStore } from "../../store/workspaceStore"
+import { FullscreenLoader } from "../../components/ui"
+import type { SkillsWindowProps } from "./definition"
+import { useColors } from "../../components/mca/primitives/useColors"
+import {
+  Badge,
+  Btn,
+  Card,
+  EmptyState,
+  Field,
+  FieldGroup,
+  FieldLabel,
+  Grid,
+  IconBtn,
+  OptionRow,
+  Page,
+  PageHead,
+  T,
+  Tile,
+} from "../../components/ui/ds"
 
 interface Skill {
-  skillId: string;
-  name: string;
-  description?: string;
-  content: string;
-  category?: string;
-  tags?: string[];
-  createdAt: string;
-  updatedAt: string;
+  skillId: string
+  name: string
+  description?: string
+  content: string
+  category?: string
+  tags?: string[]
+  loadMode?: "always" | "on-demand"
+  createdAt: string
+  updatedAt: string
 }
 
 interface SkillsWindowContentProps extends SkillsWindowProps {
-  windowId: string;
+  windowId: string
 }
 
 interface SkillFormState {
-  name: string;
-  description: string;
-  content: string;
+  name: string
+  description: string
+  content: string
+  loadMode: "always" | "on-demand"
 }
 
-const EMPTY_FORM: SkillFormState = { name: '', description: '', content: '' };
+const EMPTY_FORM: SkillFormState = { name: "", description: "", content: "", loadMode: "on-demand" }
 
-export function SkillsWindowContent({ windowId, workspaceId: propWorkspaceId }: SkillsWindowContentProps) {
-  const { t } = useTranslation();
-  const c = useColors();
-  const isDark = c.bgPage === surface.dark.bgPage;
+type Translate = (key: string, opts?: Record<string, unknown>) => string
 
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+/** Create / edit form — one Card with the four fields and the action row. */
+function SkillForm({
+  title,
+  form,
+  setForm,
+  busy,
+  busyLabel,
+  submitLabel,
+  onCancel,
+  onSubmit,
+  autoFocus,
+  t,
+}: {
+  title: string
+  form: SkillFormState
+  setForm: (updater: (f: SkillFormState) => SkillFormState) => void
+  busy: boolean
+  busyLabel: string
+  submitLabel: string
+  onCancel: () => void
+  onSubmit: () => void
+  autoFocus?: boolean
+  t: Translate
+}) {
+  return (
+    <Card pad={20} accent style={{ width: "100%" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 }}>
+        <Tile sm icon="book-open" />
+        <T step="hsm" style={{ flex: 1 }}>
+          {title}
+        </T>
+      </View>
+
+      <FieldGroup>
+        <FieldLabel required>{t("skills.labelName")}</FieldLabel>
+        <Field
+          value={form.name}
+          onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
+          placeholder={t("skills.namePlaceholder")}
+          autoFocus={autoFocus}
+        />
+      </FieldGroup>
+
+      <FieldGroup>
+        <FieldLabel>{t("skills.labelDescription")}</FieldLabel>
+        <Field
+          value={form.description}
+          onChangeText={(v) => setForm((f) => ({ ...f, description: v }))}
+          placeholder={t("skills.descriptionPlaceholder")}
+        />
+      </FieldGroup>
+
+      <FieldGroup>
+        <FieldLabel required>{t("skills.labelContent")}</FieldLabel>
+        <Field
+          area
+          mono
+          minHeight={160}
+          value={form.content}
+          onChangeText={(v) => setForm((f) => ({ ...f, content: v }))}
+          placeholder={t("skills.contentPlaceholder")}
+        />
+      </FieldGroup>
+
+      <FieldGroup>
+        <FieldLabel>{t("skills.labelLoadMode")}</FieldLabel>
+        <View style={{ gap: 2 }}>
+          <OptionRow
+            on={form.loadMode === "always"}
+            title={t("skills.loadModeAlways")}
+            sub={t("skills.loadModeAlwaysHint", {
+              defaultValue: "Injected into every turn of the agents that have it.",
+            })}
+            onPress={() => setForm((f) => ({ ...f, loadMode: "always" }))}
+          />
+          <OptionRow
+            on={form.loadMode === "on-demand"}
+            title={t("skills.loadModeOnDemand")}
+            sub={t("skills.loadModeOnDemandHint", {
+              defaultValue: "Loaded only when the agent asks for it.",
+            })}
+            onPress={() => setForm((f) => ({ ...f, loadMode: "on-demand" }))}
+          />
+        </View>
+      </FieldGroup>
+
+      <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+        <Btn variant="ghost" icon="x" onPress={onCancel} disabled={busy}>
+          {t("common.cancel")}
+        </Btn>
+        <Btn variant="primary" icon="check" onPress={onSubmit} loading={busy}>
+          {busy ? busyLabel : submitLabel}
+        </Btn>
+      </View>
+    </Card>
+  )
+}
+
+export function SkillsWindowContent({
+  windowId,
+  workspaceId: propWorkspaceId,
+}: SkillsWindowContentProps) {
+  const { t } = useTranslation()
+  const c = useColors()
+
+  const [skills, setSkills] = useState<Skill[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   // Create form
-  const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState<SkillFormState>(EMPTY_FORM);
-  const [isCreating, setIsCreating] = useState(false);
+  const [showCreate, setShowCreate] = useState(false)
+  const [createForm, setCreateForm] = useState<SkillFormState>(EMPTY_FORM)
+  const [isCreating, setIsCreating] = useState(false)
 
   // Edit state — one skill at a time
-  const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<SkillFormState>(EMPTY_FORM);
-  const [isSaving, setIsSaving] = useState(false);
+  const [editingSkillId, setEditingSkillId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState<SkillFormState>(EMPTY_FORM)
+  const [isSaving, setIsSaving] = useState(false)
 
   // Delete confirmation
-  const [deletingSkillId, setDeletingSkillId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [deletingSkillId, setDeletingSkillId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Expanded content view
-  const [expandedSkillId, setExpandedSkillId] = useState<string | null>(null);
+  const [expandedSkillId, setExpandedSkillId] = useState<string | null>(null)
 
-  const client = getTerosClient();
-  const toast = useToast();
-  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
-  const workspaceId = propWorkspaceId ?? activeWorkspaceId ?? '';
-
-  // Theme-adaptive input style — shared by all TextInput fields
-  const inputStyle = {
-    backgroundColor: isDark ? 'rgba(39,39,42,0.6)' : c.bgInner,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: c.borderStrong,
-    color: c.text,
-    fontSize: 13,
-    padding: 8,
-  } as const;
-
-  const inputStyleMono = {
-    ...inputStyle,
-    fontSize: 12,
-    fontFamily: '$mono' as const,
-    minHeight: 120,
-    textAlignVertical: 'top' as const,
-  };
+  const client = getTerosClient()
+  const toast = useToast()
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const workspaceId = propWorkspaceId ?? activeWorkspaceId ?? ""
 
   const loadSkills = useCallback(async () => {
-    if (!workspaceId) return;
-    setIsLoading(true);
+    if (!workspaceId) return
+    setIsLoading(true)
     try {
-      const result = await client.skillRequest('skill.list', { workspaceId });
-      setSkills((result as any)?.skills ?? []);
+      const result = await client.skillRequest("skill.list", { workspaceId })
+      setSkills((result as any)?.skills ?? [])
     } catch (err: any) {
-      console.error('[SkillsWindow] Error loading skills:', err);
-      toast.error(t('skills.error'), t('skills.loadError'));
+      console.error("[SkillsWindow] Error loading skills:", err)
+      toast.error(t("skills.error"), t("skills.loadError"))
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  }, [workspaceId, client]);
+  }, [workspaceId, client])
 
   useEffect(() => {
     const tryLoad = async () => {
       if (client.isConnected()) {
-        loadSkills();
+        loadSkills()
       } else {
         const onConnected = () => {
-          client.off('connected', onConnected);
-          loadSkills();
-        };
-        client.on('connected', onConnected);
-        return () => client.off('connected', onConnected);
+          client.off("connected", onConnected)
+          loadSkills()
+        }
+        client.on("connected", onConnected)
+        return () => client.off("connected", onConnected)
       }
-    };
-    tryLoad();
-  }, [loadSkills]);
+    }
+    tryLoad()
+  }, [loadSkills])
 
   // ── CREATE ──────────────────────────────────────────────────────────────────
   const handleCreate = async () => {
     if (!createForm.name.trim()) {
-      toast.error(t('skills.error'), t('skills.nameRequired'));
-      return;
+      toast.error(t("skills.error"), t("skills.nameRequired"))
+      return
     }
     if (!createForm.content.trim()) {
-      toast.error(t('skills.error'), t('skills.contentRequired'));
-      return;
+      toast.error(t("skills.error"), t("skills.contentRequired"))
+      return
     }
-    setIsCreating(true);
+    setIsCreating(true)
     try {
-      const result = await client.skillRequest('skill.create', {
+      const result = await client.skillRequest("skill.create", {
         workspaceId,
         name: createForm.name.trim(),
         description: createForm.description.trim() || undefined,
         content: createForm.content.trim(),
-      });
-      const newSkill = (result as any)?.skill as Skill;
-      setSkills((prev) => [...prev, newSkill]);
-      setCreateForm(EMPTY_FORM);
-      setShowCreate(false);
-      toast.success(t('skills.created'), t('skills.createdMessage', { name: newSkill.name }));
+        loadMode: createForm.loadMode,
+      })
+      const newSkill = (result as any)?.skill as Skill
+      setSkills((prev) => [...prev, newSkill])
+      setCreateForm(EMPTY_FORM)
+      setShowCreate(false)
+      toast.success(t("skills.created"), t("skills.createdMessage", { name: newSkill.name }))
     } catch (err: any) {
-      console.error('[SkillsWindow] Error creating skill:', err);
-      toast.error(t('skills.error'), t('skills.createError'));
+      console.error("[SkillsWindow] Error creating skill:", err)
+      toast.error(t("skills.error"), t("skills.createError"))
     } finally {
-      setIsCreating(false);
+      setIsCreating(false)
     }
-  };
+  }
 
   // ── EDIT ────────────────────────────────────────────────────────────────────
   const startEdit = (skill: Skill) => {
-    setEditingSkillId(skill.skillId);
+    setEditingSkillId(skill.skillId)
     setEditForm({
       name: skill.name,
-      description: skill.description ?? '',
+      description: skill.description ?? "",
       content: skill.content,
-    });
-    setDeletingSkillId(null);
-  };
+      loadMode: skill.loadMode ?? "on-demand",
+    })
+    setDeletingSkillId(null)
+  }
 
   const cancelEdit = () => {
-    setEditingSkillId(null);
-    setEditForm(EMPTY_FORM);
-  };
+    setEditingSkillId(null)
+    setEditForm(EMPTY_FORM)
+  }
 
   const handleSave = async (skillId: string) => {
     if (!editForm.name.trim()) {
-      toast.error(t('skills.error'), t('skills.nameRequired'));
-      return;
+      toast.error(t("skills.error"), t("skills.nameRequired"))
+      return
     }
     if (!editForm.content.trim()) {
-      toast.error(t('skills.error'), t('skills.contentRequired'));
-      return;
+      toast.error(t("skills.error"), t("skills.contentRequired"))
+      return
     }
-    setIsSaving(true);
+    setIsSaving(true)
     try {
-      const result = await client.skillRequest('skill.update', {
+      const result = await client.skillRequest("skill.update", {
         skillId,
         name: editForm.name.trim(),
         description: editForm.description.trim() || undefined,
         content: editForm.content.trim(),
-      });
-      const updated = (result as any)?.skill as Skill;
-      setSkills((prev) => prev.map((s) => (s.skillId === skillId ? updated : s)));
-      setEditingSkillId(null);
-      toast.success(t('skills.saved'), t('skills.updatedMessage', { name: updated.name }));
+        loadMode: editForm.loadMode,
+      })
+      const updated = (result as any)?.skill as Skill
+      setSkills((prev) => prev.map((s) => (s.skillId === skillId ? updated : s)))
+      setEditingSkillId(null)
+      toast.success(t("skills.saved"), t("skills.updatedMessage", { name: updated.name }))
     } catch (err: any) {
-      console.error('[SkillsWindow] Error updating skill:', err);
-      toast.error(t('skills.error'), t('skills.saveError'));
+      console.error("[SkillsWindow] Error updating skill:", err)
+      toast.error(t("skills.error"), t("skills.saveError"))
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
+  }
 
   // ── DELETE ───────────────────────────────────────────────────────────────────
   const handleDelete = async (skillId: string) => {
-    setIsDeleting(true);
+    setIsDeleting(true)
     try {
-      await client.skillRequest('skill.delete', { skillId });
-      setSkills((prev) => prev.filter((s) => s.skillId !== skillId));
-      setDeletingSkillId(null);
-      toast.success(t('skills.deleted'), t('skills.deletedMessage'));
+      await client.skillRequest("skill.delete", { skillId })
+      setSkills((prev) => prev.filter((s) => s.skillId !== skillId))
+      setDeletingSkillId(null)
+      toast.success(t("skills.deleted"), t("skills.deletedMessage"))
     } catch (err: any) {
-      console.error('[SkillsWindow] Error deleting skill:', err);
-      toast.error(t('skills.error'), t('skills.deleteError'));
+      console.error("[SkillsWindow] Error deleting skill:", err)
+      toast.error(t("skills.error"), t("skills.deleteError"))
     } finally {
-      setIsDeleting(false);
+      setIsDeleting(false)
     }
-  };
+  }
+
+  const openCreate = () => {
+    setShowCreate(true)
+    setEditingSkillId(null)
+    setDeletingSkillId(null)
+  }
 
   // ── RENDER ───────────────────────────────────────────────────────────────────
-  const renderSkillRow = (skill: Skill) => {
-    const isEditing = editingSkillId === skill.skillId;
-    const isConfirmingDelete = deletingSkillId === skill.skillId;
-    const isExpanded = expandedSkillId === skill.skillId;
+  const renderSkillCard = (skill: Skill) => {
+    const isEditing = editingSkillId === skill.skillId
+    const isConfirmingDelete = deletingSkillId === skill.skillId
+    const isExpanded = expandedSkillId === skill.skillId
 
     if (isEditing) {
       return (
-        <YStack
+        <SkillForm
           key={skill.skillId}
-          backgroundColor={c.bgCard}
-          borderRadius={8}
-          borderWidth={1}
-          borderColor={semanticColors.indigo}
-          padding="$3"
-          gap="$2"
-        >
-          {/* Name */}
-          <Text fontSize={11} color={c.text3} fontWeight="500">{t('skills.labelName')}</Text>
-          <TextInput
-            value={editForm.name}
-            onChangeText={(v) => setEditForm((f) => ({ ...f, name: v }))}
-            placeholder={t('skills.namePlaceholder')}
-            placeholderTextColor={c.text3}
-            style={inputStyle}
-          />
-
-          {/* Description */}
-          <Text fontSize={11} color={c.text3} fontWeight="500">{t('skills.labelDescription')}</Text>
-          <TextInput
-            value={editForm.description}
-            onChangeText={(v) => setEditForm((f) => ({ ...f, description: v }))}
-            placeholder={t('skills.descriptionPlaceholder')}
-            placeholderTextColor={c.text3}
-            style={inputStyle}
-          />
-
-          {/* Content */}
-          <Text fontSize={11} color={c.text3} fontWeight="500">{t('skills.labelContent')}</Text>
-          <TextInput
-            value={editForm.content}
-            onChangeText={(v) => setEditForm((f) => ({ ...f, content: v }))}
-            placeholder={t('skills.contentPlaceholder')}
-            placeholderTextColor={c.text3}
-            multiline
-            numberOfLines={6}
-            style={inputStyleMono}
-          />
-
-          {/* Actions */}
-          <XStack gap="$2" justifyContent="flex-end" marginTop="$1">
-            <TouchableOpacity
-              onPress={cancelEdit}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 6,
-                backgroundColor: isDark ? 'rgba(39,39,42,0.6)' : c.bgInner,
-              }}
-            >
-              <X size={13} color={c.text2} />
-              <Text fontSize={12} color={c.text2}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => handleSave(skill.skillId)}
-              disabled={isSaving}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 6,
-                backgroundColor: semanticColors.indigo,
-                opacity: isSaving ? 0.6 : 1,
-              }}
-            >
-              <Check size={13} color="#fff" />
-              <Text fontSize={12} color="#fff">{isSaving ? t('common.saving') : t('common.save')}</Text>
-            </TouchableOpacity>
-          </XStack>
-        </YStack>
-      );
+          title={t("common.edit")}
+          form={editForm}
+          setForm={setEditForm}
+          busy={isSaving}
+          busyLabel={t("common.saving")}
+          submitLabel={t("common.save")}
+          onCancel={cancelEdit}
+          onSubmit={() => handleSave(skill.skillId)}
+          t={t}
+        />
+      )
     }
 
     return (
-      <YStack
-        key={skill.skillId}
-        backgroundColor={c.bgCard}
-        borderRadius={8}
-        borderWidth={1}
-        borderColor={isConfirmingDelete ? semanticColors.red : c.border}
-        padding="$3"
-        gap="$2"
-      >
-        {/* Header row */}
-        <XStack alignItems="center" justifyContent="space-between">
-          <XStack alignItems="center" gap="$2" flex={1}>
-            <BookOpen size={14} color={semanticColors.indigo} />
-            <Text fontSize={14} fontWeight="600" color={c.text} flex={1} numberOfLines={1}>
-              {skill.name}
-            </Text>
-          </XStack>
-
-          {/* Action buttons */}
-          {!isConfirmingDelete && (
-            <XStack gap="$2" alignItems="center">
-              <TouchableOpacity
-                onPress={() => setExpandedSkillId(isExpanded ? null : skill.skillId)}
-                style={{ padding: 4 }}
-              >
-                {isExpanded
-                  ? <ChevronUp size={14} color={c.text3} />
-                  : <ChevronDown size={14} color={c.text3} />}
-              </TouchableOpacity>
-              <TouchableOpacity
+      <Card key={skill.skillId} pad={20} style={{ width: "100%" }}>
+        {/* Header row: tile · name + load-mode badge · actions */}
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 14 }}>
+          <Tile icon="book-open" />
+          <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
+            <T step="hsm">{skill.name}</T>
+            {skill.loadMode ? (
+              <Badge mono tone={skill.loadMode === "always" ? "m" : "i"}>
+                {skill.loadMode === "always"
+                  ? t("skills.loadModeAlways")
+                  : t("skills.loadModeOnDemand")}
+              </Badge>
+            ) : null}
+          </View>
+          {!isConfirmingDelete ? (
+            <View style={{ flexDirection: "row", gap: 2, marginTop: -4, marginRight: -6 }}>
+              <IconBtn
+                icon="pencil-simple"
+                plain
+                sm
+                title={t("common.edit")}
                 onPress={() => startEdit(skill)}
-                style={{
-                  padding: 4,
-                  borderRadius: 4,
-                  backgroundColor: isDark ? 'rgba(39,39,42,0.6)' : c.bgInner,
+              />
+              <IconBtn
+                icon="trash"
+                plain
+                sm
+                danger
+                title={t("common.delete")}
+                onPress={() => {
+                  setDeletingSkillId(skill.skillId)
+                  setEditingSkillId(null)
                 }}
-              >
-                <Pencil size={13} color={c.text2} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => { setDeletingSkillId(skill.skillId); setEditingSkillId(null); }}
-                style={{
-                  padding: 4,
-                  borderRadius: 4,
-                  backgroundColor: isDark ? 'rgba(39,39,42,0.6)' : c.bgInner,
-                }}
-              >
-                <Trash2 size={13} color={semanticColors.red} />
-              </TouchableOpacity>
-            </XStack>
-          )}
-        </XStack>
+              />
+            </View>
+          ) : null}
+        </View>
 
-        {/* Description */}
-        {skill.description && (
-          <Text fontSize={12} color={c.text3} numberOfLines={isExpanded ? undefined : 2}>
-            {skill.description}
-          </Text>
-        )}
-
-        {/* Expanded content */}
-        {isExpanded && (
-          <YStack
-            backgroundColor={c.bgInner}
-            borderRadius={6}
-            padding="$2"
-            borderWidth={1}
-            borderColor={c.border}
+        {skill.description ? (
+          <T
+            step="sm"
+            tone="text2"
+            numberOfLines={isExpanded ? undefined : 2}
+            style={{ marginTop: 10 }}
           >
-            <Text fontSize={11} color={c.text3} fontWeight="500" marginBottom="$1">{t('skills.contentLabel')}</Text>
-            <Text fontSize={12} color={c.text2} fontFamily="$mono" style={{ lineHeight: 18 }}>
-              {skill.content}
-            </Text>
-          </YStack>
-        )}
+            {skill.description}
+          </T>
+        ) : null}
 
-        {/* Delete confirmation */}
-        {isConfirmingDelete && (
-          <YStack gap="$2" marginTop="$1">
-            <Text fontSize={12} color={c.badges.err.text}>
-              {t('skills.deleteConfirm', { name: skill.name })}
-            </Text>
-            <XStack gap="$2" justifyContent="flex-end">
-              <TouchableOpacity
+        {/* Mono preview of the instructions — press to expand / collapse */}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setExpandedSkillId(isExpanded ? null : skill.skillId)}
+          style={[
+            { marginTop: 12, padding: 12, borderRadius: 10, backgroundColor: c.wash },
+            Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null,
+          ]}
+        >
+          <T
+            step="code"
+            tone={isExpanded ? "text2" : "text3"}
+            numberOfLines={isExpanded ? undefined : 3}
+            style={{ lineHeight: 17 }}
+          >
+            {skill.content}
+          </T>
+        </Pressable>
+        <T step="12" tone="text3" style={{ marginTop: 12 }}>
+          {t("skills.assignHint", { defaultValue: "Assigned in each agent’s editor." })}
+        </T>
+
+        {isConfirmingDelete ? (
+          <View
+            style={{
+              marginTop: 14,
+              padding: 12,
+              borderRadius: 10,
+              backgroundColor: c.tint.r.bg,
+              borderWidth: 1,
+              borderColor: c.tint.r.bd,
+              gap: 10,
+            }}
+          >
+            <T step="12" color={c.tint.r.tx}>
+              {t("skills.deleteConfirm", { name: skill.name })}
+            </T>
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 6 }}>
+              <Btn
+                variant="ghost"
+                size="sm"
                 onPress={() => setDeletingSkillId(null)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 6,
-                  backgroundColor: isDark ? 'rgba(39,39,42,0.6)' : c.bgInner,
-                }}
-              >
-                <X size={13} color={c.text2} />
-                <Text fontSize={12} color={c.text2}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleDelete(skill.skillId)}
                 disabled={isDeleting}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 6,
-                  backgroundColor: semanticColors.red,
-                  opacity: isDeleting ? 0.6 : 1,
-                }}
               >
-                <Trash2 size={13} color="#fff" />
-                <Text fontSize={12} color="#fff">{isDeleting ? t('skills.deleting') : t('common.delete')}</Text>
-              </TouchableOpacity>
-            </XStack>
-          </YStack>
-        )}
-      </YStack>
-    );
-  };
+                {t("common.cancel")}
+              </Btn>
+              <Btn
+                variant="danger"
+                size="sm"
+                icon="trash"
+                onPress={() => handleDelete(skill.skillId)}
+                loading={isDeleting}
+              >
+                {isDeleting ? t("skills.deleting") : t("common.delete")}
+              </Btn>
+            </View>
+          </View>
+        ) : null}
+      </Card>
+    )
+  }
+
+  if (isLoading) {
+    return <FullscreenLoader variant="default" label={t("skills.loadingSkills")} />
+  }
 
   return (
-    <YStack flex={1} backgroundColor={c.bgPage}>
-      {/* Header */}
-      <XStack
-        paddingHorizontal="$3"
-        paddingVertical="$2"
-        borderBottomWidth={1}
-        borderBottomColor={isDark ? 'rgba(39,39,42,0.6)' : c.bgInner}
-        justifyContent="space-between"
-        alignItems="center"
-      >
-        <Text fontSize={16} fontWeight="600" color={c.text}>
-          {t('skills.title')}
-        </Text>
-        <TouchableOpacity
-          onPress={() => { setShowCreate(true); setEditingSkillId(null); setDeletingSkillId(null); }}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            paddingHorizontal: 12,
-            paddingVertical: 6,
-            borderRadius: 6,
-            backgroundColor: semanticColors.indigo,
-          }}
-        >
-          <Plus size={13} color="#fff" />
-          <Text fontSize={12} color="#fff" fontWeight="500">{t('skills.newSkill')}</Text>
-        </TouchableOpacity>
-      </XStack>
+    <Page>
+      <PageHead
+        eyebrow={t("skills.title")}
+        title={t("skills.headline", { defaultValue: "What your agents know how to do." })}
+        accent={t("skills.headlineAccent", { defaultValue: "know how to do." })}
+        lead={t("skills.lead", {
+          defaultValue:
+            "Reusable instructions. Write them once and assign them to the agents that need them.",
+        })}
+        actions={
+          <Btn variant="primary" icon="plus" onPress={openCreate}>
+            {t("skills.newSkill")}
+          </Btn>
+        }
+      />
 
-      {isLoading ? (
-        <FullscreenLoader variant="default" label={t('skills.loadingSkills')} />
+      {showCreate ? (
+        <View style={{ marginBottom: 20 }}>
+          <SkillForm
+            title={t("skills.newSkill")}
+            form={createForm}
+            setForm={setCreateForm}
+            busy={isCreating}
+            busyLabel={t("skills.creating")}
+            submitLabel={t("common.create")}
+            onCancel={() => {
+              setShowCreate(false)
+              setCreateForm(EMPTY_FORM)
+            }}
+            onSubmit={handleCreate}
+            autoFocus
+            t={t}
+          />
+        </View>
+      ) : null}
+
+      {skills.length === 0 && !showCreate ? (
+        <EmptyState
+          icon="books"
+          title={t("skills.noSkills")}
+          text={t("skills.noSkillsHint")}
+          action={
+            <Btn variant="primary" icon="plus" onPress={openCreate}>
+              {t("skills.newSkill")}
+            </Btn>
+          }
+        />
       ) : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 24, gap: 8 }}>
-          {/* Create form */}
-          {showCreate && (
-            <YStack
-              backgroundColor={c.bgCard}
-              borderRadius={8}
-              borderWidth={1}
-              borderColor={semanticColors.indigo}
-              padding="$3"
-              gap="$2"
-              marginBottom={8}
-            >
-              <Text fontSize={13} fontWeight="600" color={semanticColors.indigo} marginBottom="$1">
-                {t('skills.newSkill')}
-              </Text>
-
-              <Text fontSize={11} color={c.text3} fontWeight="500">{t('skills.labelName')}</Text>
-              <TextInput
-                value={createForm.name}
-                onChangeText={(v) => setCreateForm((f) => ({ ...f, name: v }))}
-                placeholder={t('skills.namePlaceholder')}
-                placeholderTextColor={c.text3}
-                autoFocus
-                style={inputStyle}
-              />
-
-              <Text fontSize={11} color={c.text3} fontWeight="500">{t('skills.labelDescription')}</Text>
-              <TextInput
-                value={createForm.description}
-                onChangeText={(v) => setCreateForm((f) => ({ ...f, description: v }))}
-                placeholder={t('skills.descriptionPlaceholder')}
-                placeholderTextColor={c.text3}
-                style={inputStyle}
-              />
-
-              <Text fontSize={11} color={c.text3} fontWeight="500">{t('skills.labelContent')}</Text>
-              <TextInput
-                value={createForm.content}
-                onChangeText={(v) => setCreateForm((f) => ({ ...f, content: v }))}
-                placeholder={t('skills.contentPlaceholder')}
-                placeholderTextColor={c.text3}
-                multiline
-                numberOfLines={6}
-                style={inputStyleMono}
-              />
-
-              <XStack gap="$2" justifyContent="flex-end" marginTop="$1">
-                <TouchableOpacity
-                  onPress={() => { setShowCreate(false); setCreateForm(EMPTY_FORM); }}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 4,
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 6,
-                    backgroundColor: isDark ? 'rgba(39,39,42,0.6)' : c.bgInner,
-                  }}
-                >
-                  <X size={13} color={c.text2} />
-                  <Text fontSize={12} color={c.text2}>{t('common.cancel')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleCreate}
-                  disabled={isCreating}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 4,
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 6,
-                    backgroundColor: semanticColors.indigo,
-                    opacity: isCreating ? 0.6 : 1,
-                  }}
-                >
-                  <Check size={13} color="#fff" />
-                  <Text fontSize={12} color="#fff">{isCreating ? t('skills.creating') : t('common.create')}</Text>
-                </TouchableOpacity>
-              </XStack>
-            </YStack>
-          )}
-
-          {/* Skills list */}
-          {skills.length === 0 && !showCreate ? (
-            <YStack alignItems="center" padding="$8">
-              <BookOpen size={40} color={c.border} />
-              <Text color={c.text3} marginTop="$3" textAlign="center" fontSize={13}>
-                {t('skills.noSkills')}
-              </Text>
-              <Text color={c.text3} marginTop="$1" textAlign="center" fontSize={12} opacity={0.7}>
-                {t('skills.noSkillsHint')}
-              </Text>
-            </YStack>
-          ) : (
-            <YStack gap={8}>
-              {skills.map(renderSkillRow)}
-            </YStack>
-          )}
-        </ScrollView>
+        <Grid cols={3} min={280}>
+          {skills.map(renderSkillCard)}
+        </Grid>
       )}
-    </YStack>
-  );
+    </Page>
+  )
 }

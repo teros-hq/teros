@@ -69,6 +69,7 @@ export function createGetCatalogMcaHandler(mcaService: McaService, db: Db) {
         changelog: mca.changelog ?? [],
         keywords: mca.keywords ?? [],
         verified: mca.verified ?? false,
+        dependencies: mca.dependencies ?? [],
         tools: mca.tools ?? [],
         toolsDetailed: mca.toolsDetailed ?? [],
         accentColors: mca.accentColors ?? [],

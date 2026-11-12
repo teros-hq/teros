@@ -2,10 +2,14 @@
  * Tests for the projection index specs the shadow rebuild recreates (A1.3 / TER-675).
  *
  * Structural invariants (lint-as-test): every rebuildable projection collection
- * MUST keep its unique key and its TTL, or a shadow rebuild silently breaks
- * idempotency / never expires docs. Dropping one from the specs fails the build.
+ * MUST keep its unique key, or a shadow rebuild silently breaks idempotency.
+ * Dropping one from the specs fails the build.
  * The `ensureProjectionIndexes` test asserts the EXACT createIndex payload so a
  * mutated key/option is caught.
+ *
+ * TTL invariants were removed (2026-09-23): evidence collections never expire
+ * per product decision. The TTL specs were removed from the index specs and
+ * the corresponding assertions were removed from these tests.
  */
 
 import { describe, expect, it } from "bun:test"
@@ -18,22 +22,22 @@ import {
   TOOL_EXECUTIONS_INDEX_SPECS,
 } from "./agent-usage-projection-index-specs.js"
 
-describe("critical unique + TTL invariants per collection", () => {
+describe("critical unique invariants per collection", () => {
   const cases = [
-    { specs: SESSIONS_INDEX_SPECS, unique: "sessionUsageId_unique", ttlKey: "createdAt" },
-    { specs: TOOL_EXECUTIONS_INDEX_SPECS, unique: "toolExecutionId_unique", ttlKey: "createdAt" },
-    { specs: EVENT_APPLICATIONS_INDEX_SPECS, unique: "eventId_unique", ttlKey: "projectedAt" },
+    { specs: SESSIONS_INDEX_SPECS, unique: "sessionUsageId_unique" },
+    { specs: TOOL_EXECUTIONS_INDEX_SPECS, unique: "toolExecutionId_unique" },
+    { specs: EVENT_APPLICATIONS_INDEX_SPECS, unique: "eventId_unique" },
   ]
 
   for (const c of cases) {
-    it(`keeps ${c.unique} (unique) and a TTL on ${c.ttlKey}`, () => {
+    it(`keeps ${c.unique} (unique)`, () => {
       const unique = c.specs.find((s) => s.options.name === c.unique)
       expect(unique?.options.unique).toBe(true)
+    })
 
+    it(`does NOT include a TTL index in ${c.unique} collection specs`, () => {
       const ttl = c.specs.find((s) => s.options.name === "ttl_180d")
-      expect(ttl).toBeDefined()
-      expect(typeof ttl?.options.expireAfterSeconds).toBe("number")
-      expect(ttl?.key).toEqual({ [c.ttlKey]: 1 })
+      expect(ttl).toBeUndefined()
     })
   }
 
@@ -76,5 +80,11 @@ describe("ensureProjectionIndexes applies every spec via createIndex", () => {
     expect(sessionsUnique?.collection).toBe("agent_usage_sessions")
     expect(sessionsUnique?.key).toEqual({ sessionUsageId: 1 })
     expect(sessionsUnique?.options).toEqual({ unique: true, name: "sessionUsageId_unique" })
+
+    // No TTL index should be created by ensureProjectionIndexes.
+    const ttlCalls = calls.filter(
+      (c) => (c.options as { expireAfterSeconds?: number }).expireAfterSeconds !== undefined,
+    )
+    expect(ttlCalls).toHaveLength(0)
   })
 })

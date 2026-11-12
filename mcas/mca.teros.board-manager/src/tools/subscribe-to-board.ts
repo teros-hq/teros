@@ -5,7 +5,8 @@ import { assertBackendConnected, resolveFields, withTimeout } from './utils';
 
 export const subscribeToBoard: ToolConfig = {
   description:
-    'Subscribe the current conversation to real-time board events. Events (task moves, status changes, progress notes, dependency changes, autoplay toggles) are delivered to the conversation as they happen. Use filter to narrow events. Returns: { subscription: { subscriptionId, boardId, filter, createdAt } }. Use unsubscribe-from-board to stop.',
+    'DEPRECATED (v1.4.4): use the reserved tool `board_manager__subscribe` instead — one event per subscription with declarative filters (e.g. event "task_moved", filter { projectId, taskId, toColumn }); the subscription lives in the backend and survives respawns. This tool still works (kept for existing conversations) but will be removed. ' +
+    'Subscribe the current conversation to real-time board events. Events (task moves, archives, assignments, progress notes, dependency changes, autoplay toggles) are delivered to the conversation as they happen. Use filter to narrow events. Returns: { subscription: { subscriptionId, boardId, filter, createdAt } }. Use unsubscribe-from-board to stop.',
   annotations: { readOnlyHint: false, version: '1.0.0', stability: 'experimental' },
   parameters: {
     type: 'object',
@@ -34,13 +35,18 @@ export const subscribeToBoard: ToolConfig = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Valid: board.task_moved, board.task_status_changed, board.task_assigned, board.task_created, board.task_updated, board.task_progress_note, board.agent_play_changed, board.agent_slots_changed, board.dependency_added, board.dependency_removed',
+              'Valid: board.task_moved, board.task_archived, board.task_assigned, board.task_created, board.task_updated, board.task_progress_note, board.agent_play_changed, board.agent_slots_changed, board.dependency_added, board.dependency_removed',
+          },
+          taskIds: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Only events for these specific tasks (task IDs)',
           },
           wakeUpOn: {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Event types that wake the agent (trigger a response turn). Default: board.task_progress_note',
+              'Event types that wake the agent (trigger a response turn). Default: ALL event types wake the agent (only a wakeUpOn list narrows it). Note: an agent is never woken by an event it caused itself (self-wake guard).',
           },
         },
       },

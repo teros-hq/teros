@@ -19,6 +19,7 @@ export const TASK_FIELDS = [
   'position',
   'title',
   'description',
+  'instructions',
   'priority',
   'archived',
   'archiveNote',
@@ -41,6 +42,19 @@ export const TASK_FIELDS = [
   'createdBy',
   'createdAt',
   'updatedAt',
+
+  // Workflow extension fields (§WF2 — workflow task integration)
+  // Present when a task is created by the workflow engine. The runner
+  // agent reads `input` (artifact: schemaId + schema + data) to know what
+  // to process, and the engine reads `output.data` after completion.
+  // pickFields() only includes keys that exist in the object, so
+  // non-workflow tasks are unaffected.
+  'workflowInputGate',
+  'workflowOutputGate',
+  'input',
+  'output',
+  'workflowExecutionId',
+  'workflowNodeId',
 ] as const;
 
 export const TASK_WITH_PROGRESS_FIELDS = [...TASK_FIELDS, 'progressNotes'] as const;

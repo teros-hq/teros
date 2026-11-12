@@ -15,6 +15,7 @@
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
+import { assertAppVisible, assertAppManageable } from './app-visibility'
 import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
 import { buildAvatarUrl } from '../../../lib/avatar-url'
@@ -40,6 +41,7 @@ export function createListAgentAccessHandler(
     if (!app) {
       throw new HandlerError('APP_NOT_FOUND', `App ${appId} not found`)
     }
+    assertAppVisible(mcaService, app, ctx.userId)
 
     // Apps are always workspace-scoped (App.ownerId === workspaceId).
     const workspaceId = app.ownerType === 'workspace' ? app.ownerId : undefined

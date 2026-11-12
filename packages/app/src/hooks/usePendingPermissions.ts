@@ -8,12 +8,20 @@
  *
  * Extracted from PendingApprovalsWindowContent.tsx to avoid duplicating
  * the event-listener logic in the navbar dropdown.
+ *
+ * Each entry carries what the tool's own card needs (PERMW-REQ-1/2): the sheet
+ * and the window build a `ToolCall` from it and render it with `ToolCallBlock`,
+ * never fetching the channel's messages (PERMW-NFR-1). A decision taken on any
+ * surface reaches the others through the existing events: the request leaves
+ * the list when its tool card's status moves out of `pending_permission`
+ * (`tool_status_update` / `tool_call_complete` chunks).
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { getTerosClient } from '../services/terosClientSingleton';
 import { useChatStore } from '../store/chatStore';
 
+/** @spec PERMW-REQ-2 */
 export interface PendingPermission {
   requestId: string;
   channelId: string;
@@ -23,12 +31,17 @@ export interface PendingPermission {
   agentAvatarUrl?: string;
   toolName: string;
   appId: string;
+  /** Catalog MCA id — picks the tool's own renderer and its icon. */
+  mcaId?: string;
+  /** Manifest irreversibility flag — badge on the card, excluded from "Allow all". */
+  irreversible?: boolean;
   input: Record<string, any>;
   messageId?: string;
   toolCallId?: string;
   timestamp: number;
 }
 
+/** @spec PERMW-REQ-1 @spec PERMW-NFR-1 */
 export function usePendingPermissions() {
   const [pendingPermissions, setPendingPermissions] = useState<PendingPermission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -66,6 +79,8 @@ export function usePendingPermissions() {
         requestId,
         toolName,
         appId,
+        mcaId,
+        irreversible,
         input,
         messageId,
         toolCallId,
@@ -90,6 +105,8 @@ export function usePendingPermissions() {
             agentAvatarUrl: channel?.agentAvatarUrl || undefined,
             toolName,
             appId,
+            ...(mcaId ? { mcaId } : {}),
+            ...(irreversible ? { irreversible: true } : {}),
             input,
             messageId,
             toolCallId,
@@ -111,14 +128,33 @@ export function usePendingPermissions() {
       }
     };
 
+    // PERMW-NFR-1: a decision taken in the chat (or "Always allow" resolving
+    // every request of a tool) settles the tool card through the chunks the
+    // chat already applies; a card leaving `pending_permission` leaves the list.
+    const handleMessageChunk = (data: any) => {
+      const { chunkType, channelId, toolCallId, toolStatus } = data ?? {};
+      if (!toolCallId) return;
+      const settled =
+        chunkType === 'tool_call_complete' ||
+        (chunkType === 'tool_status_update' && toolStatus !== 'pending_permission');
+      if (!settled) return;
+      setPendingPermissions((prev) =>
+        prev.some((p) => p.toolCallId === toolCallId && p.channelId === channelId)
+          ? prev.filter((p) => !(p.toolCallId === toolCallId && p.channelId === channelId))
+          : prev,
+      );
+    };
+
     client.on('tool_permission_request', handlePermissionRequest);
     client.on('permission_response', handlePermissionResponse);
     client.on('channel_status', handleChannelStatus);
+    client.on('message_chunk', handleMessageChunk);
 
     return () => {
       client.off('tool_permission_request', handlePermissionRequest);
       client.off('permission_response', handlePermissionResponse);
       client.off('channel_status', handleChannelStatus);
+      client.off('message_chunk', handleMessageChunk);
     };
   }, [connected, client]);
 
@@ -149,15 +185,6 @@ export function usePendingPermissions() {
     setPendingPermissions((prev) => prev.filter((p) => p.requestId !== requestId));
   }, [client]);
 
-  const handleApproveAll = useCallback((channelId: string) => {
-    setPendingPermissions((prev) => {
-      const channelPerms = prev.filter((p) => p.channelId === channelId);
-      for (const perm of channelPerms) {
-        client.respondToToolPermission(perm.requestId, true);
-      }
-      return prev.filter((p) => p.channelId !== channelId);
-    });
-  }, [client]);
 
   // ── Grouped by channel (derived) ───────────────────────────────────────
   const groupedPermissions = pendingPermissions.reduce(
@@ -195,6 +222,5 @@ export function usePendingPermissions() {
     connected,
     handleApprove,
     handleDeny,
-    handleApproveAll,
   };
 }

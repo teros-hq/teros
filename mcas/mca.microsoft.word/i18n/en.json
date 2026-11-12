@@ -1,0 +1,140 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "read-document": {
+      "name": "read-document",
+      "description": "Read a Word document as markdown (default) or HTML. Returns prose, not structure — use list-paragraphs when you need indices to edit.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "format": "Output format. Defaults to markdown."
+      }
+    },
+    "get-document-info": {
+      "name": "get-document-info",
+      "description": "Get a Word document's OneDrive metadata, its Word document properties, and its paragraph and word counts.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names, not pre-encoded ones."
+      }
+    },
+    "list-paragraphs": {
+      "name": "list-paragraphs",
+      "description": "List a Word document's paragraphs with the stable indices that append-paragraphs, delete-paragraph, and the other edit tools target. Call this before editing to find the paragraph you mean. Text inside tables is not listed and cannot be targeted by index.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names, not pre-encoded ones."
+      }
+    },
+    "get-comments": {
+      "name": "get-comments",
+      "description": "Read the review comments in a Word document, with their authors and dates. Returns an empty list when the document has none.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names."
+      }
+    },
+    "create-document": {
+      "name": "create-document",
+      "description": "Create a new Word document from structured paragraphs. Fails if a file already exists at the path unless overwrite is set — an existing document is not recoverable from here except through OneDrive version history.",
+      "params": {
+        "path": "Destination path relative to the drive root, ending in .docx. Pass literal names, not pre-encoded ones.",
+        "paragraphs": "The document body, in order. Each entry is { text, style?, bold?, italic? }; style may be Heading1, Heading2, or Heading3.",
+        "title": "Optional document title property.",
+        "creator": "Optional document author property.",
+        "overwrite": "Replace an existing file at this path. Defaults to false, which fails instead."
+      }
+    },
+    "replace-text": {
+      "name": "replace-text",
+      "description": "Replace text in a Word document, matching text as the reader sees it even when Word has split it across formatting runs. Text inside tables is not searched or replaced. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "search": "Exact text to find. Not a regular expression.",
+        "replacement": "Text to put in its place. May be empty to delete.",
+        "paragraphIndex": "Optional paragraph index from list-paragraphs. Omit to replace throughout the document."
+      }
+    },
+    "append-paragraphs": {
+      "name": "append-paragraphs",
+      "description": "Add paragraphs to the end of a Word document, leaving everything already there untouched. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names.",
+        "paragraphs": "Paragraphs to append, in order. Each is { text, style? }."
+      }
+    },
+    "delete-paragraph": {
+      "name": "delete-paragraph",
+      "description": "Delete one paragraph from a Word document by its index from list-paragraphs. Indices shift after a delete, so re-list before deleting again. Cannot delete table content. Recoverable only through OneDrive version history.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names.",
+        "paragraphIndex": "Zero-based paragraph index, as reported by list-paragraphs."
+      }
+    },
+    "insert-table": {
+      "name": "insert-table",
+      "description": "Append a table to a Word document. Rows are plain strings; the first can be styled as a header. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names.",
+        "rows": "Table contents as an array of rows, each an array of cell strings. Every row must have the same number of cells.",
+        "headerRow": "Render the first row in bold as a header. Defaults to false."
+      }
+    },
+    "insert-page-break": {
+      "name": "insert-page-break",
+      "description": "Append a page break to a Word document, so subsequent content starts on a new page. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names."
+      }
+    },
+    "insert-image": {
+      "name": "insert-image",
+      "description": "Embed a PNG or JPEG image at the end of a Word document. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names.",
+        "imageBase64": "The image bytes, base64-encoded. PNG or JPEG.",
+        "fileName": "Name to store the image under inside the document, e.g. \"chart.png\". No directory separators.",
+        "widthInches": "Displayed width in inches. Defaults to 3.",
+        "heightInches": "Displayed height in inches. Defaults to 2."
+      }
+    },
+    "update-document-properties": {
+      "name": "update-document-properties",
+      "description": "Set a Word document's title, author, subject, or description — the properties Word shows in File → Info. Leaves the document body untouched. Overwrites the stored file; earlier states are recoverable only through OneDrive version history.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names.",
+        "title": "Document title.",
+        "creator": "Document author.",
+        "subject": "Document subject.",
+        "description": "Document description or comments."
+      }
+    },
+    "convert-to-pdf": {
+      "name": "convert-to-pdf",
+      "description": "Convert a Word document to PDF and save it to OneDrive. Fails if a file already exists at the destination unless overwrite is set.",
+      "params": {
+        "itemId": "OneDrive item id of the .docx. Takes precedence over path, but requires destinationPath since there is no name to derive one from.",
+        "path": "Path to the .docx relative to the drive root. Pass literal names, not pre-encoded ones.",
+        "destinationPath": "Where to save the PDF. Defaults to the source path with its extension changed to .pdf.",
+        "overwrite": "Replace an existing file at the destination. Defaults to false, which fails."
+      }
+    }
+  },
+  "name": "Word",
+  "description": "Microsoft Word document automation — create documents, read their text and structure, and make surgical edits that leave the rest of the file untouched",
+  "changelog": [
+    {
+      "notes": "Initial release — create, read, and surgically edit Word documents in OneDrive"
+    }
+  ]
+}

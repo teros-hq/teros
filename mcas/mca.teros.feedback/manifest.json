@@ -16,7 +16,7 @@
     "enabled": true,
     "multi": false,
     "system": true,
-    "hidden": false,
+    "hidden": true,
     "role": "user"
   },
   "layers": {
@@ -33,7 +33,13 @@
     "healthCheck": "/health",
     "containerMode": "per-app"
   },
-  "keywords": ["feedback", "bugs", "suggestions", "reports", "support"],
+  "keywords": [
+    "feedback",
+    "bugs",
+    "suggestions",
+    "reports",
+    "support"
+  ],
   "changelog": [
     {
       "version": "1.1.0",

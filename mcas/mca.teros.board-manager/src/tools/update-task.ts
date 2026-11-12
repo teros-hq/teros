@@ -1,7 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 import { getWsClient } from '../lib';
 import { TASK_FIELDS } from './_fields';
-import { assertBackendConnected, resolveFields, withTimeout } from './utils';
+import { assertBackendConnected, normalizeTags, resolveFields, withTimeout } from './utils';
 
 export const updateTask: ToolConfig = {
   description:
@@ -28,11 +28,14 @@ export const updateTask: ToolConfig = {
     },
     required: ['taskId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
     const wsClient = getWsClient();
     const taskId = args?.taskId as string;
     if (!taskId) throw new Error('taskId is required');
+
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
 
     const result = await withTimeout(
       wsClient.queryConversations<any>('update_task', {
@@ -41,7 +44,8 @@ export const updateTask: ToolConfig = {
         description: args?.description,
         instructions: args?.instructions,
         priority: args?.priority,
-        tags: args?.tags,
+        tags: normalizeTags(args?.tags),
+        callerAgentId,
       }),
       15_000,
       'update_task',

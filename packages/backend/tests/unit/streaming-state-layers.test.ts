@@ -421,3 +421,111 @@ describe('updateToolStatus — streamState desync resilience (TER-369)', () => {
     expect(persisted.length).toBe(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// PERMB-REQ-2 — a pending request stays pending_permission in the record
+// ---------------------------------------------------------------------------
+
+function makeStatefulHelpers() {
+  const messages = new Map<string, any>()
+  const broadcasts: Array<{ cid: string; msg: any }> = []
+  const state = createStreamingState()
+  const channelManager = {
+    getMessage: mock(async (messageId: string) => messages.get(messageId) ?? null),
+    updateMessageContent: mock(async (messageId: string, content: any) => {
+      messages.set(messageId, { messageId, content })
+    }),
+    updateMessageContentFields: mock(async (messageId: string, fields: any) => {
+      const current = messages.get(messageId) ?? { messageId, content: {} }
+      messages.set(messageId, { ...current, content: { ...current.content, ...fields } })
+    }),
+    createMessageId: () => 'msg_generated',
+    getChannel: mock(async () => null),
+  }
+  const helpers = createStreamingHelpers(state, {
+    channelManager,
+    channelId: 'ch_1',
+    agentId: 'agent_1',
+    broadcastToChannel: (cid: string, msg: any) => broadcasts.push({ cid, msg }),
+    // biome-ignore lint/suspicious/noExplicitAny: minimal deps for the unit
+  } as any)
+  state.activeToolCalls.set('tc_42', {
+    messageId: 'msg_tool',
+    toolCallId: 'tc_42',
+    toolName: 'notion_insert',
+    mcaId: 'mca.notion',
+    input: { title: 'x' },
+  })
+  return { state, helpers, broadcasts, messages, channelManager }
+}
+
+const PERMISSION_MARKER = JSON.stringify({
+  status: 'permission_requested',
+  permissionRequestId: 'perm_x',
+  tool: 'notion_insert',
+  appId: 'app_y',
+  irreversible: true,
+  instruction: 'End your turn now',
+})
+
+describe('completeToolMessage — permission marker on a pending_permission tool (PERMB-REQ-2)', () => {
+  it('[PERMB-AC-2] keeps pending_permission and every permission field; broadcasts no completion', async () => {
+    const { state, helpers, broadcasts, messages } = makeStatefulHelpers()
+    await helpers.updateToolStatus('pending_permission', {
+      toolCallId: 'tc_42',
+      permissionRequestId: 'perm_x',
+      appId: 'app_y',
+      irreversible: true,
+      workspaceId: 'work_1',
+    })
+    const before = structuredClone(messages.get('msg_tool').content)
+    expect(before.status).toBe('pending_permission')
+    broadcasts.length = 0
+
+    await helpers.completeToolMessage({
+      toolCallId: 'tc_42',
+      status: 'completed',
+      output: PERMISSION_MARKER,
+      duration: 12,
+    })
+
+    const after = messages.get('msg_tool').content
+    expect(after).toEqual(before)
+    expect(after.status).toBe('pending_permission')
+    expect(after.permissionRequestId).toBe('perm_x')
+    expect(after.appId).toBe('app_y')
+    expect(after.irreversible).toBe(true)
+    expect(after.workspaceId).toBe('work_1')
+    expect(after.toolCallId).toBe('tc_42')
+    expect(typeof after.permissionRequestedAt).toBe('string')
+    // Nothing flips the card to completed.
+    expect(broadcasts).toHaveLength(0)
+    // The tool is released from the turn's tracking as on any completion.
+    expect(state.activeToolCalls.has('tc_42')).toBe(false)
+  })
+
+  it('[PERMB-AC-2] a tool NOT in pending_permission still settles as completed (even with the marker as output)', async () => {
+    const { helpers, broadcasts, messages } = makeStatefulHelpers()
+    await helpers.updateToolStatus('running', { toolCallId: 'tc_42' })
+    broadcasts.length = 0
+
+    await helpers.completeToolMessage({
+      toolCallId: 'tc_42',
+      status: 'completed',
+      output: PERMISSION_MARKER,
+    })
+
+    expect(messages.get('msg_tool').content.status).toBe('completed')
+    expect(messages.get('msg_tool').content.output).toBe(PERMISSION_MARKER)
+    expect(broadcasts).toHaveLength(1)
+    expect(broadcasts[0].msg.message.content.status).toBe('completed')
+  })
+
+  it('[PERMB-AC-2] a normal output on a tool settles as completed (no marker, no lookup)', async () => {
+    const { helpers, messages, channelManager } = makeStatefulHelpers()
+    await helpers.updateToolStatus('running', { toolCallId: 'tc_42' })
+    await helpers.completeToolMessage({ toolCallId: 'tc_42', status: 'completed', output: 'not json' })
+    expect(messages.get('msg_tool').content.status).toBe('completed')
+    expect(channelManager.getMessage).not.toHaveBeenCalled()
+  })
+})

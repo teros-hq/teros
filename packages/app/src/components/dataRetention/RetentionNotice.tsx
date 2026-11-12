@@ -8,10 +8,11 @@
  * too — it then reads as reassurance ("nothing is stored").
  */
 
-import { Text, XStack } from 'tamagui'
-import { useTranslation } from 'react-i18next'
-import type { RetentionInfo } from '@teros/shared'
-import { RETENTION_VISUALS } from './retentionStyle'
+import { View } from "react-native"
+import { useTranslation } from "react-i18next"
+import type { RetentionInfo } from "@teros/shared"
+import { Ph, T } from "../ui/ds"
+import { useRetentionVisual } from "./retentionStyle"
 
 interface RetentionNoticeProps {
   info: RetentionInfo
@@ -19,24 +20,27 @@ interface RetentionNoticeProps {
 
 export function RetentionNotice({ info }: RetentionNoticeProps) {
   const { t } = useTranslation()
-  const visual = RETENTION_VISUALS[info.tier]
-  const { Icon } = visual
+  const visual = useRetentionVisual(info.tier)
 
   return (
-    <XStack
+    <View
       testID={`retention-notice-${info.tier}`}
-      gap={8}
-      padding={10}
-      borderRadius={8}
-      backgroundColor={visual.bg}
-      borderWidth={1}
-      borderColor={visual.border}
-      alignItems="flex-start"
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        backgroundColor: visual.bg,
+        borderWidth: 1,
+        borderColor: visual.border,
+      }}
     >
-      <Icon size={14} color={visual.fg} />
-      <Text flex={1} fontSize={12} lineHeight={17} color={visual.fg}>
+      <Ph name={visual.icon} size={14} color={visual.fg} style={{ marginTop: 1 }} />
+      <T step="12" color={visual.fg} style={{ flex: 1 }}>
         {t(`dataRetention.notice.${info.noticeSlug}`)}
-      </Text>
-    </XStack>
+      </T>
+    </View>
   )
 }

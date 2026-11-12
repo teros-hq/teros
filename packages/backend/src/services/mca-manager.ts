@@ -33,12 +33,14 @@ import { createInterface } from 'readline';
 import type { Readable } from 'stream';
 import { captureException } from '../lib/sentry';
 import type { McaConnectionManager } from './mca-connection-manager';
+import type { RemoteDeviceGateway } from './remote-device-gateway';
+import type { RemoteOfflineNotifier } from './remote-offline-notifier';
 import { McaContainerManager, envPositiveInt } from './mca-container-manager';
 import { KubernetesContainerBackend } from './kubernetes-container-backend';
 import { RemoteContainerBackend } from './remote-container-backend';
 import { McaHttpClient } from './mca-http-client';
 import { McaService } from './mca-service';
-import { computeNextRestartCount } from './mca-manager.types';
+import { computeNextRestartCount, checkErrorCooldown } from './mca-manager.types';
 
 import type {
   HealthCheckResult,
@@ -85,6 +87,9 @@ export class McaManager {
 
   private staticToolsCache = new Map<string, StaticToolDefinition[]>();
   private connectionManager?: McaConnectionManager;
+  private remoteGateway?: RemoteDeviceGateway;
+  private transferService?: import('./remote-transfer-service').RemoteTransferService;
+  private remoteOfflineNotifier?: RemoteOfflineNotifier;
   private containerManager: McaContainerManager;
   private httpClients = new Map<string, McaHttpClient>();
   private containerBackendHost: string;
@@ -144,12 +149,13 @@ export class McaManager {
       throw new Error(
         'CONTAINER_PROVIDER=docker was removed: the container agent is the only ' +
           'Docker path now. Unset CONTAINER_PROVIDER (defaults to remote), run the ' +
-          'teros-container-agent pm2 app, and set CONTAINER_AGENT_TOKEN/URL.',
+          'teros-container-agent pm2 app, and set CONTAINER_AGENT_TOKEN/URL. ' +
+          'See docs/architecture/TWO-HOST-SEPARATION-PLAN.md.',
       );
     } else {
       // Default: container agent (separate daemon, possibly another machine).
       // The backend holds no Docker access at all — all container operations
-      // go over HTTP to the agent.
+      // go over HTTP to the agent. See docs/architecture/TWO-HOST-SEPARATION-PLAN.md.
       containerBackend = new RemoteContainerBackend({
         agentUrl: process.env.CONTAINER_AGENT_URL || 'http://127.0.0.1:10011',
         agentToken: process.env.CONTAINER_AGENT_TOKEN || '',
@@ -201,6 +207,32 @@ export class McaManager {
 
   getContainerManager(): McaContainerManager {
     return this.containerManager;
+  }
+
+  /** Teros Remote: tool calls on mca.teros.remote app instances go through this instead of a container. */
+  setRemoteGateway(gateway: RemoteDeviceGateway): void {
+    this.remoteGateway = gateway;
+    log.debug('Remote device gateway set');
+  }
+
+  getRemoteGateway(): RemoteDeviceGateway | undefined {
+    return this.remoteGateway;
+  }
+
+  /** Transfer plane (v0.7.0, REQ-14): bridges pull-file/push-file to the tunnel transfer messages. */
+  setTransferService(service: import('./remote-transfer-service').RemoteTransferService): void {
+    this.transferService = service;
+    log.debug('Remote transfer service set');
+  }
+
+  /** T-REM-7: channel notifier for remote offline/online events. */
+  setRemoteOfflineNotifier(notifier: RemoteOfflineNotifier): void {
+    this.remoteOfflineNotifier = notifier;
+    log.debug('Remote offline notifier set');
+  }
+
+  getRemoteOfflineNotifier(): RemoteOfflineNotifier | undefined {
+    return this.remoteOfflineNotifier;
   }
 
   // ---------------------------------------------------------------------------
@@ -266,6 +298,7 @@ export class McaManager {
   private get healthCtx() {
     return {
       mcas: this.mcas,
+      httpClients: this.httpClients,
       mcaService: this.mcaService,
       config: this.config,
       getOrSpawn: this.getOrSpawn.bind(this),
@@ -281,6 +314,9 @@ export class McaManager {
       containerManager: this.containerManager,
       httpClients: this.httpClients,
       connectionManager: this.connectionManager,
+      remoteGateway: this.remoteGateway,
+      transferService: this.transferService,
+      remoteOfflineNotifier: this.remoteOfflineNotifier,
       staticToolsCache: this.staticToolsCache,
       containerBackendHost: this.containerBackendHost,
       config: this.config,
@@ -336,8 +372,25 @@ export class McaManager {
     if (existing && existing.status === 'ready') { existing.lastUsed = new Date(); return existing; }
     if (existing && existing.status === 'disabled') throw new Error(`MCA ${appId} is disabled`);
     if (existing && existing.status === 'starting') return waitForReady(this.spawnCtx, appId);
-    if (existing && existing.status === 'error' && existing.restartCount >= this.config.maxRestarts) {
-      throw new Error(`MCA ${appId} failed after ${existing.restartCount} restart attempts: ${existing.lastError}`);
+    if (existing && existing.status === 'error') {
+      // Adaptive backoff: instead of permanently blocking after maxRestarts,
+      // enforce a cooldown that grows with each consecutive failure. Once the
+      // cooldown elapses, we allow a retry — the MCA can self-heal from
+      // transient errors without manual intervention.
+      const cooldown = checkErrorCooldown(existing);
+      if (!cooldown.canRetry) {
+        const remainingSec = Math.ceil(cooldown.remainingMs / 1000);
+        throw new Error(
+          `MCA ${appId} is in error state (restart #${existing.restartCount}). ` +
+          `Cooldown: ${remainingSec}s remaining. Last error: ${existing.lastError}`,
+        );
+      }
+      // Cooldown elapsed — allow retry. The restartCount keeps climbing
+      // (computeNextRestartCount +1), so the backoff grows on repeated failures.
+      log.info(
+        { appId, restartCount: existing.restartCount, cooldownMs: cooldown.cooldownMs },
+        'MCA error cooldown elapsed — retrying spawn',
+      );
     }
     // Coalesce concurrent spawns: the 'starting' guard above only helps once
     // spawn() has registered state, but spawn() awaits getApp()/catalog first,
@@ -346,9 +399,9 @@ export class McaManager {
     const inFlight = this.inFlightSpawns.get(appId);
     if (inFlight) return inFlight;
     // computeNextRestartCount: a retry of an MCA in 'error' counts as a restart
-    // (+1), so the maxRestarts guard above eventually trips. Container MCAs have
-    // no watchdog to bump restartCount → without this it stays 0 → infinite spawn
-    // loop (a failing memory MCA re-spawned on every turn). TER-559.
+    // (+1), so the backoff schedule above grows on repeated failures. Container
+    // MCAs have no watchdog to bump restartCount → without this it stays 0 →
+    // the backoff would never escalate. TER-559.
     const spawnPromise = spawn(this.spawnCtx, appId, computeNextRestartCount(existing)).finally(
       () => {
         this.inFlightSpawns.delete(appId);
@@ -370,6 +423,8 @@ export class McaManager {
       userId?: string; workspaceId?: string;
       userDisplayName?: string; userAvatarUrl?: string;
       signal?: AbortSignal;
+      /** UI path (app.execute-tool): skip the 200K LLM-context truncation. */
+      skipTruncation?: boolean;
     },
   ): Promise<{ output: string; isError: boolean; mcaId: string; attachments?: Array<{ url: string; mime: string; filename?: string }> }> {
     return executeTool(this.toolsCtx, toolName, input, context);
@@ -426,6 +481,53 @@ export class McaManager {
     } catch (error: any) {
       log.warn({ err: error, appId }, 'Error killing MCA');
     }
+    // Stdio MCAs die with the child process — drop their callback token so no
+    // stale registration outlives the process it authenticates (container
+    // MCAs keep theirs; their token lives in the container, dropped in stop()).
+    if (managed.transport) {
+      try {
+        this.containerManager.unregisterCallbackToken(appId);
+      } catch {
+        /* best-effort hygiene — a stale stdio token is re-registered on next spawn */
+      }
+    }
+  }
+
+  /**
+   * Recycle the running containers of one MCA's apps so the NEXT getOrSpawn
+   * serves the current repo code. kill() is NOT enough for http MCAs: it only
+   * closes the MCP client (null for http) — the Docker container keeps
+   * running and getOrStart reuses it, so a tool added to the MCA's src never
+   * reaches the proxy's toolNameMapping (built from the container's
+   * listTools() handshake). This drops the managed entry + HTTP client AND
+   * stops the container — the same recycle sequence executeToolViaHttp uses
+   * for its UNAUTHORIZED/CONNECTION_FAILED self-heal. Stdio apps are killed
+   * the normal way (the child process IS the runtime). Boot-sync calls this
+   * for every MCA whose tools.json changed (root fix for the open-runner-
+   * terminal incident, 2026-10-31: sync + mca-kill + backend restart all
+   * failed to surface the new tool).
+   * @returns the appIds whose containers were recycled.
+   */
+  async recycleMcaContainers(appIds: string[]): Promise<string[]> {
+    const recycled: string[] = [];
+    for (const appId of appIds) {
+      const managed = this.mcas.get(appId);
+      if (!managed) continue; // dormant — nothing running to recycle
+      if (managed.status === 'starting') continue; // mid-spawn: spawnContainer copies fresh source anyway
+      const containerKey = managed.containerKey ?? appId;
+      log.info({ appId, mcaId: managed.mcaId, containerKey, status: managed.status }, 'Recycling MCA container (tools changed)');
+      this.mcas.delete(appId);
+      this.httpClients.delete(appId);
+      try {
+        await this.containerManager.stop(containerKey);
+      } catch (error: any) {
+        // Best-effort: a container that already died outside our bookkeeping
+        // is fine — the entry is dropped, the next getOrSpawn starts fresh.
+        log.warn({ err: error, appId, containerKey }, 'Error stopping container during recycle');
+      }
+      recycled.push(appId);
+    }
+    return recycled;
   }
 
   async cleanupInactive(): Promise<string[]> {

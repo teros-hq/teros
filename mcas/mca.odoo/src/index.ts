@@ -64,6 +64,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies Odoo API key and connectivity.',
   parameters: { type: 'object', properties: {} },
   handler: async (_args: Record<string, unknown>, context: ToolContext) => {

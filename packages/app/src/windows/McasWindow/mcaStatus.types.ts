@@ -1,7 +1,7 @@
 /**
  * MCA Status taxonomy (Phase 3, DATA-01/02).
  *
- * Spec-defined shape. `McaToolResult` is
+ * Spec-defined shape (docs/specs/ui/mca-status-dashboard.md lines 200-216). `McaToolResult` is
  * shaped from the persisted `McaHealthRecord` (app.get-mca-health) at render time and joins to the
  * live catalog by mcaId + tool name; a catalog tool with no persisted record renders `pending`.
  */

@@ -52,7 +52,10 @@ export type MessageContent =
       transcriptionError?: string;
       mimeType?: string;
     }
-  | { type: 'file'; url: string; filename: string; caption?: string; mimeType?: string; size?: number }
+  // FVU (spec v1.2.0): optional live volume reference — filePath present means
+  // the file lives on the workspace volume (watchable, auto-refresh, share);
+  // url-only messages are snapshots. Backward compatible with old messages.
+  | { type: 'file'; url: string; filename: string; caption?: string; mimeType?: string; size?: number; filePath?: string; workspaceId?: string }
   | { type: 'html'; html: string; caption?: string; height?: number }
   | { type: 'html_file'; filePath: string; caption?: string; workspaceId?: string }
   | { type: 'browser_live_view'; sessionId: string; url: string; caption?: string }
@@ -82,6 +85,15 @@ export type MessageContent =
       irreversible?: boolean;
     }
   | { type: 'event'; eventType: string; eventData: Record<string, any>; description?: string }
+  // v2 non-blocking interactions (docs/specs/20261024_non-blocking-user-interactions.md):
+  // the form answer arrives as a synthetic user message of type form_response.
+  | {
+      type: 'form_response';
+      formRequestId: string;
+      values?: Record<string, any>;
+      notes?: string;
+      dismissed?: boolean;
+    }
   | {
       type: 'error';
       errorType: 'llm' | 'tool' | 'session' | 'validation' | 'network' | 'unknown';

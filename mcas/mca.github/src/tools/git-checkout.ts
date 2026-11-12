@@ -1,6 +1,7 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
+import { assertIsRepo, assertSafeRef, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Switch branches or restore working tree files.
@@ -12,7 +13,7 @@ import { throwClassifiedGitError } from './_git-error';
  *  - `paths` is provided: restore those paths from `target` (or HEAD) without
  *    switching branches.
  */
-export const gitCheckout: ToolConfig = {
+export const gitCheckout: ToolConfig = lockedGitTool('git-checkout', {
   description:
     'Switch branches, create a new branch, or restore specific paths. Returns the new HEAD ref. Set `force: true` to discard local changes (destructive).',
   parameters: {
@@ -52,6 +53,10 @@ export const gitCheckout: ToolConfig = {
     if (!a.target || a.target.trim().length === 0) {
       throw new Error('[GIT_INVALID_INPUT] `target` is required (branch, tag, or commit).');
     }
+    // Ref validation: `--` cannot be used before the ref positional here (git
+    // would then treat it as a pathspec, not a branch), so the charset check
+    // is the defense against git-option injection (audit 2026-10-01).
+    assertSafeRef(a.target, 'target');
 
     const flags: string[] = [];
     if (a.force) flags.push('--force');
@@ -62,11 +67,11 @@ export const gitCheckout: ToolConfig = {
       args2.push('--', ...a.paths);
     }
 
-    const result = runGit(repoPath, args2);
+    const result = await runGit(repoPath, args2);
     if (result.code !== 0) throwClassifiedGitError(result);
 
-    const headResult = runGit(repoPath, ['rev-parse', 'HEAD']);
-    const branchResult = runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const headResult = await runGit(repoPath, ['rev-parse', 'HEAD']);
+    const branchResult = await runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
 
     return {
       repoPath,
@@ -83,4 +88,4 @@ export const gitCheckout: ToolConfig = {
     idempotentHint: false,
     openWorldHint: false,
   },
-};
+});

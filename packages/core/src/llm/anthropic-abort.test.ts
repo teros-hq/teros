@@ -43,3 +43,16 @@ describe('AnthropicLLMAdapter abort wiring', () => {
     expect(source).toMatch(/log\.(warn|info)\([^)]*Abort/i);
   });
 });
+
+describe('AnthropicLLMAdapter system-prompt cache split (PR #375 #7)', () => {
+  it('splits the system prompt via splitSystemPromptForCache', () => {
+    expect(source).toContain('splitSystemPromptForCache(');
+  });
+
+  it('adds cache_control only to the stable block', () => {
+    // The stable block carries cache_control; the volatile block is pushed
+    // without it so per-request content never invalidates the cached prefix.
+    expect(source).toMatch(/text:\s*stable[\s\S]*?cache_control/);
+    expect(source).toMatch(/systemBlocks\.push\(\{\s*type:\s*'text',\s*text:\s*volatile\s*\}\)/);
+  });
+});

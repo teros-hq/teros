@@ -1,14 +1,18 @@
 /**
  * Permission description helper for `mca.teros.filesystem` and
- * `mca.teros.admin.filesystem`.
+ * (and, historically, the retired `mca.teros.admin.filesystem`).
  *
  * Used during `status === 'pending_permission'` to surface stronger
  * natural-language warnings for the destructive subset of filesystem
- * operations (delete, move, write/edit/append, patch, mkdir).
+ * operations (delete-file, move-file, create-file/edit-file/append-file,
+ * patch-file, create-directory).
  *
- * Read-only operations (read, list, tree, stat, glob, grep, hash,
- * read-batch, read-media, list-roots) get a friendly explanation but
- * no warning emphasis.
+ * Read-only operations (read-file, list-files, tree-view, file-info,
+ * find-files, search-in-files, hash-file, read-files, read-binary,
+ * list-roots) get a friendly explanation but no warning emphasis.
+ *
+ * Tool names follow the 2026-09 rename of the filesystem MCA tools
+ * (tools.json of mca.teros.filesystem).
  *
  * Recovered from `getActionDescription` (deleted with PermissionRequestWidget
  * in commit 89838e29). Kept as a per-MCA helper to honor TER-281
@@ -106,48 +110,48 @@ export function getFilesystemPermissionDescription(
   if (shortName === 'list-roots') {
     return 'Wants to list workspace roots you can access.';
   }
-  if (shortName === 'hash') {
+  if (shortName === 'hash-file') {
     const algo = input?.algorithm ?? 'sha256';
     return path
       ? `Wants to compute the ${algo} hash of: ${path}`
       : `Wants to compute a ${algo} hash.`;
   }
-  if (shortName === 'read-batch') {
+  if (shortName === 'read-files') {
     const count = Array.isArray(input?.paths) ? input.paths.length : 0;
     return `Wants to read ${count} files in a single batch.`;
   }
-  if (shortName === 'read-media') {
+  if (shortName === 'read-binary') {
     return path
       ? `Wants to read a media file from: ${path}`
       : 'Wants to read a media file (image, PDF, audio, ...).';
   }
-  if (shortName === 'read') {
+  if (shortName === 'read-file') {
     return path ? `Wants to read file contents from: ${path}` : 'Wants to read file contents.';
   }
-  if (shortName === 'list') {
+  if (shortName === 'list-files') {
     return path ? `Wants to list directory contents at: ${path}` : 'Wants to list directory contents.';
   }
-  if (shortName === 'tree') {
+  if (shortName === 'tree-view') {
     return path ? `Wants to get a recursive tree view of: ${path}` : 'Wants to get a recursive tree view.';
   }
-  if (shortName === 'stat') {
+  if (shortName === 'file-info') {
     return path
       ? `Wants to read metadata (size, mtime, type) of: ${path}`
       : 'Wants to read metadata of a path.';
   }
-  if (shortName === 'glob') {
+  if (shortName === 'find-files') {
     return pattern
       ? `Wants to find files by pattern: ${pattern}`
       : 'Wants to find files by pattern.';
   }
-  if (shortName === 'grep') {
+  if (shortName === 'search-in-files') {
     return pattern
       ? `Wants to search file contents for pattern: ${pattern}`
       : 'Wants to search file contents.';
   }
 
   // ─── Destructive mutations ────────────────────────────────────────────
-  if (shortName === 'delete' || shortName === 'remove') {
+  if (shortName === 'delete-file') {
     const risk = pathRisk(path);
     if (risk) return `Wants to permanently delete a ${risk}. Irreversible.`;
     return path
@@ -155,7 +159,7 @@ export function getFilesystemPermissionDescription(
       : 'Wants to permanently delete a path. This action is irreversible.';
   }
 
-  if (shortName === 'move' || shortName === 'rename') {
+  if (shortName === 'move-file') {
     const sourceRisk = pathRisk(source);
     const destRisk = pathRisk(destination);
     if (sourceRisk) return `Wants to move/rename FROM a ${sourceRisk}.`;
@@ -166,7 +170,7 @@ export function getFilesystemPermissionDescription(
     return 'Wants to move or rename a path.';
   }
 
-  if (shortName === 'copy') {
+  if (shortName === 'copy-file') {
     const destRisk = pathRisk(destination);
     if (destRisk) return `Wants to copy TO a ${destRisk}.`;
     if (source && destination) {
@@ -176,24 +180,24 @@ export function getFilesystemPermissionDescription(
   }
 
   // ─── Content writes ───────────────────────────────────────────────────
-  if (shortName === 'write') {
+  if (shortName === 'create-file') {
     const risk = pathRisk(path);
     if (risk) return `Wants to write or modify a ${risk}.`;
     return path ? `Wants to write or modify a file: ${path}` : 'Wants to write or modify a file.';
   }
-  if (shortName === 'append') {
+  if (shortName === 'append-file') {
     const risk = pathRisk(path);
     if (risk) return `Wants to append content to a ${risk}.`;
     return path ? `Wants to append content to a file: ${path}` : 'Wants to append content to a file.';
   }
-  if (shortName === 'edit') {
+  if (shortName === 'edit-file') {
     const risk = pathRisk(path);
     if (risk) return `Wants to edit in place a ${risk}.`;
     return path
       ? `Wants to edit a file in place (exact string replacement): ${path}`
       : 'Wants to edit a file in place.';
   }
-  if (shortName === 'patch') {
+  if (shortName === 'patch-file') {
     const risk = pathRisk(path);
     if (risk) return `Wants to apply a unified diff patch to a ${risk}.`;
     return path
@@ -201,7 +205,7 @@ export function getFilesystemPermissionDescription(
       : 'Wants to apply a unified diff patch.';
   }
 
-  if (shortName === 'mkdir') {
+  if (shortName === 'create-directory') {
     const risk = pathRisk(path);
     if (risk) return `Wants to create a directory inside a ${risk}.`;
     return path ? `Wants to create a directory: ${path}` : 'Wants to create a directory.';

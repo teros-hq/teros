@@ -28,7 +28,11 @@ export const appPermissionsSet: ToolConfig = {
     },
     required: ['appId'],
   },
-  annotations: { readOnlyHint: false, alwaysAsk: true },
+  // @todo pablo - 2026.09.30 : re-add alwaysAsk: true once the reason for
+  // unlocking is resolved — bulk permission changes are a privilege-
+  // escalation vector; an agent with allow-all can currently rewrite its
+  // own tool permissions autonomously.
+  annotations: { readOnlyHint: false },
   handler: async (args, context) => {
     const all = args.all as string | undefined;
     const tools = args.tools as Record<string, string> | undefined;

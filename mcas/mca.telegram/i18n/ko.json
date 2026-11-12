@@ -1,0 +1,146 @@
+{
+  "name": "텔레그램",
+  "description": "MTProto(teleproto) 기반 텔레그램 통합. 개인 계정을 연결하여 채팅 및 기록을 읽고, 메시지와 파일을 보내고, 모든 대화를 검색하고, 그룹/채널과 멤버를 관리하며, 실시간 메시지 이벤트를 수신합니다. 계정 연결은 에이전트 채팅에서 진행됩니다(인증 코드 + 2차 비밀번호(설정 시)).",
+  "changelog": [
+    {
+      "notes": "최초 릴리스 — 텔레그램 계정 연결, 채팅 및 기록 읽기, 메시지와 미디어 전송, 그룹 및 멤버 관리, 실시간 메시지 이벤트 수신"
+    }
+  ],
+  "tools": {
+    "health-check": {
+      "name": "health-check",
+      "description": "내부 확인. MTProto 연결 상태와 계정 연결 여부를 확인합니다."
+    },
+    "auth-status": {
+      "name": "auth-status",
+      "description": "텔레그램 계정 연결 여부를 확인하고 연결된 사용자 프로필(이름, 사용자명, 전화번호)을 반환합니다."
+    },
+    "auth-send-code": {
+      "name": "auth-send-code",
+      "description": "연결 1단계: 지정한 전화번호로 텔레그램 인증 코드를 전송합니다(텔레그램 또는 SMS로 수신). auth-sign-in에 사용할 phoneCodeHash를 반환합니다.",
+      "params": {
+        "phoneNumber": "국가 코드가 포함된 전화번호, +나 공백 없이 (예: \"821012345678\")"
+      }
+    },
+    "auth-sign-in": {
+      "name": "auth-sign-in",
+      "description": "연결 2단계: 받은 코드로 로그인을 완료합니다. 2차 비밀번호(2FA)가 설정된 계정은 비밀번호도 함께 전달하세요. 세션은 앱 볼륨에 안전하게 저장됩니다.",
+      "params": {
+        "code": "텔레그램/SMS로 받은 인증 코드 (예: \"12345\")",
+        "password": "2차 비밀번호(2FA, 설정된 경우에만)"
+      }
+    },
+    "auth-disconnect": {
+      "name": "auth-disconnect",
+      "description": "텔레그램 계정 연결 해제: MTProto 세션을 종료하고 이 볼륨에 저장된 세션을 삭제합니다."
+    },
+    "list-chats": {
+      "name": "list-chats",
+      "description": "텔레그램 대화 목록을 조회합니다: 개인 채팅, 그룹, 슈퍼그룹, 채널과 마지막 메시지, 읽지 않은 개수를 반환합니다.",
+      "params": {
+        "limit": "반환할 최대 채팅 수 (기본값: 20, 최대: 100)",
+        "archived": "true이면 기본 폴더 대신 보관된 채팅을 조회합니다"
+      }
+    },
+    "get-chat-history": {
+      "name": "get-chat-history",
+      "description": "채팅(개인, 그룹, 채널)의 메시지 기록을 읽습니다. 최신순으로 작성자, 텍스트, 미디어, ID와 함께 반환합니다.",
+      "params": {
+        "chat": "읽을 채팅: 채팅 ID, @사용자명 또는 t.me 링크",
+        "limit": "반환할 메시지 수 (기본값: 20, 최대: 100)",
+        "offsetId": "이 ID부터 역방향(과거)으로 페이지네이션",
+        "minId": "이 ID보다 큰 메시지만 반환",
+        "search": "텍스트로 기록 필터링",
+        "reverse": "true이면 오래된 메시지부터 반환"
+      }
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "텍스트로 메시지를 검색합니다. chat 없이는 모든 대화에서(전역 검색), chat을 지정하면 해당 채팅에서만 검색합니다. 작성자로 필터링할 수 있습니다.",
+      "params": {
+        "query": "검색할 텍스트",
+        "chat": "검색을 특정 채팅으로 제한 (ID, @사용자명 또는 t.me 링크)",
+        "limit": "최대 결과 수 (기본값: 20, 최대: 100)",
+        "fromUser": "특정 작성자의 메시지만 (@사용자명 또는 ID)"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "개인 채팅, 그룹, 채널에 텍스트 메시지를 보냅니다. 특정 메시지에 대한 답장과 텔레그램 Markdown/HTML 서식을 지원합니다.",
+      "params": {
+        "chat": "수신 대상: 채팅 ID, @사용자명 또는 t.me 링크",
+        "text": "메시지 내용 (텔레그램 MarkdownV2/HTML 서식 지원)",
+        "replyTo": "답장할 메시지 ID",
+        "silent": "true이면 알림 없이 전송",
+        "noLinkPreview": "true이면 링크 미리보기를 비활성화"
+      }
+    },
+    "send-media": {
+      "name": "send-media",
+      "description": "공개 URL, 컨테이너에서 접근 가능한 경로 또는 base64로 채팅에 파일이나 이미지를 보냅니다. 음성 메모 또는 문서로 보낼 수 있습니다.",
+      "params": {
+        "chat": "수신 대상: 채팅 ID, @사용자명 또는 t.me 링크",
+        "file": "파일 출처: https:// URL, /app-data/... 경로 또는 base64 데이터 URI",
+        "caption": "파일에 첨부할 설명",
+        "asVoice": "true이면 음성 메모(ogg/opus)로 전송",
+        "asDocument": "true이면 압축 없이 문서로 전송",
+        "replyTo": "답장할 메시지 ID"
+      }
+    },
+    "download-media": {
+      "name": "download-media",
+      "description": "메시지에 첨부된 파일(이미지, 동영상, 문서, 음성 등)을 다운로드하여 /app-data/downloads에 저장합니다. 로컬 경로를 반환합니다.",
+      "params": {
+        "chat": "메시지가 있는 채팅: ID, @사용자명 또는 t.me 링크",
+        "messageId": "파일이 포함된 메시지 ID",
+        "thumb": "true이면 썸네일만 다운로드"
+      }
+    },
+    "edit-message": {
+      "name": "edit-message",
+      "description": "내가 보낸 메시지의 텍스트를 수정합니다(편집 권한이 있는 채팅에서).",
+      "params": {
+        "chat": "메시지가 있는 채팅: ID, @사용자명 또는 t.me 링크",
+        "messageId": "수정할 메시지 ID",
+        "text": "새 메시지 내용"
+      }
+    },
+    "delete-messages": {
+      "name": "delete-messages",
+      "description": "채팅에서 하나 이상의 메시지를 삭제합니다. revoke=true(기본값)이면 모든 참여자에게서 삭제되고, revoke=false이면 내 계정에서만 삭제됩니다. 다른 사람의 메시지 삭제는 관리자 권한이 필요합니다.",
+      "params": {
+        "chat": "메시지가 있는 채팅: ID, @사용자명 또는 t.me 링크",
+        "messageIds": "삭제할 메시지 ID (하나 이상)",
+        "revoke": "모두에게 삭제 (기본값: true). false = 나에게서만 삭제"
+      }
+    },
+    "create-group": {
+      "name": "create-group",
+      "description": "텔레그램 그룹, 슈퍼그룹 또는 채널을 만듭니다. kind=\"group\"은 초기 멤버가 있는 소규모 그룹 채팅, kind=\"supergroup\"은 대규모 그룹, kind=\"channel\"은 방송 채널을 만듭니다. 새 채팅의 ID를 반환합니다.",
+      "params": {
+        "title": "그룹 또는 채널 이름",
+        "kind": "\"group\"(소규모 채팅, 기본값), \"supergroup\"(대규모 그룹) 또는 \"channel\"(방송)",
+        "about": "선택적 설명 (슈퍼그룹과 채널)",
+        "members": "초대할 초기 사용자 (@사용자명 또는 ID). kind=\"group\"에는 필수"
+      }
+    },
+    "manage-members": {
+      "name": "manage-members",
+      "description": "그룹/슈퍼그룹/채널의 멤버를 관리합니다: 멤버 조회, 사용자 초대(추가), 내보내기, 차단 또는 차단 해제. 조회는 멤버 목록 접근 권한이, 내보내기/차단은 관리자 권한이 필요합니다.",
+      "params": {
+        "chat": "그룹/채널: ID, @사용자명 또는 t.me 링크",
+        "action": "\"list\"(기본값), \"add\", \"remove\", \"ban\" 또는 \"unban\"",
+        "user": "대상 사용자: @사용자명 또는 ID (list 외에는 필수)",
+        "limit": "action=\"list\"일 때 반환할 최대 멤버 수 (기본값: 50, 최대: 200)"
+      }
+    },
+    "mark-as-read": {
+      "name": "mark-as-read",
+      "description": "채팅의 메시지를 읽음으로 표시합니다(읽지 않은 개수와 멘션 배지를 지웁니다).",
+      "params": {
+        "chat": "읽음으로 표시할 채팅: ID, @사용자명 또는 t.me 링크",
+        "maxId": "이 메시지 ID까지 읽음으로 표시 (기본값: 현재 모든 메시지)"
+      }
+    }
+  }
+}

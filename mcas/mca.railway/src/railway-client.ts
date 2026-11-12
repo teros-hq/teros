@@ -55,6 +55,12 @@ export interface RailwayDeployment {
   createdAt: string;
   updatedAt: string;
   staticUrl?: string;
+  url?: string;
+  canRedeploy?: boolean;
+  canRollback?: boolean;
+  serviceId?: string;
+  environmentId?: string;
+  meta?: unknown; // scalar DeploymentMeta — opaque JSON
 }
 
 export interface RailwayVariable {
@@ -62,18 +68,37 @@ export interface RailwayVariable {
   value: string;
 }
 
+export interface RailwayCustomDomainStatus {
+  verified: boolean;
+  certificateStatus: string;
+  certificateStatusDetailed?: string;
+  certificateErrorMessage?: string;
+  cdnProvider?: string;
+  dnsRecords: Array<{
+    status: string;
+    recordType?: string;
+    hostlabel?: string;
+    requiredValue?: string;
+    currentValue?: string;
+  }>;
+}
+
 export interface RailwayDomain {
   id: string;
   domain: string;
   serviceId: string;
   environmentId: string;
+  /** Present only on custom domains (from AllDomains.customDomains). */
+  status?: RailwayCustomDomainStatus;
+  /** Discriminator added client-side: 'service' | 'custom'. */
+  kind?: 'service' | 'custom';
 }
 
 export interface RailwayVolume {
   id: string;
   name: string;
-  mountPath: string;
-  sizeGB: number;
+  projectId: string;
+  createdAt: string;
 }
 
 // =============================================================================
@@ -177,18 +202,31 @@ const QUERIES = {
         createdAt
         updatedAt
         staticUrl
+        url
+        canRedeploy
+        canRollback
+        serviceId
+        environmentId
+        meta
       }
     }
   `,
 
   listDeployments: `
-    query($projectId: String!, $serviceId: String!, $environmentId: String!) {
+    query(
+      $projectId: String!
+      $serviceId: String!
+      $environmentId: String!
+      $status: DeploymentStatusInput
+      $first: Int
+    ) {
       deployments(
-        first: 10
+        first: $first
         input: {
           projectId: $projectId
           serviceId: $serviceId
           environmentId: $environmentId
+          status: $status
         }
       ) {
         edges {
@@ -198,6 +236,9 @@ const QUERIES = {
             createdAt
             updatedAt
             staticUrl
+            url
+            canRedeploy
+            canRollback
           }
         }
       }
@@ -216,6 +257,8 @@ const QUERIES = {
   `,
 
   // Domains
+  // Note: AllDomains has NO edges — serviceDomains/customDomains are direct lists.
+  // CustomDomain.status is an object (CustomDomainStatus) with certificate + DNS info.
   listDomains: `
     query($projectId: String!, $serviceId: String!, $environmentId: String!) {
       domains(
@@ -234,6 +277,20 @@ const QUERIES = {
           domain
           serviceId
           environmentId
+          status {
+            verified
+            certificateStatus
+            certificateStatusDetailed
+            certificateErrorMessage
+            cdnProvider
+            dnsRecords {
+              status
+              recordType
+              hostlabel
+              requiredValue
+              currentValue
+            }
+          }
         }
       }
     }
@@ -371,6 +428,8 @@ const MUTATIONS = {
       volumeCreate(input: $input) {
         id
         name
+        projectId
+        createdAt
       }
     }
   `,
@@ -699,10 +758,20 @@ export class RailwayClient {
     projectId: string,
     serviceId: string,
     environmentId: string,
+    options?: {
+      status?: { in?: string[]; notIn?: string[] };
+      first?: number;
+    },
   ): Promise<RailwayDeployment[]> {
     const data = await this.execute<{
       deployments: { edges: { node: RailwayDeployment }[] };
-    }>(QUERIES.listDeployments, { projectId, serviceId, environmentId });
+    }>(QUERIES.listDeployments, {
+      projectId,
+      serviceId,
+      environmentId,
+      status: options?.status,
+      first: options?.first ?? 10,
+    });
 
     return this.extractNodes(data.deployments);
   }
@@ -746,10 +815,15 @@ export class RailwayClient {
       };
     }>(QUERIES.listDomains, { projectId, serviceId, environmentId });
 
-    return [
-      ...(data.domains?.serviceDomains || []),
-      ...(data.domains?.customDomains || []),
-    ];
+    const serviceDomains = (data.domains?.serviceDomains || []).map((d) => ({
+      ...d,
+      kind: 'service' as const,
+    }));
+    const customDomains = (data.domains?.customDomains || []).map((d) => ({
+      ...d,
+      kind: 'custom' as const,
+    }));
+    return [...serviceDomains, ...customDomains];
   }
 
   /**
@@ -782,6 +856,8 @@ export class RailwayClient {
     environmentId: string,
     mountPath: string,
   ): Promise<RailwayVolume> {
+    // NB: Volume type in v2 has no mountPath/sizeGB — those live on VolumeInstance.
+    // The mountPath is accepted as input but not echoed back on the Volume object.
     const data = await this.execute<{ volumeCreate: RailwayVolume }>(
       MUTATIONS.createVolume,
       {

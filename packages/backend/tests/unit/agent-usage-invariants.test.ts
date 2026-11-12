@@ -6,7 +6,7 @@
  * overlap configurations. If `fast-check` is later added, these tests can be
  * upgraded to use `fc.assert(fc.property(...))`.
  *
- * Invariants verified:
+ * Invariants verified (see docs/usage-instrumentation.md §4):
  *   - userActiveSeconds(u, h) <= 3_600_000 ms (no exceed 1 hour wall-clock)
  *   - unionOfIntervalsMs is symmetric on input ordering
  *   - unionOfIntervalsMs is idempotent under duplicated intervals

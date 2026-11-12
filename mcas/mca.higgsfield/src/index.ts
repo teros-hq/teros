@@ -11,6 +11,8 @@
  */
 
 import { HealthCheckBuilder, McaServer } from "@teros/mca-sdk"
+import { resolveInternalObjectUrls, type ObjectStorageLike } from "./lib/resolve-object-urls"
+import { persistHiggsfieldOutput } from "./lib/persist-output"
 
 // =============================================================================
 // CONFIGURATION
@@ -132,11 +134,18 @@ async function submitRequest(
   model: string,
   args: Record<string, any>,
   credentials: HiggsFieldCredentials,
+  objects?: ObjectStorageLike,
 ): Promise<any> {
+  // External Higgsfield API cannot reach internal Teros URLs. Resolve any
+  // localhost/127.0.0.1 objects URLs in the payload to data URIs before sending.
+  const resolvedArgs = objects
+    ? await resolveInternalObjectUrls(args, objects)
+    : args
+
   // Submit directly to the model endpoint
   const response = await higgsFieldRequest(`/${model}`, credentials, {
     method: "POST",
-    body: JSON.stringify(args),
+    body: JSON.stringify(resolvedArgs),
   })
 
   if (!response.ok) {
@@ -163,6 +172,7 @@ const server = new McaServer({
 // -----------------------------------------------------------------------------
 
 server.tool("-health-check", {
+  annotations: { readOnlyHint: true },
   description: "Internal health check tool. Verifies Higgsfield API credentials and connectivity.",
   parameters: {
     type: "object",
@@ -203,13 +213,15 @@ server.tool("-health-check", {
 server.tool("higgsfield-run", {
   annotations: { readOnlyHint: false },
   description:
-    "Run any model on Higgsfield. Supports text-to-image, image-to-video, and other AI generation models.",
+    "Run any model on Higgsfield. Supports text-to-image, image-to-video, and other AI generation models. " +
+    "Image/video inputs inside `input` must be PUBLIC URLs (https://...) or data: URIs — Higgsfield cannot reach internal/localhost URLs. " +
+    "Internal Teros objects URLs (http://localhost:.../objects/obj_... or http://127.0.0.1:.../objects/obj_...) are automatically resolved to data URIs (objects up to 10 MB).",
   parameters: {
     type: "object",
     properties: {
       model: {
         type: "string",
-        description: "Model/endpoint identifier (e.g., 'bytedance/seedream/v4/text-to-image')",
+        description: "Model/endpoint identifier (e.g., 'higgsfield-ai/soul/standard'). Run higgsfield-list-models to see what's available.",
       },
       input: {
         type: "object",
@@ -228,14 +240,18 @@ server.tool("higgsfield-run", {
     const credentials = getCredentials(secrets)
     if (!credentials) throw new Error("Higgsfield API credentials not configured")
 
-    const result = await submitRequest(args.model as string, args.input as Record<string, any>, credentials)
+    const result = await submitRequest(args.model as string, args.input as Record<string, any>, credentials, context.objects)
 
     // If wait is true, poll for completion
     if (args.wait) {
       const completed = await pollRequestWithProgress(result.request_id, credentials, (status) => {
         console.log(`Status: ${status}`)
       })
-      return completed
+      const persisted = await persistHiggsfieldOutput(completed, context, {
+        predictionId: result.request_id,
+        model: args.model as string,
+      })
+      return { ...persisted.output, objectIds: persisted.objectIds, warnings: persisted.warnings.length ? persisted.warnings : undefined }
     }
 
     // Return immediately with request info
@@ -255,7 +271,7 @@ server.tool("higgsfield-run", {
 
 server.tool("higgsfield-text-to-image", {
   annotations: { readOnlyHint: false },
-  description: "Generate images from text prompts using Seedream v4.",
+  description: "Generate images from text prompts using Higgsfield Soul Standard (ultra-realistic fashion/portrait).",
   parameters: {
     type: "object",
     properties: {
@@ -265,8 +281,8 @@ server.tool("higgsfield-text-to-image", {
       },
       resolution: {
         type: "string",
-        enum: ["1K", "2K", "4K"],
-        default: "2K",
+        enum: ["720p", "1080p"],
+        default: "1080p",
         description: "Output resolution",
       },
       aspect_ratio: {
@@ -294,104 +310,30 @@ server.tool("higgsfield-text-to-image", {
 
     const input: Record<string, any> = {
       prompt: args.prompt,
-      resolution: args.resolution || "2K",
+      resolution: args.resolution || "1080p",
       aspect_ratio: args.aspect_ratio || "16:9",
     }
     if (args.style) input.style = args.style
 
-    const result = await submitRequest("bytedance/seedream/v4/text-to-image", input, credentials)
+    const result = await submitRequest("higgsfield-ai/soul/standard", input, credentials, context.objects)
 
     // If wait is true, poll for completion
     if (args.wait) {
       const completed = await pollRequestWithProgress(result.request_id, credentials)
+      const persisted = await persistHiggsfieldOutput(completed, context, {
+        predictionId: result.request_id,
+        model: "higgsfield-ai/soul/standard",
+      })
       return {
-        status: completed.status,
-        images: completed.images,
-        request_id: completed.request_id,
+        status: persisted.output.status,
+        images: persisted.output.images,
+        request_id: persisted.output.request_id,
+        objectIds: persisted.objectIds,
+        warnings: persisted.warnings.length ? persisted.warnings : undefined,
       }
     }
 
     // Return immediately
-    return {
-      request_id: result.request_id,
-      status: result.status,
-      status_url: result.status_url,
-      cancel_url: result.cancel_url,
-      message: "Request submitted. Use higgsfield-get-prediction to check status.",
-    }
-  },
-})
-
-// -----------------------------------------------------------------------------
-// Image-to-Video Tool (Async)
-// -----------------------------------------------------------------------------
-
-server.tool("higgsfield-image-to-video", {
-  annotations: { readOnlyHint: false },
-  description: "Convert an image to video with motion. Supports various motion styles and camera movements.",
-  parameters: {
-    type: "object",
-    properties: {
-      image_url: {
-        type: "string",
-        description: "URL of the input image",
-      },
-      prompt: {
-        type: "string",
-        description: "Description of the desired motion/video",
-      },
-      duration: {
-        type: "number",
-        default: 5,
-        description: "Video duration in seconds (default: 5)",
-      },
-      motion_strength: {
-        type: "number",
-        minimum: 0,
-        maximum: 1,
-        default: 0.5,
-        description: "Motion intensity (0.0-1.0)",
-      },
-      camera_motion: {
-        type: "string",
-        enum: ["none", "zoom_in", "zoom_out", "pan_left", "pan_right", "tilt_up", "tilt_down"],
-        default: "none",
-        description: "Camera movement type",
-      },
-      wait: {
-        type: "boolean",
-        description: "Wait for completion (default: false)",
-        default: false,
-      },
-    },
-    required: ["image_url", "prompt"],
-  },
-  handler: async (args, context) => {
-    const secrets = await context.getUserSecrets()
-    const credentials = getCredentials(secrets)
-    if (!credentials) throw new Error("Higgsfield API credentials not configured")
-
-    const input: Record<string, any> = {
-      input_images: [args.image_url],
-      prompt: args.prompt,
-      duration: args.duration || 5,
-      motions_strength: args.motion_strength || 0.5,
-    }
-    if (args.camera_motion && args.camera_motion !== "none") {
-      input.camera_motion = args.camera_motion
-    }
-
-    const result = await submitRequest("higgsfield/dop/image-to-video", input, credentials)
-
-    if (args.wait) {
-      const completed = await pollRequestWithProgress(result.request_id, credentials)
-      return {
-        status: completed.status,
-        video: completed.video,
-        request_id: completed.request_id,
-      }
-    }
-
     return {
       request_id: result.request_id,
       status: result.status,
@@ -408,7 +350,7 @@ server.tool("higgsfield-image-to-video", {
 
 server.tool("higgsfield-text-to-video", {
   annotations: { readOnlyHint: false },
-  description: "Generate video from text prompt.",
+  description: "Generate video from text prompt using WAN v2.6.",
   parameters: {
     type: "object",
     properties: {
@@ -453,14 +395,20 @@ server.tool("higgsfield-text-to-video", {
       aspect_ratio: args.aspect_ratio || "16:9",
     }
 
-    const result = await submitRequest("kling/v2.6/text-to-video", input, credentials)
+    const result = await submitRequest("wan/v2.6/text-to-video", input, credentials, context.objects)
 
     if (args.wait) {
       const completed = await pollRequestWithProgress(result.request_id, credentials)
+      const persisted = await persistHiggsfieldOutput(completed, context, {
+        predictionId: result.request_id,
+        model: "wan/v2.6/text-to-video",
+      })
       return {
-        status: completed.status,
-        video: completed.video,
-        request_id: completed.request_id,
+        status: persisted.output.status,
+        video: persisted.output.video,
+        request_id: persisted.output.request_id,
+        objectIds: persisted.objectIds,
+        warnings: persisted.warnings.length ? persisted.warnings : undefined,
       }
     }
 
@@ -491,7 +439,7 @@ server.tool("higgsfield-soul-generate", {
       },
       reference_image: {
         type: "string",
-        description: "URL of the reference image for character consistency",
+        description: "URL of the reference image for character consistency. Must be a PUBLIC URL (https://...) or data: URI — internal/localhost URLs are auto-resolved to data URIs (up to 10 MB).",
       },
       style: {
         type: "string",
@@ -499,8 +447,8 @@ server.tool("higgsfield-soul-generate", {
       },
       resolution: {
         type: "string",
-        enum: ["1K", "2K", "4K"],
-        default: "2K",
+        enum: ["720p", "1080p"],
+        default: "1080p",
       },
       wait: {
         type: "boolean",
@@ -518,18 +466,24 @@ server.tool("higgsfield-soul-generate", {
     const input: Record<string, any> = {
       prompt: args.prompt,
       image: args.reference_image,
-      resolution: args.resolution || "2K",
+      resolution: args.resolution || "1080p",
     }
     if (args.style) input.style = args.style
 
-    const result = await submitRequest("higgsfield/soul/image-to-image", input, credentials)
+    const result = await submitRequest("higgsfield-ai/soul/reference", input, credentials, context.objects)
 
     if (args.wait) {
       const completed = await pollRequestWithProgress(result.request_id, credentials)
+      const persisted = await persistHiggsfieldOutput(completed, context, {
+        predictionId: result.request_id,
+        model: "higgsfield-ai/soul/standard",
+      })
       return {
-        status: completed.status,
-        images: completed.images,
-        request_id: completed.request_id,
+        status: persisted.output.status,
+        images: persisted.output.images,
+        request_id: persisted.output.request_id,
+        objectIds: persisted.objectIds,
+        warnings: persisted.warnings.length ? persisted.warnings : undefined,
       }
     }
 
@@ -571,7 +525,11 @@ server.tool("higgsfield-get-prediction", {
     if (!credentials) throw new Error("Higgsfield API credentials not configured")
 
     if (args.wait) {
-      return await pollRequestWithProgress(args.prediction_id as string, credentials)
+      const completed = await pollRequestWithProgress(args.prediction_id as string, credentials)
+      const persisted = await persistHiggsfieldOutput(completed, context, {
+        predictionId: args.prediction_id as string,
+      })
+      return { ...persisted.output, objectIds: persisted.objectIds, warnings: persisted.warnings.length ? persisted.warnings : undefined }
     }
 
     const response = await higgsFieldRequest(`/requests/${args.prediction_id}/status`, credentials)
@@ -579,7 +537,15 @@ server.tool("higgsfield-get-prediction", {
       throw new Error(`API error: ${response.status} ${await response.text()}`)
     }
 
-    return await response.json()
+    const result = await response.json()
+    const status = result.status || result.data?.status
+    if (status === "completed" || status === "Completed") {
+      const persisted = await persistHiggsfieldOutput(result, context, {
+        predictionId: args.prediction_id as string,
+      })
+      return { ...persisted.output, objectIds: persisted.objectIds, warnings: persisted.warnings.length ? persisted.warnings : undefined }
+    }
+    return result
   },
 })
 
@@ -639,76 +605,44 @@ server.tool("higgsfield-list-models", {
     },
   },
   handler: async (args) => {
-    // Curated list of known models from Higgsfield documentation
+    // Curated list of models empirically verified against the Higgsfield API
+    // (submit + immediate cancel, 2026-10-20). Every entry here returned 200 OK.
+    // Models that returned 404/423/503 were removed — see git history for details.
     const allModels = [
       // =====================================================================
       // TEXT-TO-IMAGE MODELS
       // =====================================================================
       {
-        id: "nano-banana-pro",
-        name: "Nano Banana Pro",
-        type: "text-to-image",
-        description: "Fast, high-quality text-to-image generation. Supports 1k, 2k, 4k resolution.",
-        parameters: ["prompt", "resolution", "aspect_ratio"],
-      },
-      {
         id: "higgsfield-ai/soul/standard",
         name: "Soul Standard",
         type: "text-to-image",
-        description: "Flagship text-to-image model with ultra-realistic fashion and portrait generation.",
+        status: "available",
+        description:
+          "Higgsfield's flagship text-to-image model. Ultra-realistic fashion and portrait generation. Reliable first-party engine.",
         parameters: ["prompt", "aspect_ratio", "resolution"],
-      },
-      {
-        id: "bytedance/seedream/v4/text-to-image",
-        name: "Seedream v4",
-        type: "text-to-image",
-        description: "High-quality text-to-image generation by ByteDance.",
-        parameters: ["prompt", "resolution", "aspect_ratio"],
-      },
-      {
-        id: "reve/text-to-image",
-        name: "Reve",
-        type: "text-to-image",
-        description: "Versatile text-to-image generation with creative styles.",
-        parameters: ["prompt", "resolution", "aspect_ratio"],
-      },
-      {
-        id: "flux-pro",
-        name: "FLUX Pro",
-        type: "text-to-image",
-        description: "State-of-the-art photorealistic image generation.",
-        parameters: ["prompt", "aspect_ratio"],
-      },
-      {
-        id: "flux-dev",
-        name: "FLUX Dev",
-        type: "text-to-image",
-        description: "Fast development version of FLUX.",
-        parameters: ["prompt", "aspect_ratio"],
+        notes: "resolution must be '720p' or '1080p' (not 1K/2K/4K)",
       },
       // =====================================================================
-      // IMAGE EDITING MODELS
+      // IMAGE-TO-IMAGE MODELS (character consistency)
       // =====================================================================
       {
-        id: "bytedance/seedream/v4/edit",
-        name: "Seedream v4 Edit",
+        id: "higgsfield-ai/soul/reference",
+        name: "Soul Reference",
         type: "image-to-image",
-        description: "Advanced image editing capabilities.",
+        status: "available",
+        description:
+          "Character-consistent image generation from a reference image. Use this to keep the same character across multiple scenes.",
         parameters: ["prompt", "image", "resolution"],
+        notes: "resolution must be '720p' or '1080p'",
       },
       {
-        id: "higgsfield-ai/soul/image-to-image",
-        name: "Soul Image-to-Image",
+        id: "higgsfield-ai/soul/character",
+        name: "Soul Character",
         type: "image-to-image",
-        description: "Character-consistent image generation from reference images.",
+        status: "available",
+        description: "Soul character mode — variant of Soul tuned for character work.",
         parameters: ["prompt", "image", "resolution"],
-      },
-      {
-        id: "nano-banana-pro-inpaint",
-        name: "Nano Banana Pro Inpaint",
-        type: "image-to-image",
-        description: "Inpainting and image editing with Nano Banana.",
-        parameters: ["prompt", "image", "mask"],
+        notes: "resolution must be '720p' or '1080p'",
       },
       // =====================================================================
       // IMAGE-TO-VIDEO MODELS
@@ -717,84 +651,40 @@ server.tool("higgsfield-list-models", {
         id: "higgsfield-ai/dop/standard",
         name: "DoP Standard",
         type: "image-to-video",
-        description: "Standard image-to-video animation with motion control.",
+        status: "available",
+        description:
+          "Higgsfield's own image-to-video engine. Standard quality, reliable motion control. This is the recommended default for image-to-video on Higgsfield.",
+        parameters: ["image_url", "prompt", "duration"],
+        notes: "uses 'image_url' (string), not 'input_images'",
+      },
+      {
+        id: "higgsfield-ai/dop/lite",
+        name: "DoP Lite",
+        type: "image-to-video",
+        status: "available",
+        description: "Lightweight, faster DoP variant. Good for quick iterations and drafts.",
         parameters: ["image_url", "prompt", "duration"],
       },
       {
-        id: "higgsfield-ai/dop/preview",
-        name: "DoP Preview",
+        id: "higgsfield-ai/dop/turbo",
+        name: "DoP Turbo",
         type: "image-to-video",
-        description: "Fast preview version of DoP for quick iterations.",
+        status: "available",
+        description: "Highest-quality DoP variant. Slower but best motion fidelity.",
         parameters: ["image_url", "prompt", "duration"],
-      },
-      {
-        id: "bytedance/seedance/v1/pro/image-to-video",
-        name: "Seedance v1 Pro",
-        type: "image-to-video",
-        description: "Professional-grade video generation from images.",
-        parameters: ["image_url", "prompt", "duration"],
-      },
-      {
-        id: "kling-video/v2.1/pro/image-to-video",
-        name: "Kling v2.1 Pro I2V",
-        type: "image-to-video",
-        description: "Advanced cinematic animations from images.",
-        parameters: ["image_url", "prompt", "duration"],
-      },
-      {
-        id: "minimax/image-to-video",
-        name: "Minimax I2V",
-        type: "image-to-video",
-        description: "High-quality image-to-video generation.",
-        parameters: ["image_url", "prompt"],
       },
       // =====================================================================
       // TEXT-TO-VIDEO MODELS
       // =====================================================================
       {
-        id: "kling/v2.6/text-to-video",
-        name: "Kling v2.6",
-        type: "text-to-video",
-        description: "Generate videos from text prompts with audio support.",
-        parameters: ["prompt", "duration", "resolution", "aspect_ratio"],
-      },
-      {
-        id: "kling/v3.0/text-to-video",
-        name: "Kling v3.0",
-        type: "text-to-video",
-        description: "Latest Kling model with improved quality and motion.",
-        parameters: ["prompt", "duration", "resolution", "aspect_ratio"],
-      },
-      {
-        id: "minimax/video-01",
-        name: "Minimax Video",
-        type: "text-to-video",
-        description: "High-quality video generation from text.",
-        parameters: ["prompt", "duration"],
-      },
-      {
         id: "wan/v2.6/text-to-video",
         name: "WAN v2.6",
         type: "text-to-video",
-        description: "Text-to-video with camera control.",
-        parameters: ["prompt", "duration", "camera_motion"],
-      },
-      {
-        id: "veo/v3.1/text-to-video",
-        name: "Google Veo 3.1",
-        type: "text-to-video",
-        description: "Google's Veo model for high-quality video generation.",
-        parameters: ["prompt", "duration", "aspect_ratio"],
-      },
-      {
-        id: "sora/v2/text-to-video",
-        name: "Sora 2",
-        type: "text-to-video",
-        description: "OpenAI's Sora model for cinematic video generation.",
-        parameters: ["prompt", "duration", "aspect_ratio"],
+        status: "available",
+        description: "Text-to-video generation with camera control. Verified working on the current plan.",
+        parameters: ["prompt", "duration", "resolution", "aspect_ratio", "camera_motion"],
       },
     ]
-
     const filterType = args.type as string || "all"
     
     const filteredModels = filterType === "all" 
@@ -805,7 +695,12 @@ server.tool("higgsfield-list-models", {
       total: filteredModels.length,
       filter: filterType,
       models: filteredModels,
-      note: "This is a curated list. Visit https://cloud.higgsfield.ai/explore for the complete gallery of 100+ models.",
+      note:
+        "Empirically verified catalog (2026-10-20): every model listed here returned 200 OK on a real submit+cancel probe. " +
+        "For image-to-video, prefer Higgsfield's own DoP engine (higgsfield-ai/dop/standard|lite|turbo) — it is the reliable first-party option on this platform. " +
+        "Seedance is NOT served by the Higgsfield API (all variants return 404); if you need Seedance, use the Replicate MCA with model 'bytedance/seedance-2.0'. " +
+        "Kling and Reve are blocked on the current plan (423 model_blocked). " +
+        "Full gallery: https://cloud.higgsfield.ai/explore",
     }
   },
 })

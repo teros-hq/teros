@@ -24,13 +24,16 @@ export function createArchiveWorkspaceHandler(
 
     // Capture members BEFORE archiving so we can fan-out the event even if a
     // future change to broadcastToWorkspace decides to skip non-active workspaces.
+    // Single source of truth: workspace_members collection (not embedded array)
     const beforeArchive = await workspaceService.getWorkspace(data.workspaceId)
-    const memberUserIds = beforeArchive
-      ? new Set<string>([
-          beforeArchive.ownerId,
-          ...beforeArchive.members.map((m) => m.userId),
-        ])
-      : new Set<string>()
+    let memberUserIds = new Set<string>()
+    if (beforeArchive) {
+      memberUserIds.add(beforeArchive.ownerId)
+      const wsMembers = await workspaceService.getWorkspaceMembers(data.workspaceId)
+      for (const m of wsMembers) {
+        if (m.userId) memberUserIds.add(m.userId)
+      }
+    }
 
     let success: boolean
     try {

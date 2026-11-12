@@ -24,7 +24,9 @@
 
 import pino from 'pino'
 
-const isDev = process.env.NODE_ENV !== 'production'
+// Fail-safe: when NODE_ENV is unset, assume production (least-privilege logging).
+// Explicitly setting NODE_ENV=development opts into pretty-printed dev output.
+const isDev = process.env.NODE_ENV === 'development'
 const level = process.env.LOG_LEVEL ?? 'info'
 
 const transport = isDev

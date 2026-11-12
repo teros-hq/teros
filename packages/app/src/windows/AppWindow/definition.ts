@@ -4,22 +4,27 @@
  * Installed application configuration: auth, permissions, etc.
  */
 
-import { Box } from '@tamagui/lucide-icons';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { AppWindowContent } from './AppWindowContent';
-import i18n from '../../i18n';
+import { Box } from "@tamagui/lucide-icons"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const AppWindowContent = lazyWithRetry(() =>
+  import("./AppWindowContent").then((m) => ({ default: m.AppWindowContent })),
+)
+import i18n from "../../i18n"
 
 export interface AppWindowProps {
-  context?: string;
-  appId: string;
-  workspaceId?: string;
+  context?: string
+  appId: string
+  workspaceId?: string
 }
 
 export const appWindowDefinition: WindowTypeDefinition<AppWindowProps> = {
-  type: 'app',
-  displayName: 'App',
+  type: "app",
+  audience: "user",
+  displayName: "App",
   icon: Box,
-  color: '#7A54A6',
+  phIcon: "cube",
+  color: "#7A54A6",
   component: AppWindowContent,
 
   defaultSize: { width: 550, height: 500 },
@@ -38,4 +43,4 @@ export const appWindowDefinition: WindowTypeDefinition<AppWindowProps> = {
     appId: data.appId,
     ...(data.workspaceId && { workspaceId: data.workspaceId }),
   }),
-};
+}

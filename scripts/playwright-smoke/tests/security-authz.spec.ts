@@ -138,7 +138,8 @@ test.describe("security authz (2ª ola) — cross-workspace + IDOR @security", (
   // file.share WS path (TER-480 / #172 bug0) — resolveAuthorizedWorkspace gates the
   // WS `file.share` action by channel→workspace membership. A stranger knowing a
   // channelId could otherwise publish the foreign workspace's volume files.
-  // NOTE: the REST /api/share path is the one the frontend uses; see report.
+  // (2026-10-21: REST /api/share was removed; the UI now uses the WS share domain —
+  // cross-workspace IDOR covered in security-share-http.spec.ts via share.create.)
   test("user2 no puede compartir (WS file.share) un archivo del workspace de user1", async ({
     terosPage,
     user2Page,

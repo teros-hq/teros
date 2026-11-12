@@ -8,6 +8,14 @@
  */
 
 import { z } from "zod"
+import {
+  WsStreamCloseSchema,
+  WsStreamErrorSchema,
+  WsStreamInputSchema,
+  WsStreamOpenSchema,
+  WsStreamStateSchema,
+  WsStreamViewersSchema,
+} from "./mca-streams"
 
 // ============================================================================
 // RESOLVABILITY WIRE CONSTANTS
@@ -250,6 +258,15 @@ export const WsAdminResponseSchema = z.object({
   code: z.string().optional(), // error code if error
 })
 
+/** Domain response from backend to MCA (mirror of admin_response). */
+export const WsDomainResponseSchema = z.object({
+  type: z.literal("domain_response"),
+  requestId: z.string(),
+  data: z.unknown().optional(),
+  error: z.string().optional(),
+  code: z.string().optional(),
+})
+
 /**
  * Union of all Backend → MCA messages
  */
@@ -265,11 +282,17 @@ export const WsBackendToMcaMessageSchema = z.discriminatedUnion("type", [
   WsUpdateUserSecretsResponseSchema,
   WsQueryConversationsResultSchema,
   WsAdminResponseSchema,
+  WsDomainResponseSchema,
+  // MCA streams (spec MCS-REQ-4)
+  WsStreamViewersSchema,
+  WsStreamInputSchema,
+  WsStreamErrorSchema,
 ])
 
 // Type aliases placed after the union to prevent tsc from reordering
 // declarations across type-only statements (causes TDZ errors in ESM output)
 export type WsAdminResponse = z.infer<typeof WsAdminResponseSchema>
+export type WsDomainResponse = z.infer<typeof WsDomainResponseSchema>
 export type WsBackendToMcaMessage = z.infer<typeof WsBackendToMcaMessageSchema>
 
 // ============================================================================
@@ -371,6 +394,29 @@ export const WsAdminRequestSchema = z.object({
 export type WsAdminRequest = z.infer<typeof WsAdminRequestSchema>
 
 /**
+ * Domain request from an MCA to the backend: invoke a WsRouter domain action
+ * (`automate.create-starter`, …) on behalf of the acting user/agent. The
+ * action must be in the MCA's manifest allowlist (`backend.actions`); the
+ * backend resolves the identity (never trusts it blindly) and builds the
+ * handler context with an `actor`.
+ */
+export const WsDomainRequestSchema = z.object({
+  type: z.literal("domain_request"),
+  requestId: z.string(),
+  action: z.string(),
+  params: z.record(z.unknown()).optional(),
+  /** Who is acting, as seen by the tool (from its execution context). */
+  actor: z
+    .object({
+      userId: z.string().optional(),
+      agentId: z.string().optional(),
+      channelId: z.string().optional(),
+    })
+    .optional(),
+})
+export type WsDomainRequest = z.infer<typeof WsDomainRequestSchema>
+
+/**
  * Query conversations - search messages, list channels, get messages
  */
 export const WsQueryConversationsActionSchema = z.enum([
@@ -383,6 +429,9 @@ export const WsQueryConversationsActionSchema = z.enum([
   "send_message",
   "rename_channel",
   "import_channel_attachment",
+  // Agent secret tools (docs/specs/20261031_agent-secret-tools.md) — value-based
+  // redaction sweep over the calling channel, self-redacting.
+  "redact_by_value",
   // Board actions
   "get_my_task",
   "get_tasks_by_agent",
@@ -429,8 +478,6 @@ export const WsQueryConversationsActionSchema = z.enum([
   "subscribe_to_events", // queries-board-runner.ts
   "unsubscribe_from_events", // queries-board-runner.ts
   "list_event_subscriptions", // queries-board-runner.ts
-  "delete_project", // queries-board-write.ts
-  "update_board_config", // queries-board-write.ts
 ])
 export type WsQueryConversationsAction = z.infer<typeof WsQueryConversationsActionSchema>
 
@@ -456,6 +503,11 @@ export const WsMcaToBackendMessageSchema = z.discriminatedUnion("type", [
   WsUpdateUserSecretsSchema,
   WsQueryConversationsSchema,
   WsAdminRequestSchema,
+  WsDomainRequestSchema,
+  // MCA streams (spec MCS-REQ-2)
+  WsStreamOpenSchema,
+  WsStreamStateSchema,
+  WsStreamCloseSchema,
 ])
 export type WsMcaToBackendMessage = z.infer<typeof WsMcaToBackendMessageSchema>
 

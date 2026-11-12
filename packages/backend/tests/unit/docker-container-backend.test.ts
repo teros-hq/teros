@@ -276,9 +276,18 @@ describe('start', () => {
     expect(calls[1]).toEqual([
       'run', '-d',
       '--name', 'mca-teros-bash',
-      '-p', '4000:3000',
-      '-v', '/srv/teros/mcas/mca.teros.bash:/app/mca:rw',
-      '-v', '/srv/teros/mcas/../packages:/app/packages:ro',
+      // No -p: ports are not published to the host (workspace isolation, Capa A)
+      // Hardening flags (9786dc263 / ae71d7f6f)
+      '--security-opt', 'no-new-privileges',
+      '--pids-limit', '512',
+      '--cap-drop', 'NET_RAW',
+      // MCA source mounted read-only (14902e189)
+      '-v', '/srv/teros/mcas/mca.teros.bash:/app/mca:ro',
+      '-v', '/srv/teros/mcas/../packages:/opt/teros/packages:ro',
+      // Mounts added by 5c3d5ad39 (SDK from host) — the test predated them and
+      // had been failing since; updated in passing with the two-host hotfix.
+      '-v', '/srv/teros/mcas/../packages/../node_modules:/opt/teros/node_modules:ro',
+      '-v', '/srv/teros/mcas/../docker/mca-runtime/entrypoint.sh:/entrypoint.sh:ro',
       '-e', 'MCA_TRANSPORT=http',
       '-e', 'MCA_HTTP_PORT=3000',
       '-e', 'MCA_CALLBACK_BASE_URL=http://host.docker.internal:10001',
@@ -288,10 +297,10 @@ describe('start', () => {
     expect(info).toMatchObject({
       name: 'mca-teros-bash',
       mcaId: 'mca.teros.bash',
-      hostPort: 4000,
+      hostPort: 0, // No host port — container is reached by DNS name on its network
       containerPort: 3000,
       status: 'running',
-      baseUrl: 'http://localhost:4000',
+      baseUrl: 'http://localhost:3000', // No network → localhost fallback, port 3000
     })
   })
 
@@ -305,7 +314,9 @@ describe('start', () => {
     const args = runArgs() as string[]
     const idx = args.indexOf('--add-host=host.docker.internal:172.17.0.1')
     expect(idx).toBeGreaterThan(-1)
-    expect(args[idx - 2]).toBe('-p') // tras el port mapping, antes de los -v
+    // --add-host comes after the hardening flags (last: --cap-drop NET_RAW), before the -v mounts
+    expect(args[idx - 2]).toBe('--cap-drop')
+    expect(args[idx + 1]).toBe('-v')
   })
 
   it('defaultCpus/defaultMemoryMb del config añaden --cpus/--memory/--memory-swap', async () => {
@@ -373,7 +384,90 @@ describe('start', () => {
     expect(args[args.length - 1]).toBe('custom:1.0') // la imagen SIEMPRE al final
   })
 
-  it('docker run con status != 0 → throw con stderr y el puerto se libera', async () => {
+  it('con network: resolveContainerIP actualiza baseUrl con la IP del contenedor', async () => {
+    fixRandom(0)
+    healthyFetch()
+    const backend = new DockerContainerBackend(makeConfig())
+
+    // Mock: docker run returns container ID, docker inspect returns IPs
+    spawnScript.mockImplementation((args) => {
+      if (args[0] === 'run') return { status: 0, stdout: 'cid123\n', stderr: '' }
+      if (args[0] === 'inspect') return { status: 0, stdout: '172.18.0.3 \n', stderr: '' }
+      if (args[0] === 'rm') return { status: 0, stdout: '', stderr: '' }
+      return { status: 0, stdout: '', stderr: '' }
+    })
+
+    const info = await backend.start('mca.teros.bash', 'mca-teros-bash', 'tok', {
+      dockerNetwork: 'teros_ws_test123',
+    })
+
+    // baseUrl should use the resolved IP, not the container name
+    expect(info.baseUrl).toBe('http://172.18.0.3:3000')
+    expect(info.status).toBe('running')
+
+    // Verify docker inspect was called with the right format
+    const inspectCalls = dockerCalls().filter((a) => a[0] === 'inspect')
+    expect(inspectCalls.length).toBeGreaterThan(0)
+    expect(inspectCalls[0]).toContain('--format={{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}')
+    expect(inspectCalls[0]).toContain('mca-teros-bash')
+  })
+
+  it('con network: docker inspect devuelve múltiples IPs (varias redes) → usa la primera', async () => {
+    fixRandom(0)
+    healthyFetch()
+    const backend = new DockerContainerBackend(makeConfig())
+
+    spawnScript.mockImplementation((args) => {
+      if (args[0] === 'run') return { status: 0, stdout: 'cid\n', stderr: '' }
+      if (args[0] === 'inspect') return { status: 0, stdout: '172.18.0.3 172.19.0.2 \n', stderr: '' }
+      if (args[0] === 'rm') return { status: 0, stdout: '', stderr: '' }
+      // network connect
+      return { status: 0, stdout: '', stderr: '' }
+    })
+
+    const info = await backend.start('mca.teros.bash', 'mca-teros-bash', 'tok', {
+      dockerNetworks: ['teros_ws_test123', 'teros_teros-network'],
+    })
+
+    // First IP is from the primary network (teros_ws_test123)
+    expect(info.baseUrl).toBe('http://172.18.0.3:3000')
+  })
+
+  it('con network: docker inspect falla → mantiene DNS name fallback, NO crashea', async () => {
+    fixRandom(0)
+    healthyFetch()
+    const backend = new DockerContainerBackend(makeConfig())
+
+    spawnScript.mockImplementation((args) => {
+      if (args[0] === 'run') return { status: 0, stdout: 'cid\n', stderr: '' }
+      if (args[0] === 'inspect') return { status: 1, stdout: '', stderr: 'inspect error' }
+      if (args[0] === 'rm') return { status: 0, stdout: '', stderr: '' }
+      return { status: 0, stdout: '', stderr: '' }
+    })
+
+    const info = await backend.start('mca.teros.bash', 'mca-teros-bash', 'tok', {
+      dockerNetwork: 'teros_ws_test123',
+    })
+
+    // Falls back to container name as hostname
+    expect(info.baseUrl).toBe('http://mca-teros-bash:3000')
+    expect(info.status).toBe('running')
+  })
+
+  it('sin network: NO hace docker inspect, baseUrl usa advertiseHost', async () => {
+    fixRandom(0)
+    healthyFetch()
+    const backend = new DockerContainerBackend(makeConfig())
+
+    const info = await backend.start('mca.teros.bash', 'mca-teros-bash', 'tok')
+
+    // No network → no inspect call, baseUrl uses localhost fallback
+    expect(info.baseUrl).toBe('http://localhost:3000')
+    const inspectCalls = dockerCalls().filter((a) => a[0] === 'inspect')
+    expect(inspectCalls).toEqual([])
+  })
+
+  it('docker run con status != 0 → throw con stderr', async () => {
     fixRandom(0, 0)
     spawnScript.mockImplementation((args) =>
       args[0] === 'run' ? { status: 1, stdout: '', stderr: 'boom' } : { status: 0 },
@@ -382,11 +476,12 @@ describe('start', () => {
 
     await expect(backend.start('mca.x', 'mca-x', 'tok')).rejects.toThrow('docker run failed: boom')
 
-    // El 4000 quedó liberado: la siguiente asignación lo reusa
+    // No port is allocated/released anymore (workspace isolation, Capa A).
+    // allocatePort() still works independently for backward compat.
     expect(await backend.allocatePort()).toBe(4000)
   })
 
-  it('spawn emite error (docker no instalado) → throw y puerto liberado', async () => {
+  it('spawn emite error (docker no instalado) → throw', async () => {
     fixRandom(0, 0)
     spawnScript.mockImplementation((args) =>
       args[0] === 'run' ? { status: null, error: new Error('ENOENT docker') } : { status: 0 },
@@ -652,5 +747,91 @@ describe('waitForHealthy', () => {
     const backend = new DockerContainerBackend(makeConfig())
     // biome-ignore lint/suspicious/noExplicitAny: método privado — patrón del repo
     await expect((backend as any).waitForHealthy(info(), 120)).rejects.toThrow('did not become healthy')
+  })
+})
+
+// ===========================================================================
+// Two-host mode (hotfix incidente 2026-09-10) — CONTAINER_AGENT_ADVERTISE_HOST
+//
+// Con advertiseHost (agente remoto en int5, core en LXC 100) el backend NO
+// puede enrutar a la IP de bridge del contenedor (172.x del exec host, con
+// colisión de subredes contra los bridges locales del core). El contrato del
+// hotfix: publicar el puerto SOLO en la IP del túnel (nunca 0.0.0.0) y
+// anunciar advertiseHost:puerto como baseUrl. Sin advertiseHost (pre/raw,
+// single-host) el comportamiento de aislamiento por workspace-network se
+// mantiene intacto (sin -p, baseUrl = IP de bridge).
+// ===========================================================================
+
+describe('start — two-host mode (advertiseHost)', () => {
+  const ADVERTISE = '10.99.0.2'
+
+  it('publica el puerto bind SOLO a la IP del túnel y anuncia advertiseHost:port', async () => {
+    fixRandom(0)
+    healthyFetch()
+    const backend = new DockerContainerBackend(makeConfig({ advertiseHost: ADVERTISE }))
+
+    const info = await backend.start('mca.teros.bash', 'mca-teros-bash', 'tok', {
+      dockerNetworks: ['teros_ws_x'],
+    })
+
+    const args = runArgs() as string[]
+    // -p <tunnel-ip>:<hostPort>:3000 — NUNCA 0.0.0.0 ni hostPort:3000 a secas
+    const pIdx = args.indexOf('-p')
+    expect(pIdx).toBeGreaterThan(-1)
+    expect(args[pIdx + 1]).toBe(`${ADVERTISE}:4000:3000`)
+    expect(args).not.toContain('0.0.0.0:4000:3000')
+    // baseUrl anunciado = tunnel IP + published port
+    expect(info.baseUrl).toBe(`http://${ADVERTISE}:4000`)
+    expect(info.hostPort).toBe(4000)
+    expect(info.status).toBe('running')
+  })
+
+  it('NO ejecuta docker inspect ni pisa el baseUrl anunciado con la IP de bridge', async () => {
+    fixRandom(0)
+    healthyFetch()
+    const backend = new DockerContainerBackend(makeConfig({ advertiseHost: ADVERTISE }))
+
+    const info = await backend.start('mca.teros.bash', 'mca-teros-bash', 'tok', {
+      dockerNetworks: ['teros_ws_x'],
+    })
+
+    // El inspect (resolución de IP de bridge) está desactivado en two-host:
+    // la IP de bridge NO es enrutable desde el core.
+    const inspectCalls = dockerCalls().filter((a) => a[0] === 'inspect')
+    expect(inspectCalls).toEqual([])
+    expect(info.baseUrl).toBe(`http://${ADVERTISE}:4000`)
+  })
+
+  it('docker run falla → libera el puerto publicado de vuelta al pool', async () => {
+    fixRandom(0, 0)
+    spawnScript.mockImplementation((args) =>
+      args[0] === 'run' ? { status: 1, stdout: '', stderr: 'boom' } : { status: 0 },
+    )
+    const backend = new DockerContainerBackend(makeConfig({ advertiseHost: ADVERTISE }))
+
+    await expect(
+      backend.start('mca.x', 'mca-x', 'tok', { dockerNetworks: ['teros_ws_x'] }),
+    ).rejects.toThrow('docker run failed: boom')
+
+    // El puerto 4000 (consumido por el primer intento) vuelve a estar libre
+    expect(await backend.allocatePort(ADVERTISE)).toBe(4000)
+  })
+
+  it('sin advertiseHost (single-host): sin -p, hostPort 0, baseUrl por IP de bridge — Capa A intacta', async () => {
+    fixRandom(0)
+    healthyFetch()
+    const backend = new DockerContainerBackend(makeConfig())
+
+    const info = await backend.start('mca.teros.bash', 'mca-teros-bash', 'tok', {
+      dockerNetworks: ['teros_ws_x'],
+    })
+
+    const args = runArgs() as string[]
+    expect(args).not.toContain('-p')
+    expect(info.hostPort).toBe(0)
+    // placeholder DNS → reemplazado por la IP de bridge vía inspect (mock devuelve 'cid')
+    expect(info.baseUrl).toMatch(/^http:\/\/(mca-teros-bash|172\.|cid):3000$/)
+    const inspectCalls = dockerCalls().filter((a) => a[0] === 'inspect')
+    expect(inspectCalls.length).toBe(1)
   })
 })

@@ -4,8 +4,8 @@ import { basename, extname } from 'path';
 // Backend URL for media uploads (from environment or default)
 const BACKEND_URL = process.env.MCA_BACKEND_URL || 'https://be.teros.ai';
 
-// Extension to MIME type mapping
-const EXT_TO_MIME: Record<string, string> = {
+// Extension to MIME type mapping — shared by uploadLocalFile and send-file
+export const EXT_TO_MIME: Record<string, string> = {
   // Images
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -33,6 +33,15 @@ const EXT_TO_MIME: Record<string, string> = {
   '.markdown': 'text/markdown',
   '.zip': 'application/zip',
 };
+
+/**
+ * Infer the MIME type from a filename's extension (FVU-REQ-1).
+ * Falls back to application/octet-stream for unknown extensions.
+ */
+export function extToMime(filename: string): string {
+  const ext = extname(filename).toLowerCase();
+  return EXT_TO_MIME[ext] || 'application/octet-stream';
+}
 
 /**
  * Upload a local file to the backend and return the URL
@@ -86,8 +95,52 @@ export async function uploadLocalFile(
   };
 }
 
+// -----------------------------------------------------------------------------
+// Objects-system support (WS1c — 2026-10-20)
+// -----------------------------------------------------------------------------
+
 /**
- * Resolve URL - either use direct URL or upload local file
+ * Regex matching an objectId (`obj_<alphanumeric>`).
+ */
+const OBJECT_ID_RE = /^obj_[A-Za-z0-9]+$/;
+
+/**
+ * Regex matching a public objects URL on any backend host
+ * (e.g. `https://be.teros.ai/objects/obj_abc123`,
+ *       `http://localhost:10001/objects/obj_abc123`).
+ */
+const OBJECT_URL_RE = /\/objects\/(obj_[A-Za-z0-9]+)(?:[/?#]|$)/;
+
+/**
+ * Return true if the value looks like an objectId (`obj_...`).
+ */
+export function isObjectId(value: unknown): value is string {
+  return typeof value === 'string' && OBJECT_ID_RE.test(value);
+}
+
+/**
+ * Return true if the value looks like an objects-system public URL.
+ */
+export function isObjectUrl(value: unknown): value is string {
+  return typeof value === 'string' && OBJECT_URL_RE.test(value);
+}
+
+/**
+ * Build the public URL for an objectId on the current backend.
+ */
+export function objectUrlFor(objectId: string): string {
+  return `${BACKEND_URL}/objects/${objectId}`;
+}
+
+/**
+ * Resolve URL — accepts:
+ *   - public URLs (http/https) — returned as-is
+ *   - objects-system URLs (.../objects/obj_...) — returned as-is
+ *   - bare objectIds (`obj_...`) — expanded to the public objects URL
+ *   - local file paths — uploaded to the backend via /api/media/upload
+ *
+ * Compatibility: previous behavior (URL pass-through, filePath upload) is
+ * preserved. The new objectId / objects-URL branches simply skip the upload.
  */
 export async function resolveUrl(
   url?: string,
@@ -95,11 +148,19 @@ export async function resolveUrl(
   filename?: string,
 ): Promise<{ url: string; mimeType?: string; size?: number }> {
   if (url) {
-    // Direct URL - use as-is
+    // Bare objectId → expand to public objects URL
+    if (isObjectId(url)) {
+      return { url: objectUrlFor(url) };
+    }
+    // Direct URL (public or objects-system) — use as-is
     return { url };
   }
 
   if (filePath) {
+    // Allow passing an objectId via filePath too (common agent mistake)
+    if (isObjectId(filePath)) {
+      return { url: objectUrlFor(filePath) };
+    }
     // Local file - upload to backend
     return await uploadLocalFile(filePath, filename);
   }
@@ -108,4 +169,7 @@ export async function resolveUrl(
 }
 
 // Re-export basename for convenience
-export { basename } from 'path';
+export { basename, extname } from 'path';
+
+// Share bridge (WS domain_request to backend share.* actions)
+export { initializeWsClient, callShareBackend, isWsConnected } from './share-bridge';

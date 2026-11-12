@@ -4,6 +4,7 @@ export { listDevices } from './list-devices';
 export { setCapability } from './set-capability';
 
 // Flows
+export { getFlow } from './get-flow';
 export { listFlows } from './list-flows';
 export { triggerFlow } from './trigger-flow';
 

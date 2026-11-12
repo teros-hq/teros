@@ -175,7 +175,7 @@ export const createEvent: ToolConfig = {
       })
     }
 
-    const response = await runCalendarCall(() =>
+    const response = await runCalendarCall(context, () =>
       calendar.events.insert({
         calendarId,
         sendUpdates,

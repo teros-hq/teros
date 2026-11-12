@@ -1,11 +1,11 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 import { getWsClient } from '../lib';
 import { TASK_FIELDS } from './_fields';
-import { assertBackendConnected, resolveFieldsList, withTimeout } from './utils';
+import { assertBackendConnected, normalizeTags, resolveFieldsList, withTimeout } from './utils';
 
 export const batchCreateTasks: ToolConfig = {
   description:
-    'Create multiple tasks atomically (all succeed or all fail). Max 100 per call. Returns: { projectId, tasks: [{ taskId, title, columnId, priority, tags }], count }. Use create-task for a single task. Providing `instructions` for each task is encouraged — it gives the assigned agent the context and steps needed to work autonomously.',
+    'Create multiple tasks atomically (all succeed or all fail). Max 100 per call. Returns: { projectId, tasks: [{ taskId, title, columnId, priority, tags }], count }. Use create-task for a single task. `instructions` is required for each task — it gives the assigned agent the context and steps needed to work autonomously.',
   annotations: { readOnlyHint: false, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
@@ -30,14 +30,14 @@ export const batchCreateTasks: ToolConfig = {
             columnId: { type: 'string', description: 'Target column (default: backlog)' },
             parentTaskId: { type: 'string', description: 'Parent task ID' },
           },
-          required: ['title'],
+          required: ['title', 'instructions'],
         },
       },
       includeRaw: { type: 'boolean', description: 'Return full task documents' },
     },
     required: ['projectId', 'tasks'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
     const wsClient = getWsClient();
     const projectId = args?.projectId as string;
@@ -49,11 +49,28 @@ export const batchCreateTasks: ToolConfig = {
     if (rawTasks.length > 100) {
       throw new Error('batch-create-tasks accepts at most 100 tasks per call');
     }
+    // Validate every task has instructions
+    for (let i = 0; i < rawTasks.length; i++) {
+      const t = rawTasks[i];
+      if (!t?.instructions || String(t.instructions).trim().length === 0) {
+        throw new Error(`Task at index ${i} is missing required "instructions" — provide detailed task instructions so the assigned agent can work autonomously`);
+      }
+    }
+
+    // Normalize tags on every task (LLMs sometimes pass '["a","b"]' as string)
+    const tasksPayload = rawTasks.map((t) => ({
+      ...t,
+      ...(t?.tags !== undefined ? { tags: normalizeTags(t.tags) } : {}),
+    }));
+
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
 
     const result = await withTimeout(
       wsClient.queryConversations<any>('batch_create_tasks', {
         projectId,
-        tasks: rawTasks,
+        tasks: tasksPayload,
+        callerAgentId,
       }),
       20_000,
       'batch_create_tasks',

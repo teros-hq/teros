@@ -117,7 +117,7 @@
     }
   },
   "name": "Google Contacts",
-  "description": "Manage Google Contacts - list, search, create, update, and delete contacts, and organize them into groups and labels",
+  "description": "Manage Google Contacts - list, search, create, update, and delete contacts",
   "changelog": [
     {
       "notes": "Initial release — list, search, create, update and delete contacts, plus organize them into groups and labels"

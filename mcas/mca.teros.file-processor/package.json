@@ -12,16 +12,20 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "@modelcontextprotocol/sdk": "^1.0.4",
-    "@teros/mca-sdk": "0.1.0",
+    "@napi-rs/canvas": "^1.0.9",
     "@resvg/resvg-js": "^2.6.2",
+    "@teros/mca-sdk": "0.1.0",
     "chromium-bidi": "^11.0.1",
     "mammoth": "^1.12.0",
     "openai": "^6.8.1",
+    "pdfjs-dist": "^4.10.38",
     "pdf-lib": "^1.17.1",
     "playwright": "^1.61.1",
+    "sharp": "^0.35.5",
+    "tesseract.js": "^7.0.0",
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2",
-    "unpdf": "^1.6.2"
+    "unpdf": "~1.8.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",

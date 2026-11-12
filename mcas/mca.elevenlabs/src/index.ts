@@ -19,6 +19,9 @@ import { homedir, tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { promisify } from 'util';
 import yaml from 'yaml';
+import { buildCallStartedPayload } from './events';
+import { subscribeInitiatorChannelToPostCall, type NotifyChannelOutcome as NotifyOutcome } from './notify';
+import { resolveAgentId, resolveApiKey, resolveApiKeyWithSource } from './secrets';
 
 const execAsync = promisify(exec);
 
@@ -63,10 +66,17 @@ async function elevenLabsRequest(
   options: RequestInit = {},
 ): Promise<Response> {
   const url = `${ELEVENLABS_API_BASE}${endpoint}`;
-  const headers = {
+  // HeadersInit can also be string[][] — this MCA only ever passes plain
+  // object headers, so the cast is safe and keeps the Record<string,string> type.
+  const headers: Record<string, string> = {
     'xi-api-key': apiKey,
-    ...options.headers,
+    ...(options.headers as Record<string, string> | undefined),
   };
+  // JSON body needs an explicit Content-Type, otherwise FastAPI rejects
+  // the request with 'Input should be a valid dictionary' (422).
+  if (options.body && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   return fetch(url, { ...options, headers });
 }
@@ -121,7 +131,7 @@ async function generateSpeechBuffer(
   return Buffer.from(audioBuffer);
 }
 
-async function generatePodcast(apiKey: string, scriptPath: string): Promise<string> {
+async function generatePodcast(apiKey: string, scriptPath: string): Promise<{ buffer: Buffer; extension: string }> {
   // Read and parse YAML script
   const scriptContent = await readFile(scriptPath, 'utf-8');
   const script: PodcastConfig = yaml.parse(scriptContent);
@@ -195,20 +205,16 @@ async function generatePodcast(apiKey: string, scriptPath: string): Promise<stri
     const concatContent = audioFiles.map((f) => `file '${f}'`).join('\n');
     await writeFile(concatListPath, concatContent);
 
-    // Determine output path
+    // Combine all audio files using ffmpeg concat into a temp file
     const outputFormat = script.config?.output_format?.startsWith('mp3') ? 'mp3' : 'wav';
-    const defaultOutput = join('/workspace', `podcast-${Date.now()}.${outputFormat}`);
-    const outputPath = script.config?.output || defaultOutput;
+    const tempOutput = join(tempDir, `podcast-final.${outputFormat}`);
+    await execAsync(`ffmpeg -f concat -safe 0 -i "${concatListPath}" -c copy "${tempOutput}"`);
 
-    // Ensure output directory exists
-    await mkdir(dirname(outputPath), { recursive: true });
+    console.error(`[Podcast] Podcast generated, reading buffer...`);
+    const buffer = await readFile(tempOutput);
+    await unlink(tempOutput).catch(() => {});
 
-    // Combine all audio files using ffmpeg concat
-    await execAsync(`ffmpeg -f concat -safe 0 -i "${concatListPath}" -c copy "${outputPath}"`);
-
-    console.error(`[Podcast] Podcast generated successfully: ${outputPath}`);
-
-    return outputPath;
+    return { buffer, extension: outputFormat };
   } finally {
     // Clean up temp files
     console.error(`[Podcast] Cleaning up temp directory...`);
@@ -238,6 +244,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies API key and connectivity to ElevenLabs.',
   parameters: {
     type: 'object',
@@ -246,25 +253,28 @@ server.tool('-health-check', {
   handler: async (_args, context) => {
     const builder = new HealthCheckBuilder().setVersion('1.0.0');
 
-    try {
-      const secrets = await context.getSystemSecrets();
-      const apiKey = secrets.API_KEY;
+    // User-only key resolution (product decision 2026-10-26): the user's own
+    // key is the only source. No key → the app is unusable for this user
+    // until they configure it.
+    const { apiKey, source } = await resolveApiKeyWithSource(context);
 
+    try {
       if (!apiKey) {
-        builder.addIssue('SYSTEM_CONFIG_MISSING', 'ElevenLabs API key not configured', {
-          type: 'admin_action',
-          description: 'Configure the API_KEY in system secrets',
+        // Neither user nor system key configured — genuinely unusable.
+        builder.addIssue('USER_CONFIG_MISSING', 'Your ElevenLabs API key is not configured', {
+          type: 'user_action',
+          description: 'Configure your own ElevenLabs API key in the app settings',
         });
       } else {
-        // Validate API key by making a simple request
+        // Validate the WINNING key against the API.
         try {
           const response = await elevenLabsRequest(apiKey, '/user/subscription');
 
           if (!response.ok) {
             if (response.status === 401) {
-              builder.addIssue('AUTH_INVALID', 'ElevenLabs API key is invalid', {
-                type: 'admin_action',
-                description: 'The configured API key is invalid. Please update it.',
+              builder.addIssue('AUTH_INVALID', 'Your ElevenLabs API key is invalid', {
+                type: 'user_action',
+                description: 'The API key you configured is invalid. Please update it.',
               });
             } else {
               builder.addIssue(
@@ -361,8 +371,7 @@ server.tool('text-to-speech', {
     required: ['text'],
   },
   handler: async (args: any, context) => {
-    const secrets = await context.getSystemSecrets();
-    const apiKey = secrets.API_KEY;
+    const apiKey = await resolveApiKey(context);
 
     if (!apiKey) {
       throw new Error('ElevenLabs API key not configured');
@@ -388,19 +397,38 @@ server.tool('text-to-speech', {
       outputFormat,
     });
 
-    // Save audio file
     const timestamp = Date.now();
     const extension = outputFormat.startsWith('mp3') ? 'mp3' : 'wav';
-    const defaultPath = join('/workspace', `tts-${timestamp}.${extension}`);
-    const filePath = outputPath || defaultPath;
+    const mimeType = extension === 'mp3' ? 'audio/mpeg' : 'audio/wav';
 
-    // Ensure directory exists
-    await mkdir(dirname(filePath), { recursive: true });
-    await writeFile(filePath, audioBuffer);
+    // Persist audio as object (WS1c — objects-first standard).
+    // Primary output is { objectId, url } — a permanent public URL.
+    const objectResult = await context.objects.put(audioBuffer, mimeType, {
+      source: 'elevenlabs',
+      voiceId,
+      modelId,
+      outputFormat,
+      textLength: String(text.length),
+    });
+
+    if (!objectResult.success) {
+      throw new Error(`Failed to persist audio object: ${objectResult.error || 'unknown'}`);
+    }
+
+    // Backwards-compat: also write to filePath if the caller asked for one.
+    // The default /workspace/tts-* path is no longer written unless requested.
+    let filePath: string | undefined;
+    if (outputPath) {
+      filePath = outputPath;
+      await mkdir(dirname(filePath), { recursive: true });
+      await writeFile(filePath, audioBuffer);
+    }
 
     return {
       success: true,
-      filePath,
+      objectId: objectResult.objectId,
+      url: objectResult.url,
+      ...(filePath ? { filePath } : {}),
       voiceId,
       modelId,
       outputFormat,
@@ -437,8 +465,7 @@ server.tool('list-voices', {
     },
   },
   handler: async (args: any, context) => {
-    const secrets = await context.getSystemSecrets();
-    const apiKey = secrets.API_KEY;
+    const apiKey = await resolveApiKey(context);
 
     if (!apiKey) {
       throw new Error('ElevenLabs API key not configured');
@@ -508,8 +535,7 @@ server.tool('get-voice', {
     required: ['voiceId'],
   },
   handler: async (args: any, context) => {
-    const secrets = await context.getSystemSecrets();
-    const apiKey = secrets.API_KEY;
+    const apiKey = await resolveApiKey(context);
 
     if (!apiKey) {
       throw new Error('ElevenLabs API key not configured');
@@ -545,8 +571,7 @@ server.tool('generate-conversation', {
     required: ['scriptPath'],
   },
   handler: async (args: any, context) => {
-    const secrets = await context.getSystemSecrets();
-    const apiKey = secrets.API_KEY;
+    const apiKey = await resolveApiKey(context);
 
     if (!apiKey) {
       throw new Error('ElevenLabs API key not configured');
@@ -558,11 +583,25 @@ server.tool('generate-conversation', {
       throw new Error('scriptPath is required');
     }
 
-    const outputPath = await generatePodcast(apiKey, scriptPath);
+    const { buffer, extension } = await generatePodcast(apiKey, scriptPath);
+    const mimeType = extension === 'mp3' ? 'audio/mpeg' : 'audio/wav';
+
+    // Persist as object (WS1c — objects-first standard)
+    const objectResult = await context.objects.put(buffer, mimeType, {
+      source: 'elevenlabs',
+      tool: 'generate-conversation',
+      scriptPath,
+    });
+
+    if (!objectResult.success) {
+      throw new Error(`Failed to persist podcast object: ${objectResult.error || 'unknown'}`);
+    }
 
     return {
       success: true,
-      outputPath,
+      objectId: objectResult.objectId,
+      url: objectResult.url,
+      audioSize: buffer.byteLength,
       message: 'Conversation generated successfully',
     };
   },
@@ -581,8 +620,7 @@ server.tool('get-subscription', {
     properties: {},
   },
   handler: async (_args, context) => {
-    const secrets = await context.getSystemSecrets();
-    const apiKey = secrets.API_KEY;
+    const apiKey = await resolveApiKey(context);
 
     if (!apiKey) {
       throw new Error('ElevenLabs API key not configured');
@@ -607,6 +645,553 @@ server.tool('get-subscription', {
       can_extend_character_limit: data.can_extend_character_limit,
       allowed_to_extend_character_limit: data.allowed_to_extend_character_limit,
       status: data.status,
+    };
+  },
+});
+
+
+// =============================================================================
+// TELEPHONY TOOLS (SIP / Twilio integration)
+// =============================================================================
+
+// Default agent: the user's own AGENT_ID (user-only model, ./secrets resolveAgentId).
+
+server.tool('list-phone-numbers', {
+  annotations: { readOnlyHint: true },
+  description: 'List phone numbers connected to ElevenLabs with their assigned agent and capabilities.',
+  parameters: {
+    type: 'object',
+    properties: {},
+  },
+  handler: async (_args, context) => {
+    const apiKey = await resolveApiKey(context);
+
+    if (!apiKey) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    const response = await elevenLabsRequest(apiKey, '/convai/phone-numbers');
+
+    if (!response.ok) {
+      throw new Error(`Failed to list phone numbers: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const numbers = (data as any).phone_numbers || data;
+
+    if (!Array.isArray(numbers)) {
+      return { phone_numbers: [] };
+    }
+
+    return {
+      total: numbers.length,
+      phone_numbers: numbers.map((n: any) => ({
+        phone_number_id: n.phone_number_id,
+        phone_number: n.phone_number,
+        label: n.label,
+        provider: n.provider,
+        agent_id: n.agent_id,
+      })),
+    };
+  },
+});
+
+server.tool('import-twilio-number', {
+  annotations: { readOnlyHint: false },
+  description: 'Import a Twilio phone number into ElevenLabs for inbound and outbound agent calls.',
+  parameters: {
+    type: 'object',
+    properties: {
+      phoneNumber: { type: 'string', description: 'E.164 phone number, e.g. +15551234567' },
+      label: { type: 'string', description: 'Descriptive label' },
+      twilioSid: { type: 'string', description: 'Twilio Account SID (AC...) or API Key SID (SK...)' },
+      twilioToken: { type: 'string', description: 'Twilio Auth Token or API Key Secret' },
+      agentId: { type: 'string', description: 'Optional agent ID to assign' },
+    },
+    required: ['phoneNumber', 'label', 'twilioSid', 'twilioToken'],
+  },
+  handler: async (args: any, context) => {
+    const apiKey = await resolveApiKey(context);
+
+    if (!apiKey) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    const body: Record<string, unknown> = {
+      provider: 'twilio',
+      phone_number: args.phoneNumber,
+      label: args.label,
+      sid: args.twilioSid,
+      token: args.twilioToken,
+    };
+
+    if (args.agentId) {
+      body.agent_id = args.agentId;
+    }
+
+    const response = await elevenLabsRequest(apiKey, '/convai/phone-numbers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to import Twilio number (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+    return { success: true, phone_number_id: (data as any).phone_number_id };
+  },
+});
+
+server.tool('outbound-call', {
+  annotations: { readOnlyHint: false },
+  description: 'Make an outbound phone call from a connected ElevenLabs number using an agent. The agent starts the conversation when the recipient answers.',
+  parameters: {
+    type: 'object',
+    properties: {
+      toNumber: { type: 'string', description: 'Destination phone number in E.164 format (e.g. +34600123456)' },
+      agentId: { type: 'string', description: 'Optional agent ID. Defaults to Teros Voice Agent' },
+      phoneNumberId: { type: 'string', description: 'Optional phone_number_id of the caller number. Defaults to the first connected number' },
+      firstMessage: { type: 'string', description: 'Optional first message override for this call' },
+      dynamicVariables: { type: 'object', description: 'Optional dynamic variables passed to the agent' },
+      notifyChannel: { type: 'boolean', description: 'Notify the initiating channel when the call ends (one-time post-call subscription). Default: true. Set false for fire-and-forget calls.' },
+    },
+    required: ['toNumber'],
+  },
+  handler: async (args: any, context) => {
+    const apiKey = await resolveApiKey(context);
+
+    if (!apiKey) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    // User-only agent resolution: explicit arg → user AGENT_ID. A user
+    // with their own ElevenLabs account calls THEIR agent (agent ids are
+    // account-scoped; there is no shared default in the user-only model).
+    const agentId = await resolveAgentId(context, args.agentId);
+    if (!agentId) {
+      throw new Error('No ElevenLabs agent configured: set your AGENT_ID user secret (your account\'s ConvAI agent), or pass agentId explicitly.');
+    }
+
+    // Resolve caller number: explicit or first connected number.
+    // Also detect the provider (twilio vs sip_trunk) to pick the right
+    // outbound-call endpoint for this number.
+    let phoneNumberId = args.phoneNumberId as string | undefined;
+    let provider = 'twilio';
+    {
+      const listResponse = await elevenLabsRequest(apiKey, '/convai/phone-numbers');
+      if (!listResponse.ok) {
+        throw new Error(`Failed to list phone numbers: ${listResponse.statusText}`);
+      }
+      const listData = await listResponse.json();
+      const numbers = (listData as any).phone_numbers || listData;
+      if (!Array.isArray(numbers) || numbers.length === 0) {
+        throw new Error('No phone numbers connected to ElevenLabs. Import one first (import-twilio-number).');
+      }
+      const selected = phoneNumberId
+        ? numbers.find((n: any) => n.phone_number_id === phoneNumberId)
+        : numbers[0];
+      if (!selected) {
+        throw new Error(`Phone number id not found: ${phoneNumberId}`);
+      }
+      phoneNumberId = String(selected.phone_number_id);
+      provider = selected.provider || 'twilio';
+    }
+
+    const body: Record<string, unknown> = {
+      agent_id: agentId,
+      agent_phone_number_id: phoneNumberId,
+      to_number: args.toNumber,
+    };
+
+    const cicd: Record<string, unknown> = {};
+    if (args.firstMessage) {
+      cicd.conversation_config_override = {
+        agent: { first_message: args.firstMessage },
+      };
+    }
+    if (args.dynamicVariables) {
+      cicd.dynamic_variables = args.dynamicVariables;
+    }
+    if (Object.keys(cicd).length > 0) {
+      body.conversation_initiation_client_data = cicd;
+    }
+
+    const outboundPath = provider === 'sip_trunk'
+      ? '/convai/sip-trunk/outbound-call'
+      : '/convai/twilio/outbound-call';
+    const response = await elevenLabsRequest(apiKey, outboundPath, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Outbound call failed (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    // Emit elevenlabs.call.started so channel/agent subscribers and Automate
+    // starters can react before the post-call webhook arrives. Best-effort:
+    // emission failure must never break the tool call.
+    try {
+      const backend = (context as any).backend;
+      if (backend && typeof backend.emitEvent === 'function') {
+        await backend.emitEvent({
+          event: 'elevenlabs.call.started',
+          payload: buildCallStartedPayload({
+            conversationId: (data as any).conversation_id ?? null,
+            callSid: (data as any).sip_call_id ?? null,
+            toNumber: args.toNumber,
+            agentId,
+            phoneNumberId,
+            initiatorChannelId: (context as any).execution?.channelId ?? null,
+            initiatorAgentId: (context as any).execution?.agentId ?? null,
+          }),
+        });
+      }
+    } catch (err) {
+      console.error('[mca.elevenlabs] Failed to emit elevenlabs.call.started:', (err as Error).message);
+    }
+
+    // Auto-subscribe the initiating channel to THIS call's post-call event
+    // (spec §3.3: notifyChannel defaults to true). Best-effort: never fails
+    // the call — the outcome is surfaced in the tool result instead.
+    let notifyChannel: NotifyOutcome = { subscribed: false };
+    try {
+      notifyChannel = await subscribeInitiatorChannelToPostCall({
+        backend: (context as any).backend,
+        notifyChannel: args.notifyChannel,
+        conversationId: (data as any).conversation_id ?? null,
+        initiatorChannelId: (context as any).execution?.channelId ?? null,
+      });
+    } catch (err) {
+      console.error('[mca.elevenlabs] Post-call auto-subscribe failed:', (err as Error).message);
+    }
+
+    return {
+      success: (data as any).success,
+      message: (data as any).message,
+      conversation_id: (data as any).conversation_id,
+      sip_call_id: (data as any).sip_call_id,
+      notifyChannel,
+    };
+  },
+});
+
+// resolveAgentId lives in ./secrets (explicit → user AGENT_ID, user-only
+// model since 2026-10-26): a user with their own ElevenLabs account has
+// their own ConvAI agents.
+
+server.tool('get-conversation', {
+  annotations: { readOnlyHint: true },
+  description: 'Get details of an ElevenLabs conversation (transcript, analysis, status) by its ID.',
+  parameters: {
+    type: 'object',
+    properties: {
+      conversationId: { type: 'string', description: 'The conversation ID' },
+    },
+    required: ['conversationId'],
+  },
+  handler: async (args: any, context) => {
+    const apiKey = await resolveApiKey(context);
+
+    if (!apiKey) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    const response = await elevenLabsRequest(apiKey, `/convai/conversations/${args.conversationId}`);
+
+    if (!response.ok) {
+      throw new Error(`Failed to get conversation: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const d = data as any;
+    return {
+      conversation_id: d.conversation_id,
+      agent_id: d.agent_id,
+      status: d.status,
+      start_time_unix: d.start_time_unix,
+      call_duration_secs: d.call_duration_secs,
+      transcript: (d.transcript || []).map((t: any) => ({ role: t.role, message: t.message, time_in_call_secs: t.time_in_call_secs })),
+      analysis: d.analysis,
+    };
+  },
+});
+
+// =============================================================================
+// CONVAI AGENT MANAGEMENT
+// =============================================================================
+// Tools to inspect and edit the ElevenLabs ConvAI agent configuration
+// (system prompt, first message, ASR keywords). Added after the 2026-10-19
+// incident where a stale demo prompt contaminated real calls and the only
+// way to fix it was raw curl against the ElevenLabs API.
+// =============================================================================
+// LIST AGENTS
+// =============================================================================
+
+server.tool('list-agents', {
+  annotations: { readOnlyHint: true },
+  description:
+    'List the ConvAI agents in the ElevenLabs account (id, name, phone numbers assigned). Use this to discover agent IDs for get-agent / update-agent instead of reading secrets manually.',
+  parameters: {
+    type: 'object',
+    properties: {
+      search: {
+        type: 'string',
+        description: 'Search term to filter agents by name (case-insensitive, optional)',
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum number of agents to return (optional, default: all)',
+      },
+    },
+  },
+  handler: async (args: any, context) => {
+    const apiKey = await resolveApiKey(context);
+
+    if (!apiKey) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    const search = (args.search as string)?.toLowerCase();
+    const limit = args.limit as number | undefined;
+
+    const response = await elevenLabsRequest(apiKey, '/convai/agents');
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to list agents (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+    let agents = (data as any).agents || [];
+
+    // Apply search filter
+    if (search) {
+      agents = agents.filter((agent: any) => agent.name?.toLowerCase().includes(search));
+    }
+
+    // Apply limit
+    if (limit && limit > 0) {
+      agents = agents.slice(0, limit);
+    }
+
+    // Phone numbers are not included in the list response — fetch assignments
+    // from /convai/phone-numbers and map agent_id -> number(s).
+    let phoneMap = new Map<string, string[]>();
+    const pnResponse = await elevenLabsRequest(apiKey, '/convai/phone-numbers');
+    if (pnResponse.ok) {
+      const pnData = await pnResponse.json();
+      const numbers = (pnData as any).phone_numbers || pnData;
+      if (Array.isArray(numbers)) {
+        phoneMap = numbers.reduce((map: Map<string, string[]>, n: any) => {
+          if (n.agent_id) {
+            const list = map.get(n.agent_id) || [];
+            list.push(n.phone_number);
+            map.set(n.agent_id, list);
+          }
+          return map;
+        }, new Map());
+      }
+    }
+
+    const simplifiedAgents = agents.map((agent: any) => ({
+      agent_id: agent.agent_id,
+      name: agent.name,
+      phone_numbers: phoneMap.get(agent.agent_id) || [],
+    }));
+
+    return {
+      agents: simplifiedAgents,
+      total: simplifiedAgents.length,
+      filtered: !!(search || limit),
+    };
+  },
+});
+
+
+server.tool('get-agent', {
+  annotations: { readOnlyHint: true },
+  description:
+    'Get the full configuration of an ElevenLabs ConvAI agent (name, first message, system prompt, ASR keywords, tools, phone numbers, metadata). If agentId is omitted, resolves user-first: the AGENT_ID user secret, then the AGENT_ID system secret, then the default Teros Voice Agent.',
+  parameters: {
+    type: 'object',
+    properties: {
+      agentId: {
+        type: 'string',
+        description:
+          'Optional ElevenLabs agent ID (e.g. agent_8101kb0xa4jje0s963kw6nhfmdh7). Defaults to the AGENT_ID secret resolved user-first (user secret, then system secret, then the default Teros Voice Agent).',
+      },
+    },
+  },
+  handler: async (args: any, context) => {
+    const apiKey = await resolveApiKey(context);
+
+    if (!apiKey) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    const agentId = await resolveAgentId(context, args.agentId);
+    if (!agentId) {
+      throw new Error('No ElevenLabs agent configured: set your AGENT_ID user secret (your account\'s ConvAI agent), or pass agentId explicitly.');
+    }
+    const response = await elevenLabsRequest(apiKey, `/convai/agents/${agentId}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to get agent ${agentId} (${response.status}): ${errorText}`);
+    }
+
+    const d = (await response.json()) as any;
+    const conv = d.conversation_config ?? {};
+    const agentCfg = conv.agent ?? {};
+    const promptCfg = agentCfg.prompt ?? {};
+    const asrCfg = conv.asr ?? {};
+
+    return {
+      agent_id: d.agent_id,
+      name: d.name,
+      first_message: agentCfg.first_message,
+      system_prompt: promptCfg.prompt,
+      prompt_config: {
+        llm: promptCfg.llm,
+        temperature: promptCfg.temperature,
+        max_tokens: promptCfg.max_tokens,
+        tool_ids: promptCfg.tool_ids,
+        tools: promptCfg.tools,
+        knowledge_base: promptCfg.knowledge_base,
+        custom_llm: promptCfg.custom_llm,
+      },
+      language: agentCfg.language,
+      dynamic_variables: agentCfg.dynamic_variables,
+      asr: {
+        quality: asrCfg.quality,
+        provider: asrCfg.provider,
+        user_input_audio_format: asrCfg.user_input_audio_format,
+        keywords: asrCfg.keywords,
+      },
+      tts: conv.tts,
+      turn: conv.turn,
+      conversation: conv.conversation,
+      phone_numbers: d.phone_numbers,
+      access_info: d.access_info,
+      metadata: d.metadata,
+      created_at_unix_secs: d.created_at_unix_secs,
+      last_updated_unix_secs: d.last_updated_unix_secs,
+    };
+  },
+});
+
+server.tool('update-agent', {
+  annotations: { readOnlyHint: false, alwaysAsk: true },
+  description:
+    'Update an ElevenLabs ConvAI agent configuration. Partial merge: only the fields you pass are modified — tools, TTS, phone numbers, and the rest of the conversation_config stay intact. Use get-agent first to inspect the current state. If agentId is omitted, resolves the AGENT_ID secret user-first (user secret, then system secret).',
+  parameters: {
+    type: 'object',
+    properties: {
+      agentId: {
+        type: 'string',
+        description:
+          'Optional ElevenLabs agent ID. Defaults to the AGENT_ID secret resolved user-first (user secret, then system secret, then the default Teros Voice Agent).',
+      },
+      name: {
+        type: 'string',
+        description: 'New display name for the agent.',
+      },
+      firstMessage: {
+        type: 'string',
+        description:
+          'New first message (the opening line the agent speaks when the call connects). Maps to conversation_config.agent.first_message.',
+      },
+      systemPrompt: {
+        type: 'string',
+        description:
+          'New system prompt. Maps to conversation_config.agent.prompt.prompt. Keep the {{call_context}} placeholder if you want per-call context to keep working.',
+      },
+      asrKeywords: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'New ASR keyword list (replaces the existing one). Maps to conversation_config.asr.keywords. Pass an empty array to clear.',
+      },
+    },
+  },
+  handler: async (args: any, context) => {
+    const apiKey = await resolveApiKey(context);
+
+    if (!apiKey) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    const agentId = await resolveAgentId(context, args.agentId);
+    if (!agentId) {
+      throw new Error('No ElevenLabs agent configured: set your AGENT_ID user secret (your account\'s ConvAI agent), or pass agentId explicitly.');
+    }
+
+    // Build a partial-merge body: only include the keys the caller passed.
+    // The ElevenLabs PATCH endpoint merges conversation_config deep enough
+    // that untouched sibling keys (tts, turn, tools, phone_numbers...) stay
+    // as they are.
+    const body: Record<string, unknown> = {};
+    if (typeof args.name === 'string') {
+      body.name = args.name;
+    }
+
+    const agentPatch: Record<string, unknown> = {};
+    if (typeof args.firstMessage === 'string') {
+      agentPatch.first_message = args.firstMessage;
+    }
+    if (typeof args.systemPrompt === 'string') {
+      agentPatch.prompt = { prompt: args.systemPrompt };
+    }
+
+    const convPatch: Record<string, unknown> = {};
+    if (Object.keys(agentPatch).length > 0) {
+      convPatch.agent = agentPatch;
+    }
+    if (Array.isArray(args.asrKeywords)) {
+      convPatch.asr = { keywords: args.asrKeywords };
+    }
+    if (Object.keys(convPatch).length > 0) {
+      body.conversation_config = convPatch;
+    }
+
+    if (Object.keys(body).length === 0) {
+      throw new Error(
+        'Nothing to update: pass at least one of name, firstMessage, systemPrompt, asrKeywords.',
+      );
+    }
+
+    const response = await elevenLabsRequest(apiKey, `/convai/agents/${agentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to update agent ${agentId} (${response.status}): ${errorText}`);
+    }
+
+    const d = (await response.json()) as any;
+    const conv = d.conversation_config ?? {};
+    const agentCfg = conv.agent ?? {};
+    const promptCfg = agentCfg.prompt ?? {};
+    const asrCfg = conv.asr ?? {};
+
+    return {
+      success: true,
+      agent_id: d.agent_id,
+      name: d.name,
+      first_message: agentCfg.first_message,
+      system_prompt: promptCfg.prompt,
+      asr_keywords: asrCfg.keywords,
+      last_updated_unix_secs: d.last_updated_unix_secs,
+      // Echo what was sent so the caller can confirm the partial merge.
+      updated_fields: Object.keys(body),
     };
   },
 });

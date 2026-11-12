@@ -2,8 +2,8 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.teros.filesystem",
   "name": "Filesystem",
-  "version": "2.1.0",
-  "description": "Filesystem operations within a mounted volume: read (with batch), write, edit (exact-match + patch), navigate (list/tree/stat), search (glob/grep with ripgrep + context), and manage files. Path-traversal safe, shell-injection safe, gitignore aware.",
+  "version": "2.4.0",
+  "description": "Filesystem operations within the workspace volume (/workspace paths): read-file (with batch), create-file, edit-file (exact-match + patch-file), navigate (list-files/tree-view/file-info), search (find-files/search-in-files with ripgrep + context), and manage files. Strict /workspace prefix (canonical form shared with mca.teros.bash), path-traversal safe, shell-injection safe, gitignore aware.",
   "type": "utility",
   "icon": "icon.svg",
   "category": "development",
@@ -15,9 +15,10 @@
   "availability": {
     "enabled": true,
     "multi": true,
-    "system": false,
-    "hidden": false,
-    "role": "user"
+    "system": true,
+    "hidden": true,
+    "role": "user",
+    "defaultEnabled": false
   },
   "layers": {
     "tools": true,
@@ -31,14 +32,46 @@
     "transport": "http",
     "port": 3000,
     "healthCheck": "/health",
-    "containerMode": "per-app"
+    "containerMode": "per-app",
+    "workspaceMount": true
   },
-  "keywords": ["files", "filesystem", "read", "write", "edit", "patch", "search", "grep", "ripgrep", "glob"],
+  "keywords": [
+    "files",
+    "filesystem",
+    "read-file",
+    "create-file",
+    "edit-file",
+    "patch-file",
+    "search",
+    "search-in-files",
+    "ripgrep",
+    "find-files"
+  ],
   "changelog": [
+    {
+      "version": "2.4.0",
+      "date": "2026-11-06",
+      "notes": "Context prehook (Fase 2): declares a tree-view prehook (depth 2, 200 nodes) so agents with this app installed get a capped project tree injected in their <environment> prompt block (flag prompt.environment-context)."
+    },
+    {
+      "version": "2.3.0",
+      "date": "2026-09-26",
+      "notes": "Strict /workspace prefix: paths must start with /workspace (exact segment match) — anything else fails with a Forbidden hint so agents self-correct. Outputs now emit /workspace-prefixed paths so they round-trip with bash. find-files/search-in-files resolve the local root from MCA_VOLUME_MOUNT_PATH || MCA_WORKSPACE_PATH (fixes cross-workspace searches hitting the global /workspace symlink). Admin role support: MCA_FS_ROLE=admin switches to native node:fs over the whole host (dead code since mca.teros.admin.filesystem was retired on 2026-10-19 — pending removal)."
+    },
     {
       "version": "2.1.0",
       "date": "2026-04-30",
       "notes": "Read, write, edit and patch files, browse folders, search by name or content, and manage media and hashes"
     }
-  ]
+  ],
+  "contextPrehook": {
+    "label": "Project tree",
+    "tool": "tree-view",
+    "args": {
+      "depth": 2,
+      "maxNodes": 200,
+      "respectGitignore": true
+    },
+    "maxTokens": 1500
+  }
 }

@@ -1,6 +1,6 @@
 /**
  * PendingFormsRegistry — in-memory state of the inline-form flow
- *.
+ * (docs/specs/20260705_inline-user-forms.md).
  *
  * Deliberately a sibling of PendingApprovalsRegistry rather than a
  * generalization of it: the permission registry is security-sensitive
@@ -21,16 +21,21 @@ import type { FormSpec, FormValues } from '@teros/shared'
 export type FormResolution =
   | { kind: 'submitted'; values: FormValues; notes?: string }
   | { kind: 'dismissed' }
+  /** v2 (non-blocking): the user answered in chat instead of the form — their
+   * message always wins; the pending form auto-resolves and the message is
+   * linked to it via `respondsTo`. */
+  | { kind: 'answered_in_chat' }
   /** The form could never be shown (no UI anchor, channel teardown, another
    * form already pending). `reason` is surfaced to the agent so it can fall
    * back to asking conversationally — distinct from 'dismissed', which means
    * the user SAW the form and declined it. */
   | { kind: 'unavailable'; reason: string }
 
-/** In-memory record of a pending form request. */
+/** In-memory record of a pending form request. There is no parked turn to
+ * unblock — the agent's turn already ended when the form was shown; the
+ * response arrives later via handleResponse, which finalizes into the
+ * channel (tool output + synthetic form_response message + wake). */
 export interface PendingForm {
-  resolve: (resolution: FormResolution) => void
-  reject: (error: Error) => void
   spec: FormSpec
   channelId: string
   messageId?: string

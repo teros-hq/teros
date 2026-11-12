@@ -10,6 +10,6 @@
  * This file re-exports TerosClient so all existing imports continue to work
  * without any changes.
  *
- *
+ * @see docs/specs/client/terosclient-refactoring.md
  */
 export { TerosClient } from './client'

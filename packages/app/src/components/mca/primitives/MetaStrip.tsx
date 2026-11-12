@@ -1,20 +1,21 @@
-import type React from 'react';
-import { Text, XStack } from 'tamagui';
-import { useColors } from './useColors';
+import type React from "react"
+import { View } from "react-native"
+import { XStack } from "tamagui"
+import { T } from "../../ui/ds/Text"
 
 interface MetaItem {
   /** Short label (will be rendered muted, uppercase-tracked). */
-  key: string;
+  key: string
   /** Value text. Numbers are stringified by the caller. */
-  value: string;
+  value: string
   /** Optional accent dot before the key. */
-  accent?: string;
+  accent?: string
 }
 
 interface MetaStripProps {
-  items: MetaItem[];
+  items: MetaItem[]
   /** Hide labels when only the values matter. Default false. */
-  valuesOnly?: boolean;
+  valuesOnly?: boolean
 }
 
 /**
@@ -24,41 +25,32 @@ interface MetaStripProps {
  * Cada pill:  [• KEY] value     [• KEY] value     ...
  *
  * Wrap si overflow. No background sólido — la jerarquía la da el contraste
- * tipográfico (key muted small, value bright mono).
+ * tipográfico (key codenote text3, value mono 12 text).
  */
 export function MetaStrip({ items, valuesOnly }: MetaStripProps): React.ReactNode {
-  const c = useColors();
-  if (!items || items.length === 0) return null;
+  if (!items || items.length === 0) return null
   return (
-    <XStack flexWrap="wrap" gap={12} alignItems="center" paddingVertical={2}>
+    <XStack flexWrap="wrap" gap={14} alignItems="center" paddingVertical={2}>
       {items.map((item, idx) => (
         <XStack
           // biome-ignore lint/suspicious/noArrayIndexKey: stable order by caller
           key={`${item.key}-${idx}`}
           alignItems="center"
-          gap={5}
+          gap={6}
         >
           {item.accent ? (
-            <Text color={item.accent} fontSize={10} lineHeight={10}>
-              ●
-            </Text>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: item.accent }} />
           ) : null}
           {!valuesOnly && (
-            <Text
-              color={c.text3}
-              fontSize={9}
-              fontFamily="$mono"
-              letterSpacing={0.6}
-              textTransform="uppercase"
-            >
+            <T step="codenote" tone="text3">
               {item.key}
-            </Text>
+            </T>
           )}
-          <Text color={c.text} fontSize={11} fontFamily="$mono">
+          <T step="code" selectable>
             {item.value}
-          </Text>
+          </T>
         </XStack>
       ))}
     </XStack>
-  );
+  )
 }

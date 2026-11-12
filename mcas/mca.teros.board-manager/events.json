@@ -1,0 +1,473 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-events.json",
+  "mcaId": "mca.teros.board-manager",
+  "events": [
+    {
+      "topic": "board.task_created",
+      "description": "A task was created on a board.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string",
+        "channelId": "string"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "agentId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events about this agent (assignee/actor)."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_moved",
+      "description": "A task changed column.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "fromColumn": "string",
+        "toColumn": "string",
+        "fromColumnName": "string",
+        "toColumnName": "string",
+        "fromStatus": "string",
+        "toStatus": "string"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        },
+        "toColumn": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only moves INTO this column (slug)."
+        }
+      }
+    },
+    {
+      "topic": "board.task_assigned",
+      "description": "A task was assigned to an agent.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "agentId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events about this agent (assignee/actor)."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_unassigned",
+      "description": "A task lost its assignee.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "agentId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events about this agent (assignee/actor)."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_started",
+      "description": "An agent started working on a task.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string",
+        "channelId": "string"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "agentId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events about this agent (assignee/actor)."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_completed",
+      "description": "A task was completed.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "agentId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events about this agent (assignee/actor)."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_blocked",
+      "description": "A task was marked as blocked.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string",
+        "note": "string"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "agentId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events about this agent (assignee/actor)."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_cancelled",
+      "description": "A task was cancelled.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "agentId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events about this agent (assignee/actor)."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_updated",
+      "description": "A task field changed (title, description, instructions, tags, priority\u2026).",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "field": "string"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_priority_changed",
+      "description": "A task priority changed.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "oldPriority": "string",
+        "newPriority": "string"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_progress_note",
+      "description": "A progress note was added to a task.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date",
+        "agentId": "string",
+        "note": "string"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "agentId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events about this agent (assignee/actor)."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_archived",
+      "description": "A task was archived.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_unarchived",
+      "description": "A task was restored from the archive.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_dependency_added",
+      "description": "A dependency was added between two tasks.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_dependency_removed",
+      "description": "A dependency was removed.",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "occurredAt": "ISO date"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    },
+    {
+      "topic": "board.task_linked",
+      "description": "A conversation was linked to a task (its context now lives in that channel).",
+      "payload": {
+        "workspaceId": "string",
+        "projectId": "string",
+        "boardId": "string",
+        "taskId": "string",
+        "taskTitle": "string",
+        "actor": "string (userId or agentId)",
+        "channelId": "string (the linked conversation)",
+        "occurredAt": "ISO date"
+      },
+      "filters": {
+        "projectId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events on this project."
+        },
+        "taskId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task."
+        }
+      }
+    }
+  ]
+}

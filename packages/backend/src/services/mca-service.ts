@@ -33,6 +33,7 @@
  */
 
 import { generateAppId } from '@teros/core';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import { type McaToolAnnotations, McaToolAnnotationsSchema } from '@teros/shared';
 import { readFileSync } from 'fs';
 import * as fs from 'fs/promises';
@@ -41,10 +42,14 @@ import * as path from 'path';
 import type { AuthManager } from '../auth/auth-manager';
 import { config } from '../config';
 import type { SecretsManager } from '../secrets/secrets-manager';
-import { createInstallPermissions } from '../types/permissions';
+import { createInstallPermissions, installSeedPermission, isPrivateTool } from '../types/permissions';
+import { AgentMailboxService } from './agent-mailbox-service';
 import type {
   AgentAppAccess,
+  AgentInstance,
+  AgentMailbox,
   AgentApps,
+  AppViewer,
   App,
   AppToolPermissions,
   McpCatalogEntry,
@@ -93,8 +98,9 @@ export class McaService {
   private workspaceService?: WorkspaceService;
   private volumeService?: VolumeService;
 
-  // Cache for ensureProvisionedApps: agentId → timestamp of last run
-  // Avoids re-running the full provisioning logic on every agent.get-apps call.
+  // Cache for ensureProvisionedApps: `${agentId}:${workspaceId ?? 'global'}` → timestamp of last run.
+  // Keyed by agent+workspace so a superagent active in workspace A doesn't skip provisioning
+  // when it opens a channel in a fresh workspace B within the TTL window.
   private ensureProvisionedAppsCache = new Map<string, number>();
   private readonly ENSURE_PROVISIONED_APPS_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -116,6 +122,65 @@ export class McaService {
     this.authManager = options?.authManager;
     this.workspaceService = options?.workspaceService;
     this.volumeService = options?.volumeService;
+  }
+
+  // ==========================================================================
+  // MUW v2.2 — app ownership, visibility and the per-conversation rule.
+  // Data is complete by migration 20261102_002: `scope` and `installedBy` are
+  // required and never defaulted here.
+  // ==========================================================================
+
+  /** Is `userId` the owner of this app (the member who installed it)? @spec MUW-REQ-10 */
+  isAppOwner(app: Pick<App, 'installedBy'>, userId: string): boolean {
+    return app.installedBy === userId;
+  }
+
+  /** Shared apps are visible to every member; personal apps only to their owner. @spec MUW-REQ-13 */
+  isAppVisibleTo(app: Pick<App, 'scope' | 'installedBy'>, userId: string): boolean {
+    return app.scope === 'shared' || app.installedBy === userId;
+  }
+
+  /**
+   * Who may rename, uninstall, reconfigure credentials or permissions of an
+   * app: its owner, or an owner/admin of the workspace. (The scope itself is
+   * owner-only — see setAppScope.)
+   * @spec MUW-REQ-13
+   */
+  async canManageApp(app: Pick<App, 'ownerId' | 'installedBy'>, userId: string): Promise<boolean> {
+    if (this.isAppOwner(app, userId)) return true;
+    return (await this.workspaceService?.canAdmin(app.ownerId, userId)) === true;
+  }
+
+  /**
+   * The viewer of a conversation for app resolution: its creator and its scope.
+   * @spec MUW-REQ-12
+   */
+  async getChannelViewer(channelId: string): Promise<AppViewer | null> {
+    const channel = await this.db
+      .collection('channels')
+      .findOne({ channelId }, { projection: { userId: 1, scope: 1 } });
+    if (!channel?.userId) return null;
+    return { userId: channel.userId as string, channelScope: (channel.scope as 'personal' | 'shared') ?? 'personal' };
+  }
+
+  /**
+   * The critical rule (MUW-REQ-12), in one place for the tool list and both
+   * execution gates: in a shared conversation only shared apps; in a personal
+   * conversation shared apps plus the creator's own personal apps.
+   * @spec MUW-REQ-12
+   */
+  isAppUsableBy(app: Pick<App, 'scope' | 'installedBy'>, viewer: AppViewer): boolean {
+    if (app.scope === 'shared') return true;
+    if (app.scope !== 'personal') return false; // data integrity: an unknown scope never runs
+    if (viewer.channelScope === 'shared') return false;
+    return app.installedBy === viewer.userId;
+  }
+
+  /** Convenience for the execution gates: resolve the conversation and apply isAppUsableBy. @spec MUW-REQ-12 */
+  async isAppBlockedInChannel(app: Pick<App, 'scope' | 'installedBy'>, channelId: string): Promise<boolean> {
+    const viewer = await this.getChannelViewer(channelId);
+    if (!viewer) return app.scope !== 'shared';
+    return !this.isAppUsableBy(app, viewer);
   }
 
   /**
@@ -149,19 +214,11 @@ export class McaService {
    * Ensure database indexes exist
    */
   async ensureIndexes(): Promise<void> {
-    // Unique constraint: same owner cannot have two apps with same name
-    await this.appsCollection.createIndex({ ownerId: 1, name: 1 }, { unique: true });
-    // Fast lookup by appId
-    await this.appsCollection.createIndex({ appId: 1 }, { unique: true });
-    // Fast lookup by owner
-    await this.appsCollection.createIndex({ ownerId: 1 });
-    // MCA catalog: unique mcaId
-    await this.mcaCatalogCollection.createIndex({ mcaId: 1 }, { unique: true });
-    // Agent app access indexes
-    await this.accessCollection.createIndex({ agentId: 1 });
-    await this.accessCollection.createIndex({ appId: 1 });
-    await this.accessCollection.createIndex({ agentId: 1, appId: 1 }, { unique: true });
-    console.log('[McaService] Database indexes created');
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.appsCollection, COLLECTIONS.apps);
+    await ensureCollectionIndexes(this.mcaCatalogCollection, COLLECTIONS.mcaCatalog);
+    await ensureCollectionIndexes(this.accessCollection, COLLECTIONS.agentAppAccess);
   }
 
   // ============================================================================
@@ -336,6 +393,18 @@ export class McaService {
   }
 
   /**
+   * List every installed app of one MCA (any owner, any status except
+   * 'disabled'). Used by McaBootSync to recycle the containers of an MCA
+   * whose tools changed: each app of an http/per-app MCA has its own
+   * container keyed by appId.
+   */
+  async listAppsByMca(mcaId: string): Promise<App[]> {
+    return this.appsCollection
+      .find({ mcaId, status: { $ne: 'disabled' } })
+      .toArray();
+  }
+
+  /**
    * List apps by workspace
    */
   async listWorkspaceApps(workspaceId: string): Promise<App[]> {
@@ -416,8 +485,12 @@ export class McaService {
     let volumes: App['volumes'] = app.volumes;
     const ownerType = app.ownerType || 'workspace';
 
-    // If volumes not explicitly provided, auto-resolve from owner
-    if (!volumes?.length) {
+    // Resolve workspace storage only for MCAs whose manifest declares local
+    // workspace or app-data access. Spawn also filters legacy stored workspace
+    // mounts unless the current manifest opts in.
+    const needsWorkspaceVolume = mca.runtime?.workspaceMount === true ||
+      mca.runtime?.appDataMount === true;
+    if (!volumes?.length && needsWorkspaceVolume) {
       volumes = await this.resolveAppVolumes(app.ownerId, ownerType);
       if (volumes?.length) {
         console.log(
@@ -455,21 +528,41 @@ export class McaService {
    * Read the MCA's static tools.json (name + annotations) for the install
    * permission seed. Best-effort: a missing or malformed file returns [] and
    * the seed degrades to `defaultPermission: 'ask'` for every tool —
-   * conservative, never blocks the install.
+   * conservative, never blocks the install. Every degradation LOGS (warn for
+   * a legitimately absent file, error for anything else) so a wrong
+   * MCA_BASE_PATH or a broken manifest can never hide behind the fallback.
    */
   private loadStaticToolDefs(mcaId: string): Array<{ name: string; annotations?: McaToolAnnotations }> {
+    const toolsPath = path.join(config.mca.basePath, mcaId, 'tools.json');
     try {
-      const toolsPath = path.join(config.mca.basePath, mcaId, 'tools.json');
       const content = readFileSync(toolsPath, 'utf-8');
       const parsed = JSON.parse(content) as {
         tools?: Array<{ name: string; annotations?: unknown }>;
       };
-      if (!Array.isArray(parsed.tools)) return [];
+      if (!Array.isArray(parsed.tools)) {
+        console.warn(
+          `[McaService] loadStaticToolDefs: ${toolsPath} has no tools array — permission seed degrades to all-'ask' for ${mcaId}`,
+        );
+        return [];
+      }
       return parsed.tools.map((t) => {
         const result = t.annotations ? McaToolAnnotationsSchema.safeParse(t.annotations) : null;
+        if (t.annotations && !result?.success) {
+          console.warn(
+            `[McaService] loadStaticToolDefs: invalid annotations on tool '${t.name}' (${mcaId}) — seeded as mutation ('ask')`,
+          );
+        }
         return { name: t.name, annotations: result?.success ? result.data : undefined };
       });
-    } catch {
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      if (code === 'ENOENT') {
+        console.warn(
+          `[McaService] loadStaticToolDefs: no tools.json at ${toolsPath} — permission seed degrades to all-'ask' for ${mcaId}`,
+        );
+      } else {
+        console.error(`[McaService] loadStaticToolDefs: failed to load ${toolsPath} for ${mcaId}:`, err);
+      }
       return [];
     }
   }
@@ -527,6 +620,9 @@ export class McaService {
 
     // Membership closes the cross-tenant BOLA.
     if (!(await this.workspaceService.canAccess(workspaceId, userId))) return false;
+    // MUW-REQ-13: a private app is only granted/revoked by its owner.
+    if (!this.isAppVisibleTo(app, userId)) return false;
+    if (app.scope === 'personal' && !this.isAppOwner(app, userId)) return false;
 
     // The agent must be in this app's workspace roster — the predicate is kept
     // identical to app.list-agent-access (workspace agents + caller/owner
@@ -594,8 +690,9 @@ export class McaService {
     // too. `app.install` checks `availability.enabled`/`role`, but this parallel
     // path (workspace.install-app, workspace-commands) only checked workspace
     // write access — so any user could install a disabled/admin-only MCA
-    // (e.g. mca.teros.docker-env, which mounts the Docker socket) into their own
-    // workspace and reach host root. Gating here closes both callers at once.
+    // (e.g. an admin-only host-exec MCA)
+    // into their own workspace and reach host root. Gating here closes both
+    // callers at once.
     await this.assertInstallable(mca, userId);
 
     // Single-install MCAs (availability.multi=false) may have only one instance
@@ -615,15 +712,15 @@ export class McaService {
 
     // Generate app ID and validate name
     const appId = generateAppId();
-    const appName = name || (await this.generateDefaultAppName(mcaId, workspaceId));
+    const appName = name || (await this.generateDefaultAppName(mcaId, workspaceId, { scope: 'personal', installedBy: userId }));
 
     const validation = this.validateAppName(appName);
     if (!validation.valid) {
       throw new Error(validation.error);
     }
 
-    // Check name availability within workspace
-    if (!(await this.isAppNameAvailable(workspaceId, appName))) {
+    // Check name availability within what the installer sees (MUW-REQ-27)
+    if (!(await this.isAppNameAvailable(workspaceId, appName, { scope: 'personal', installedBy: userId }))) {
       throw new Error(`App name "${appName}" is already in use in this workspace`);
     }
 
@@ -644,9 +741,18 @@ export class McaService {
       mcaId,
       ownerId: workspaceId,
       ownerType: 'workspace',
+      // MUW-REQ-10/11: the installer owns the app; a member-installed app is personal.
+      installedBy: userId,
+      scope: 'personal',
       name: appName,
       status: 'active',
       volumes,
+      // Seed explicit per-tool permissions from the manifest annotations
+      // (allow for read-only, ask for mutations) — same as createApp.
+      // Without this, read-only tools default to 'ask' instead of 'allow'.
+      permissions: createInstallPermissions(this.loadStaticToolDefs(mcaId)),
+      // Core platform tools are pinned to 'direct' exposure — same as createApp.
+      toolExposure: mcaId === 'mca.teros.core' ? 'direct' : undefined,
       createdAt: now,
       updatedAt: now,
     };
@@ -688,10 +794,24 @@ export class McaService {
   /**
    * Check if app name is available for a user
    */
-  async isAppNameAvailable(ownerId: string, name: string, excludeAppId?: string): Promise<boolean> {
+  /**
+   * Is `name` free within the set the app will be visible in (MUW-REQ-27)?
+   * - a shared app must not collide with ANY app of the workspace;
+   * - a personal app must not collide with a shared app nor with another
+   *   personal app of the same owner (two members may each have `gmail`).
+   * Without `scope`, the legacy workspace-wide check applies.
+   * @spec MUW-REQ-27
+   */
+  async isAppNameAvailable(
+    ownerId: string,
+    name: string,
+    opts?: { excludeAppId?: string; scope?: 'personal' | 'shared'; installedBy?: string } | string,
+  ): Promise<boolean> {
+    const o = typeof opts === 'string' ? { excludeAppId: opts } : (opts ?? {});
     const filter: any = { ownerId, name };
-    if (excludeAppId) {
-      filter.appId = { $ne: excludeAppId };
+    if (o.excludeAppId) filter.appId = { $ne: o.excludeAppId };
+    if (o.scope === 'personal' && o.installedBy) {
+      filter.$or = [{ scope: 'shared' }, { scope: 'personal', installedBy: o.installedBy }];
     }
     const existing = await this.appsCollection.findOne(filter);
     return !existing;
@@ -713,11 +833,8 @@ export class McaService {
     if (!app) {
       return { success: false, error: 'App not found or access denied' };
     }
-    const workspace = await this.workspaceService?.getWorkspace(app.ownerId);
-    const member = workspace?.members?.find((m: any) => m.userId === userId);
-    const isOwner = workspace?.ownerId === userId;
-    const isWriter = member?.role === 'admin' || member?.role === 'write';
-    if (!isOwner && !isWriter) {
+    // MUW-REQ-13: the owner, or a workspace owner/admin.
+    if (!(await this.canManageApp(app, userId))) {
       return { success: false, error: 'App not found or access denied' };
     }
 
@@ -727,8 +844,12 @@ export class McaService {
       return { success: false, error: validation.error };
     }
 
-    // Check availability against the real owner (workspaceId)
-    const isAvailable = await this.isAppNameAvailable(app.ownerId, newName, appId);
+    // MUW-REQ-27: unique within the set this app is visible in
+    const isAvailable = await this.isAppNameAvailable(app.ownerId, newName, {
+      excludeAppId: appId,
+      scope: app.scope,
+      installedBy: app.installedBy,
+    });
     if (!isAvailable) {
       return { success: false, error: `Name "${newName}" is already in use` };
     }
@@ -750,7 +871,11 @@ export class McaService {
    * mca.teros.bash -> bash, bash-2, bash-3, etc.
    * Ensures the generated name is always valid lower-kebab-case
    */
-  async generateDefaultAppName(mcaId: string, ownerId: string): Promise<string> {
+  async generateDefaultAppName(
+    mcaId: string,
+    ownerId: string,
+    opts?: { scope?: 'personal' | 'shared'; installedBy?: string },
+  ): Promise<string> {
     // Extract base name from mcaId: mca.teros.bash -> bash
     const parts = mcaId.split('.');
     let baseName = parts[parts.length - 1];
@@ -785,7 +910,7 @@ export class McaService {
     }
 
     // Check if base name is available
-    if (await this.isAppNameAvailable(ownerId, baseName)) {
+    if (await this.isAppNameAvailable(ownerId, baseName, opts)) {
       return baseName;
     }
 
@@ -796,7 +921,7 @@ export class McaService {
 
       // Validate candidate name (should always be valid, but check to be safe)
       const candidateValidation = this.validateAppName(candidateName);
-      if (candidateValidation.valid && (await this.isAppNameAvailable(ownerId, candidateName))) {
+      if (candidateValidation.valid && (await this.isAppNameAvailable(ownerId, candidateName, opts))) {
         return candidateName;
       }
       counter++;
@@ -829,11 +954,8 @@ export class McaService {
     if (!app) {
       return { success: false, error: 'App not found or access denied' };
     }
-    const workspace = await this.workspaceService?.getWorkspace(app.ownerId);
-    const member = workspace?.members?.find((m: any) => m.userId === ownerId);
-    const isOwner = workspace?.ownerId === ownerId;
-    const isAdmin = member?.role === 'admin' || member?.role === 'write';
-    if (!isOwner && !isAdmin) {
+    // MUW-REQ-13: the owner, or a workspace owner/admin.
+    if (!(await this.canManageApp(app, ownerId))) {
       return { success: false, error: 'App not found or access denied' };
     }
 
@@ -869,8 +991,16 @@ export class McaService {
    *
    * Validates scope compatibility:
    * - Workspace agent can only access apps from the same workspace (ownerType='workspace').
+   *
+   * `opts.preferredName` (mca.teros.email only): human-chosen local part for
+   * the agent's mailbox. Validated + uniqueness-checked; when taken, the
+   * clean-first algorithm falls through to the next candidate (the grant
+   * still succeeds — naming is non-blocking by design).
    */
-  async grantAccess(access: Omit<AgentAppAccess, 'grantedAt'>): Promise<AgentAppAccess> {
+  async grantAccess(
+    access: Omit<AgentAppAccess, 'grantedAt'>,
+    opts: { preferredName?: string } = {},
+  ): Promise<AgentAppAccess> {
     // Validate app exists
     const app = await this.getApp(access.appId);
     if (!app) {
@@ -915,6 +1045,27 @@ export class McaService {
     // Invalidate tool cache for this agent
     if (this.onToolCacheInvalidate) {
       await this.onToolCacheInvalidate(access.agentId);
+    }
+
+    // EMAIL MAILBOX HOOK (tn_PcquTN30AawbK8uE): granting the email app to an
+    // agent provisions its mailbox — "el grant ES el interruptor". Fail-soft
+    // by design: a provisioning error NEVER breaks the grant (the mailbox
+    // doc is stored pending and the lazy safety-net retries).
+    if (app.mcaId === 'mca.teros.email') {
+      try {
+        const mailboxService = new AgentMailboxService(this.db);
+        const result = await mailboxService.ensureMailbox(agent as unknown as AgentInstance, {
+          preferredName: opts?.preferredName,
+        });
+        console.log(
+          `[McaService] Mailbox hook: ${access.agentId} → ${result.address} (${result.status}${result.reason ? `, ${result.reason}` : ''})`,
+        );
+      } catch (error) {
+        console.error(
+          `[McaService] Mailbox hook FAILED for ${access.agentId} (grant NOT affected):`,
+          error,
+        );
+      }
     }
 
     return newAccess;
@@ -1045,11 +1196,21 @@ export class McaService {
    * SELF-HEALING: If duplicates are found, they are automatically removed
    * (keeping the oldest one) to maintain system integrity.
    *
+   * SYSTEM-CAPABILITY TOGGLES (v1.4.4): system MCAs are provisioned only when
+   * the capability is ON for the agent —
+   *   ON iff (availability.defaultEnabled !== false &&
+   *           !agent.disabledSystemApps.includes(mcaId))
+   *        || agent.enabledSystemApps.includes(mcaId)
+   * When OFF, provisioning is skipped AND any existing grant is revoked
+   * (reconciliation both directions, so toggling back ON re-provisions).
+   *
    * ADD-ONLY for core defaults: this provisions system ∪ core.defaultApps and
-   * never deprovisions. If a core's `defaultApps` later shrinks, already-granted
-   * apps are intentionally left in place (no reconciliation of removals) — by
-   * design, so a config change can't silently strip an agent's tools. Removing a
-   * core default from existing agents is an explicit admin action.
+   * never deprovisions core defaults. If a core's `defaultApps` later shrinks,
+   * already-granted apps are intentionally left in place (no reconciliation of
+   * removals) — by design, so a config change can't silently strip an agent's
+   * tools. Removing a core default from existing agents is an explicit admin
+   * action. System-capability toggles are the ONE exception: they are an
+   * explicit per-agent admin action, so they DO reconcile removals.
    */
   async ensureProvisionedApps(agentId: string, workspaceId?: string): Promise<void> {
     console.log(`[McaService] ensureProvisionedApps called for agent: ${agentId}`);
@@ -1069,6 +1230,12 @@ export class McaService {
     const userId = agent.ownerId;
     const agentWorkspaceId = agent.workspaceId as string | undefined;
 
+    // System-capability toggles (v1.4.4): per-agent opt-out for default-ON
+    // capabilities and per-agent opt-in for default-OFF ones. Absent lists =
+    // historical behaviour (all default-ON provisioned, nothing else).
+    const disabledSystemApps = (agent.disabledSystemApps as string[] | undefined) ?? [];
+    const enabledSystemApps = (agent.enabledSystemApps as string[] | undefined) ?? [];
+
     // Determine where to create/find system apps using the unified workspace model.
     // For Superagents (agentWorkspaceId = null), fall back to the active channel workspace.
     const effectiveWorkspaceId = agentWorkspaceId || workspaceId;
@@ -1085,6 +1252,13 @@ export class McaService {
 
 
     console.log(`[McaService] Agent ${agentId} scope: ${appOwnerType}, appOwnerId: ${appOwnerId}`);
+    const owningWorkspace = await this.db
+      .collection('workspaces')
+      .findOne({ workspaceId: effectiveWorkspaceId }, { projection: { ownerId: 1 } });
+    const workspaceOwnerId = owningWorkspace?.ownerId as string | undefined;
+    if (!workspaceOwnerId) {
+      throw new Error(`[McaService] ensureProvisionedApps: workspace ${effectiveWorkspaceId} has no owner — cannot provision system apps`);
+    }
 
     const usersCollection = this.db.collection('users');
     const user = await usersCollection.findOne({ userId });
@@ -1136,15 +1310,108 @@ export class McaService {
       return true;
     });
 
+    // System-capability resolution (v1.4.4). For each SYSTEM mca, decide
+    // whether THIS agent should have it:
+    //   ON  iff (defaultEnabled !== false && !disabled.includes(mcaId))
+    //         || enabled.includes(mcaId)
+    // Core-default apps are NOT toggleable here (they follow the core's
+    // declaration) — toggles only govern availability.system MCAs.
+    // Disabled capabilities are still visited by the loop below so existing
+    // grants get REVOKED (reconciliation both ways, self-healing on re-enable).
+    //
+    // CAPABILITY GROUPS: one user-facing capability can map to several MCAs.
+    // Today: "Terminal" = mca.teros.bash + mca.teros.terminal (Pablo 30-oct:
+    // bash and terminal are the same capability — commands + visible PTY
+    // sessions). Enabling EITHER mcaId enables the whole group, so the toggle
+    // is one entry and the dependency (terminal needs bash) is always
+    // satisfied. Disabling either disables both.
+    const SYSTEM_CAPABILITY_GROUPS: Record<string, string[]> = {
+      terminal: ['mca.teros.bash', 'mca.teros.terminal'],
+    };
+    const expandCapabilityGroup = (mcaId: string): string[] => {
+      for (const members of Object.values(SYSTEM_CAPABILITY_GROUPS)) {
+        if (members.includes(mcaId)) return members;
+      }
+      return [mcaId];
+    };
+    const isCapabilityEnabled = (mcaId: string, defaultEnabled: boolean): boolean => {
+      for (const member of expandCapabilityGroup(mcaId)) {
+        if (enabledSystemApps.includes(member)) return true;
+        if (disabledSystemApps.includes(member)) return false;
+      }
+      // No per-agent override: the manifest default decides. Absent/true =
+      // default ON (ambient + toggleable caps); false = default OFF (power).
+      return defaultEnabled;
+    };
+    const systemCapabilityOff = new Set<string>();
+    for (const mca of systemMcas) {
+      const defaultEnabled = mca.availability?.defaultEnabled !== false;
+      if (!isCapabilityEnabled(mca.mcaId, defaultEnabled)) {
+        for (const member of expandCapabilityGroup(mca.mcaId)) {
+          systemCapabilityOff.add(member);
+        }
+      }
+    }
+
+    // PROVISIONING SCOPE (tn_PcquTN30AawbK8uE): a system MCA may declare
+    // `availability.provisions.scope: 'super-agents'` — auto-provision ONLY
+    // for superagents (no workspaceId). Workspace agents keep manual control:
+    // the human grants the app explicitly (the grant IS the toggle), and the
+    // mailbox is then provisioned by the grantAccess hook. Explicit
+    // enabledSystemApps entries still override (explicit opt-in wins).
+    const provisioningScopeOff = new Set<string>();
+    for (const mca of systemMcas) {
+      const scope = mca.availability?.provisions?.scope;
+      if (scope !== 'super-agents') continue;
+      if (enabledSystemApps.includes(mca.mcaId)) continue; // explicit opt-in
+      if (agentWorkspaceId) {
+        for (const member of expandCapabilityGroup(mca.mcaId)) {
+          provisioningScopeOff.add(member);
+        }
+      }
+    }
+
     console.log(
       `[McaService] Provisioning ${mcasToProvision.length} MCAs for ${agentId} ` +
-        `(${systemMcas.length} system + ${defaultAppMcas.length} core-default): ` +
-        `${mcasToProvision.map((m) => m.mcaId).join(', ')}`,
+        `(${systemMcas.length} system + ${defaultAppMcas.length} core-default)` +
+        (systemCapabilityOff.size
+          ? ` — capabilities OFF for this agent: ${[...systemCapabilityOff].join(', ')}`
+          : ''),
     );
 
     for (const mca of mcasToProvision) {
       const requiredRole = mca.availability?.role || 'user';
       const userHasAccess = hasRequiredRole(requiredRole);
+
+      // Capability toggle (v1.4.4): a system capability that is OFF for this
+      // agent must not be provisioned — and any stale grant must be revoked.
+      // Core-default apps are exempt (they are not system capabilities).
+      const isCoreDefault = !systemMcas.some((s) => s.mcaId === mca.mcaId);
+      if (!isCoreDefault && systemCapabilityOff.has(mca.mcaId)) {
+        const existingAppsForMca = await this.appsCollection
+          .find({ mcaId: mca.mcaId, ownerId: appOwnerId, ownerType: appOwnerType })
+          .toArray();
+        for (const app of existingAppsForMca) {
+          const revoked = await this.revokeAccess(agentId, app.appId);
+          if (revoked) {
+            console.log(
+              `[McaService] Capability OFF: revoked access ${agentId} -> ${app.appId} (${mca.mcaId})`,
+            );
+          }
+        }
+        continue;
+      }
+
+      // Provisioning scope (tn_PcquTN30AawbK8uE): super-agents-only MCA on a
+      // workspace agent without explicit opt-in — skip auto-provisioning, but
+      // do NOT revoke: an explicit human grant must survive reconciliation
+      // (the grant is the toggle; this loop only governs AUTOMATIC grants).
+      if (!isCoreDefault && provisioningScopeOff.has(mca.mcaId)) {
+        console.log(
+          `[McaService] Provisioning scope (super-agents) — skipping auto-provision of ${mca.mcaId} for workspace agent ${agentId}`,
+        );
+        continue;
+      }
 
       // Find ALL apps for this owner (user or workspace) with this mcaId to detect duplicates
       const existingApps = await this.appsCollection
@@ -1203,9 +1470,18 @@ export class McaService {
           mcaId: mca.mcaId,
           ownerId: appOwnerId,
           ownerType: appOwnerType,
+          // MUW-REQ-10/11: platform-provisioned apps belong to the workspace
+          // owner and are shared with the whole workspace.
+          installedBy: workspaceOwnerId,
+          scope: 'shared',
           name: appName,
           status: 'active',
           volumes: volumes?.length ? volumes : undefined,
+          // Install-time permission seed, same as createApp/createWorkspaceApp —
+          // without it every tool (read-only included) falls back to 'ask'
+          // (getToolPermission → DEFAULT_TOOL_PERMISSION) and a freshly
+          // provisioned workspace nags for trivially safe operations.
+          permissions: createInstallPermissions(this.loadStaticToolDefs(mca.mcaId)),
           // No secrets field - loaded from filesystem at runtime
           createdAt: now,
           updatedAt: now,
@@ -1362,13 +1638,14 @@ export class McaService {
    * - If the agent has no workspaceId (Superagent or legacy global agent):
    *   resolve apps by appId from agent_app_access only (legacy behaviour preserved).
    */
-  async getAgentApps(agentId: string, workspaceId?: string): Promise<AgentApps> {
-    // Auto-provision system apps — throttled to once every 5 minutes per agent
+  async getAgentApps(agentId: string, workspaceId?: string, viewer?: AppViewer): Promise<AgentApps> {
+    // Auto-provision system apps — throttled to once every 5 minutes per agent+workspace
     // to avoid running the full provisioning logic on every agent.get-apps call.
-    const lastRun = this.ensureProvisionedAppsCache.get(agentId) ?? 0;
+    const provisioningCacheKey = `${agentId}:${workspaceId ?? 'global'}`;
+    const lastRun = this.ensureProvisionedAppsCache.get(provisioningCacheKey) ?? 0;
     if (Date.now() - lastRun > this.ENSURE_PROVISIONED_APPS_TTL_MS) {
       await this.ensureProvisionedApps(agentId, workspaceId);
-      this.ensureProvisionedAppsCache.set(agentId, Date.now());
+      this.ensureProvisionedAppsCache.set(provisioningCacheKey, Date.now());
     }
 
     // Get all access grants for this agent in one query
@@ -1427,6 +1704,10 @@ export class McaService {
 
       const access = accessByAppId.get(appRaw.appId);
       if (!access) continue;
+      // MUW-REQ-12/13: the viewer decides which granted apps exist here —
+      // shared ones always; personal ones only for their owner, and never in
+      // a shared conversation.
+      if (viewer && !this.isAppUsableBy(appRaw, viewer)) continue;
 
       const { mcaId, ...appWithoutMcaId } = appRaw;
       apps.push({
@@ -1441,6 +1722,63 @@ export class McaService {
   /**
    * Get all tools available to an agent (across all apps)
    */
+
+  // ============================================================================
+  // APP SCOPE (REQ-6: personal / shared)
+  // ============================================================================
+
+  /**
+   * Update an app's scope between 'personal' and 'shared' (REQ-6).
+   *
+   * Uses the same authorization model as renameApp/updateAppContext: the
+   * requester must be owner or writer of the owning workspace.
+   *
+   * @returns The updated app, or null if not found / no permission.
+   */
+  /**
+   * Change an app's scope. Only the app owner may do it (MUW-REQ-11): the
+   * member who installed it, or — for apps installed before `installedBy`
+   * existed — the workspace owner.
+   *
+   * @throws Error('ACCESS_DENIED') when the caller is not the app owner.
+   * @spec MUW-REQ-11
+   */
+  async setAppScope(
+    appId: string,
+    userId: string,
+    scope: 'personal' | 'shared',
+  ): Promise<App | null> {
+    const app = await this.appsCollection.findOne({ appId, ownerType: 'workspace' });
+    if (!app) return null;
+
+    if (!this.isAppOwner(app, userId)) {
+      throw new Error('ACCESS_DENIED');
+    }
+    // MUW-REQ-27: sharing makes the name visible to everyone — it must not
+    // collide with any other app of the workspace (another member's private
+    // app included). Nothing about the colliding app is revealed.
+    if (scope === 'shared' && app.scope !== 'shared') {
+      const collision = await this.appsCollection.findOne({
+        ownerId: app.ownerId,
+        name: app.name,
+        appId: { $ne: app.appId },
+      });
+      if (collision) throw new Error('NAME_COLLISION');
+    }
+
+    const result = await this.appsCollection.findOneAndUpdate(
+      { appId, ownerId: app.ownerId },
+      {
+        $set: {
+          scope,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+      { returnDocument: 'after' },
+    );
+
+    return result;
+  }
 
   // ============================================================================
   // APP PERMISSIONS
@@ -1532,10 +1870,15 @@ export class McaService {
       throw new Error(`App ${appId} not found`);
     }
 
-    // Build permissions object with all tools set to the same permission
+    // Build permissions object with all tools set to the same permission.
+    // Private tools (e.g. '-health-check') are EXCLUDED — they are always
+    // 'allow' at runtime and never shown in the permissions UI, so pinning
+    // them only leaves a stale fingerprint that later hides seed problems
+    // (the 2026-09-30 gravedigging: a full-ask map including '-health-check'
+    // is indistinguishable from the pre-TER-369-removal legacy seed).
     const toolsPermissions: Record<string, ToolPermission> = {};
     for (const toolName of app.mca.tools) {
-      toolsPermissions[toolName] = permission;
+      if (!isPrivateTool(toolName)) toolsPermissions[toolName] = permission;
     }
 
     const newPermissions: AppToolPermissions = {
@@ -1560,17 +1903,34 @@ export class McaService {
    *
    * When an MCA's tools.json changes (new tools added, old tools removed), this
    * method updates the permissions stored in every App instance of that MCA:
-   *   - New tools are added with the default permission ('ask')
+   *   - New tools are seeded with the SAME criterion as install time
+   *     (`installSeedPermission`): read-only/safe-write → 'allow', mutation →
+   *     'ask', `alwaysAsk` always wins. Decision 2026-10-30 (Pablo): a tool
+   *     the user never configured gets exactly what it would have gotten had
+   *     it existed at install time — no eternal 'ask' for benign tools on
+   *     MCA updates (the todo-list set-progress incident: 3 safeWrite tools
+   *     denied in headless for 6 days because the old code hardcoded 'ask').
    *   - Removed tools are cleaned up from the permissions map
-   *   - Existing tool permissions are preserved unchanged
+   *   - Existing tool permissions are preserved unchanged — anything the user
+   *     (or any explicit writer) pinned stays exactly as pinned, even when it
+   *     differs from the seed. User intent is sacred; only the never-touched
+   *     delta is seeded.
    *
    * Called by McaBootSync after updating the catalog entry.
    *
    * @param mcaId - The MCA whose tools changed
    * @param newToolNames - The current tool names from the updated tools.json
+   * @param toolAnnotations - Validated annotations by tool name (from the
+   *        updated tools.json). Optional for back-compat with older callers;
+   *        without it the seed degrades to the old behaviour (new tools 'ask')
+   *        — callers should always pass it.
    * @returns Number of apps that were updated
    */
-  async propagateToolsToApps(mcaId: string, newToolNames: string[]): Promise<number> {
+  async propagateToolsToApps(
+    mcaId: string,
+    newToolNames: string[],
+    toolAnnotations?: Map<string, McaToolAnnotations>,
+  ): Promise<number> {
     // Find all active apps for this MCA
     const apps = await this.appsCollection
       .find({ mcaId, status: { $ne: 'disabled' } })
@@ -1593,14 +1953,24 @@ export class McaService {
 
       let changed = false;
 
-      // Keep permissions for tools that still exist; add new tools with 'ask'
+      // Keep permissions for tools that still exist; seed new tools with the
+      // install-time criterion (read-only/safe-write → 'allow', else 'ask').
       for (const toolName of newToolNames) {
+        // Private tools (e.g. '-health-check') never get a map entry — same
+        // as createInstallPermissions. They are always 'allow' at runtime;
+        // pinning them only leaves stale fingerprints in the map.
+        if (isPrivateTool(toolName)) continue;
         if (toolName in existingToolPerms) {
-          // Preserve existing permission
+          // Preserve existing permission — user intent is never overwritten
           updatedToolPerms[toolName] = existingToolPerms[toolName];
         } else {
-          // New tool — default to 'ask'
-          updatedToolPerms[toolName] = 'ask';
+          // New tool — seed it exactly as createInstallPermissions would have
+          // (decision 2026-10-30). No annotations passed → conservative 'ask'
+          // (back-compat with callers that only know tool names).
+          updatedToolPerms[toolName] = installSeedPermission({
+            name: toolName,
+            annotations: toolAnnotations?.get(toolName),
+          });
           changed = true;
         }
       }
@@ -1659,8 +2029,11 @@ export class McaService {
         return { success: false, error: 'App not found or no permission to update' };
       }
       const workspace = await this.workspaceService?.getWorkspace(app.ownerId);
-      const member = workspace?.members?.find((m: any) => m.userId === userId);
       const isOwner = workspace?.ownerId === userId;
+      // Check workspace_members collection (single source of truth)
+      const member = workspace
+        ? await this.db.collection('workspace_members').findOne({ workspaceId: app.ownerId, userId })
+        : null;
       const isWriter = member?.role === 'admin' || member?.role === 'write';
       if (!isOwner && !isWriter) {
         return { success: false, error: 'App not found or no permission to update' };

@@ -12,9 +12,11 @@
  * not available — we fall back to initials automatically.
  */
 
-import React, { useEffect, useState } from 'react'
-import { Image, Platform, Text, View, type ViewStyle } from 'react-native'
-import { useColors } from './primitives/useColors'
+import React, { useEffect, useState } from "react"
+import { Image, Platform, Text, View, type ViewStyle } from "react-native"
+import { FONT_MONO } from "./primitives/fonts"
+import { useColors } from "./primitives/useColors"
+import { backendUrl } from "../../config/runtime"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -23,40 +25,40 @@ function isImageUrl(str?: string | null): boolean {
   // SVG URLs are handled by the SVG inline path, not as raster images
   if (isSvgUrl(str)) return false
   return (
-    str.startsWith('http://') ||
-    str.startsWith('https://') ||
-    str.startsWith('data:') ||
-    str.endsWith('.png') ||
-    str.endsWith('.jpg') ||
-    str.endsWith('.jpeg')
+    str.startsWith("http://") ||
+    str.startsWith("https://") ||
+    str.startsWith("data:") ||
+    str.endsWith(".png") ||
+    str.endsWith(".jpg") ||
+    str.endsWith(".jpeg")
   )
 }
 
 function isSvgUrl(str?: string | null): boolean {
   if (!str) return false
-  return str.endsWith('.svg') || str.startsWith('data:image/svg')
+  return str.endsWith(".svg") || str.startsWith("data:image/svg")
 }
 
 function isDataUri(str?: string | null): boolean {
-  return !!str && str.startsWith('data:')
+  return !!str && str.startsWith("data:")
 }
 
 /** Build the full URL for a relative icon path from the backend static endpoint. */
 function resolveUrl(icon: string): string {
-  if (icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('data:')) {
+  if (icon.startsWith("http://") || icon.startsWith("https://") || icon.startsWith("data:")) {
     return icon
   }
-  return `${process.env.EXPO_PUBLIC_BACKEND_URL ?? ''}/static/mcas/${icon}`
+  return `${backendUrl()}/static/mcas/${icon}`
 }
 
 /** Extract the raw SVG markup from a data: URI or a fetched string. */
 function extractSvgMarkup(raw: string): string {
-  if (raw.startsWith('data:image/svg')) {
-    const commaIdx = raw.indexOf(',')
+  if (raw.startsWith("data:image/svg")) {
+    const commaIdx = raw.indexOf(",")
     if (commaIdx === -1) return raw
     const meta = raw.substring(0, commaIdx)
     const payload = raw.substring(commaIdx + 1)
-    if (meta.includes('base64')) {
+    if (meta.includes("base64")) {
       try {
         return atob(payload)
       } catch {
@@ -98,11 +100,11 @@ function normaliseSvg(svg: string): string {
     .replace(/fill=["']#000(?:000)?["']/gi, 'fill="currentColor"')
 
   // Remove width= and height= from the opening <svg ...> tag
-  out = out.replace(/(<svg[^>]*?)\s+width=["'][^"']*["']/i, '$1')
-  out = out.replace(/(<svg[^>]*?)\s+height=["'][^"']*["']/i, '$1')
+  out = out.replace(/(<svg[^>]*?)\s+width=["'][^"']*["']/i, "$1")
+  out = out.replace(/(<svg[^>]*?)\s+height=["'][^"']*["']/i, "$1")
 
   // Remove class= from the opening <svg ...> tag
-  out = out.replace(/(<svg[^>]*?)\s+class=["'][^"']*["']/i, '$1')
+  out = out.replace(/(<svg[^>]*?)\s+class=["'][^"']*["']/i, "$1")
 
   // Inject width="100%" height="100%" right after the opening <svg
   out = out.replace(/<svg\(/i, '<svg width="100%" height="100%"$1')
@@ -142,7 +144,7 @@ export function McaIcon({
 
   // Only attempt SVG inline on web, and only when the icon IS an SVG
   const svgUrl = React.useMemo(() => {
-    if (Platform.OS !== 'web') return null
+    if (Platform.OS !== "web") return null
     if (!icon || !isSvgUrl(icon)) return null
     return resolveUrl(icon)
   }, [icon])
@@ -186,10 +188,10 @@ export function McaIcon({
     width: size,
     height: size,
     borderRadius,
-    backgroundColor: backgroundColor ?? 'transparent',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
+    backgroundColor: backgroundColor ?? "transparent",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
     flexShrink: 0,
   }
 
@@ -207,7 +209,7 @@ export function McaIcon({
   }
 
   // 2. SVG inline (web only, when fetch succeeded)
-  if (svgMarkup && Platform.OS === 'web') {
+  if (svgMarkup && Platform.OS === "web") {
     return (
       <View style={containerStyle}>
         <div
@@ -215,9 +217,9 @@ export function McaIcon({
             width: size * 0.8,
             height: size * 0.8,
             color: fg,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             lineHeight: 0,
           }}
           dangerouslySetInnerHTML={{ __html: svgMarkup }}
@@ -226,18 +228,23 @@ export function McaIcon({
     )
   }
 
-  // 3. Fallback — 2-char initials
+  // 3. Fallback — 2-char initials from the mcaId (strip "mca." and the "teros."
+  //    namespace so mca.teros.memory → "ME", not "TE").
   const initials = mcaId
-    ? mcaId.replace(/^mca\./, '').slice(0, 2).toUpperCase()
-    : '?'
+    ? mcaId
+        .replace(/^mca\.(teros\.)?/, "")
+        .slice(0, 2)
+        .toUpperCase()
+    : "?"
   return (
     <View style={containerStyle}>
       <Text
         style={{
           fontSize: size * 0.4,
-          fontWeight: '600',
+          // Brand rule: 400 everywhere — hierarchy comes from size, never bold.
+          fontWeight: "400",
           color: fg,
-          fontFamily: 'monospace',
+          fontFamily: FONT_MONO,
         }}
       >
         {initials}

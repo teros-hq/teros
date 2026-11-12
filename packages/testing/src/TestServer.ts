@@ -33,16 +33,19 @@ import { mkdtempSync } from 'node:fs';
 import { WebSocket, WebSocketServer } from 'ws';
 import { AuthHandler, type AuthResult } from '../../backend/src/handlers/auth-handler';
 import { EventHandler } from '../../backend/src/handlers/event-handler';
-import { WebSocketHandler } from '../../backend/src/handlers/websocket-handler';
+import { WebSocketHandler, type WebSocketHandlerOptions } from '../../backend/src/handlers/websocket-handler';
 import { AutoplayService } from '../../backend/src/services/autoplay-service';
 import { BoardService } from '../../backend/src/services/board-service';
 import { ChannelManager } from '../../backend/src/services/channel-manager';
+import { ProviderService } from '../../backend/src/services/provider-service';
 import { McaService } from '../../backend/src/services/mca-service';
 import { PubSubService } from '../../backend/src/services/pubsub-service';
 import { SessionManager } from '../../backend/src/services/session-manager';
 import { VolumeService } from '../../backend/src/services/volume-service';
 import { WorkspaceService } from '../../backend/src/services/workspace-service';
 import type { McaManager } from '../../backend/src/services/mca-manager';
+import type { PtyManager } from '../../backend/src/services/pty-manager';
+import { McaConnectionManager } from '../../backend/src/services/mca-connection-manager';
 import { MongoSessionStore } from '../../backend/src/session/MongoSessionStore';
 
 /**
@@ -152,6 +155,28 @@ export interface TestServerOptions {
    * report action). Avoids starting the real Docker-backed manager in tests.
    */
   mcaManager?: McaManager;
+
+  /**
+   * Inject a PtyManager for the terminal domain (terminal.* WS actions).
+   * Without it the domain receives `undefined` and terminal actions are
+   * unusable. Pass a real manager — host PTYs (createHost) work without
+   * Docker, so terminal flows are testable in CI.
+   */
+  ptyManager?: PtyManager;
+
+  /**
+   * Coding-agent credentials for terminal sessions (terminal.create preset
+   * claude/codex/opencode). Default: the DB-backed per-user store. Smokes pass
+   * a stub that returns a fixed env (e.g. a fake Anthropic endpoint's key).
+   */
+  terminalAgentCredentials?: WebSocketHandlerOptions['terminalAgentCredentials'];
+
+  /**
+   * Wire the MCA WebSocket bridge on /mca (McaConnectionManager), mirroring
+   * server-bootstrap.ts production routing. Required for E2E tests that
+   * connect a real MCA process to the TestServer. Off by default.
+   */
+  enableMcaBridge?: boolean;
 }
 
 /**
@@ -207,6 +232,9 @@ export interface TestServerInstance {
   boardService?: BoardService;
   mcaService?: McaService;
   volumeService?: VolumeService;
+
+  /** MCA WS bridge — solo con enableMcaBridge: true (registerPendingConnection) */
+  mcaConnectionManager?: McaConnectionManager;
 
   /** Create a WebSocket client connected to the server */
   createClient(): Promise<TestWebSocketClient>;
@@ -366,7 +394,8 @@ export async function createTestServer(
 
   // Initialize services
   const sessionManager = new SessionManager();
-  const channelManager = new ChannelManager(db);
+  const providerService = new ProviderService(db);
+  const channelManager = new ChannelManager(db, providerService);
 
   // Create LLM adapter based on options
   let llmAdapter: ILLMClient;
@@ -397,7 +426,20 @@ export async function createTestServer(
     }
   });
 
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  // noServer + explicit upgrade routing (mirrors server-bootstrap.ts):
+  // /ws for user sessions, /mca for the MCA bridge when enabled.
+  const wss = new WebSocketServer({ noServer: true });
+  let mcaConnectionManager: McaConnectionManager | undefined;
+  httpServer.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url || '', `http://${request.headers.host}`).pathname;
+    if (pathname === '/ws') {
+      wss.handleUpgrade(request, socket, head, (ws) => wss.emit('connection', ws, request));
+    } else if (pathname === '/mca' && mcaConnectionManager) {
+      mcaConnectionManager.handleUpgrade(request, socket, head);
+    } else {
+      socket.destroy();
+    }
+  });
 
   // Create mock auth handler for tests
   const mockAuthHandler = new MockAuthHandler(sessionManager);
@@ -438,6 +480,9 @@ export async function createTestServer(
     pubSubService.setSessionManager(sessionManager);
     pubSubService.setWorkspaceService(workspaceService);
     sessionManager.setPubSubService(pubSubService);
+    // Mirrors server-bootstrap: WorkspaceService broadcasts `workspace.created`
+    // to the owner's sessions on every creation path.
+    workspaceService.setPubSubService(pubSubService);
 
     autoplayService = new AutoplayService(db, pubSubService, channelManager);
     await autoplayService.ensureIndexes();
@@ -445,7 +490,7 @@ export async function createTestServer(
 
   // Initialize WebSocket handler with mock auth and mock LLM client
   // Constructor: (wss, sessionManager, channelManager, db, sessionStore?, options?)
-  new WebSocketHandler(wss, sessionManager, channelManager, db, sessionStore, {
+  const wsHandler = new WebSocketHandler(wss, sessionManager, channelManager, db, sessionStore, {
     authHandler: mockAuthHandler,
     llmClient: llmAdapter,
     toolExecutor: mockToolExecutor,
@@ -457,7 +502,21 @@ export async function createTestServer(
     autoplayService,
     eventHandler,
     mcaManager: options?.mcaManager,
+    ptyManager: options?.ptyManager,
+    terminalAgentCredentials: options?.terminalAgentCredentials,
   });
+
+  // MCA WS bridge — created after the handler so it can share its WsRouter
+  // (admin_request from MCAs dispatches into the same domain stack).
+  if (options.enableMcaBridge) {
+    mcaConnectionManager = new McaConnectionManager(db, {
+      sessionManager,
+      pubSubService,
+      wsRouter: wsHandler.getWsRouter(),
+    });
+    mcaConnectionManager.initWebSocketServer(httpServer);
+    await mcaConnectionManager.ensureIndexes();
+  }
 
   // Start server
   await new Promise<void>((resolve) => {
@@ -470,6 +529,7 @@ export async function createTestServer(
     port: actualPort,
     httpServer,
     wss,
+    mcaConnectionManager,
     db,
     sessionManager,
     channelManager,

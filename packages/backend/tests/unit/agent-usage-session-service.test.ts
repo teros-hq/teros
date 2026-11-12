@@ -142,6 +142,45 @@ describe('AgentUsageSessionService — queued→running lifecycle (TER-650/G1)',
     expect('errorSubReason' in ended.payload).toBe(false)
     expect('upstreamMessage' in ended.payload).toBe(false)
   })
+
+  // duration-capped bug (2026-10-27): a turn killed by the absolute turn
+  // deadline records durationMs ≈ TURN_DEADLINE (1_800_000), which is
+  // "elapsed until the watchdog killed the turn", NOT real work. The
+  // durationCapped flag lets reporting exclude/adjust without the legacy
+  // [1_795_000–1_805_000] range sniff.
+  it('end() emits durationCapped=true on session.ended when the turn was deadline-killed', () => {
+    const { svc, emitted } = makeService()
+    const handle = svc.start(base)
+    svc.markRunning(handle)
+    svc.end({
+      handle,
+      status: 'errored',
+      errorKind: 'network_error',
+      durationCapped: true,
+      errorMessage: 'Operation "turn-deadline" timed out after 1800000ms',
+    })
+    const ended = emitted.find((e) => e.type === 'session.ended')
+    expect(ended.payload.durationCapped).toBe(true)
+    expect(ended.payload.errorKind).toBe('network_error')
+  })
+
+  it('end() omits durationCapped entirely on every other close', () => {
+    const { svc, emitted } = makeService()
+    const handle = svc.start(base)
+    svc.markRunning(handle)
+    // Clean completion AND an error close without the flag — neither may
+    // carry the key (absent = not capped; false would also be fine for
+    // Mongo, but absence keeps the doc identical to pre-flag rows).
+    svc.end({ handle, status: 'completed' })
+    const handle2 = svc.start(base)
+    svc.markRunning(handle2)
+    svc.end({ handle: handle2, status: 'errored', errorKind: 'network_error' })
+    const ended = emitted.filter((e) => e.type === 'session.ended')
+    expect(ended).toHaveLength(2)
+    for (const e of ended) {
+      expect('durationCapped' in e.payload).toBe(false)
+    }
+  })
 })
 
 describe('classifyError', () => {

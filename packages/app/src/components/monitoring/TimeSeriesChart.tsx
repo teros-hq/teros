@@ -1,7 +1,9 @@
 import { useState } from "react"
+import { Platform, View } from "react-native"
 import Svg, { Line, Rect, Text as SvgText } from "react-native-svg"
-import { Text, XStack, YStack } from "tamagui"
-import { tokens } from "./colors"
+import { useColors } from "../mca/primitives/useColors"
+import { FONT_MONO } from "../mca/primitives/fonts"
+import { T } from "../ui/ds/Text"
 
 export interface Series {
   key: string
@@ -19,7 +21,8 @@ const PAD = { l: 46, r: 14, t: 14, b: 26 }
  * Unified stacked-bar time series (the design's `StackedBars`) — replaces the
  * per-window hand-rolled charts. Responsive (viewBox + width 100%), with a
  * click-to-inspect tooltip (RN-Web has no reliable SVG hover) and a legend.
- * Series colors are stable by identity (caller passes `seriesColor(key)`).
+ * Series colors are stable by identity (caller passes `seriesColor(key)`);
+ * grid, axes and tooltip follow the theme (Main/300 grid, mono text3 axes).
  */
 export function TimeSeriesChart({
   series,
@@ -39,6 +42,7 @@ export function TimeSeriesChart({
    */
   onBarPress?: (index: number) => void
 }) {
+  const c = useColors()
   const [active, setActive] = useState<number | null>(null)
 
   const n = labels.length
@@ -59,24 +63,59 @@ export function TimeSeriesChart({
   const yy = (v: number) => y1 - (v / niceMax) * plotH
 
   const gridVals = [0, 1, 2, 3, 4].map((t) => (niceMax * t) / 4)
-  const compact = (v: number) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}k` : String(Math.round(v)))
+  const compact = (v: number) =>
+    v >= 1e6
+      ? `${(v / 1e6).toFixed(1)}M`
+      : v >= 1e3
+        ? `${(v / 1e3).toFixed(1)}k`
+        : String(Math.round(v))
 
   return (
-    <YStack gap={12}>
-      <YStack width="100%" position="relative">
+    <View style={{ gap: 12 }}>
+      <View style={{ width: "100%", position: "relative" }}>
         {/* svg */}
-        <Svg viewBox={`0 0 ${W} ${H}`} width="100%" height={undefined} preserveAspectRatio="xMidYMid meet" style={{ aspectRatio: W / H }}>
+        <Svg
+          viewBox={`0 0 ${W} ${H}`}
+          width="100%"
+          height={undefined}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ aspectRatio: W / H }}
+        >
           {gridVals.map((v, t) => (
-            <Line key={`g${t}`} x1={x0} y1={yy(v)} x2={x1} y2={yy(v)} stroke={tokens.border} strokeWidth={1} />
+            <Line
+              key={`g${t}`}
+              x1={x0}
+              y1={yy(v)}
+              x2={x1}
+              y2={yy(v)}
+              stroke={c.border}
+              strokeWidth={1}
+            />
           ))}
           {gridVals.map((v, t) => (
-            <SvgText key={`gl${t}`} x={x0 - 8} y={yy(v) + 3} textAnchor="end" fill={tokens.textTertiary} fontSize={9} fontFamily="monospace">
+            <SvgText
+              key={`gl${t}`}
+              x={x0 - 8}
+              y={yy(v) + 3}
+              textAnchor="end"
+              fill={c.text3}
+              fontSize={9}
+              fontFamily={FONT_MONO}
+            >
               {compact(v)}
             </SvgText>
           ))}
           {labels.map((hl, h) =>
             h % 4 === 0 ? (
-              <SvgText key={`x${h}`} x={cx(h)} y={y1 + 15} textAnchor="middle" fill={tokens.textTertiary} fontSize={9} fontFamily="monospace">
+              <SvgText
+                key={`x${h}`}
+                x={cx(h)}
+                y={y1 + 15}
+                textAnchor="middle"
+                fill={c.text3}
+                fontSize={9}
+                fontFamily={FONT_MONO}
+              >
                 {hl}
               </SvgText>
             ) : null,
@@ -98,7 +137,7 @@ export function TimeSeriesChart({
                   width={barW}
                   height={Math.max(0.5, hgt - 0.8)}
                   fill={s.color}
-                  rx={1}
+                  rx={2}
                   opacity={dim ? 0.32 : 1}
                 />
               )
@@ -121,24 +160,42 @@ export function TimeSeriesChart({
         </Svg>
 
         {/* tooltip */}
-        {active != null ? <Tooltip h={active} cx={cx(active)} series={series} labels={labels} totals={totals} unit={unit} format={format} /> : null}
-      </YStack>
+        {active != null ? (
+          <Tooltip
+            h={active}
+            cx={cx(active)}
+            series={series}
+            labels={labels}
+            totals={totals}
+            unit={unit}
+            format={format}
+          />
+        ) : null}
+      </View>
 
       {/* legend */}
-      <XStack flexWrap="wrap" gap={4} paddingLeft={46} rowGap={4} columnGap={16}>
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          paddingLeft: 46,
+          rowGap: 4,
+          columnGap: 16,
+        }}
+      >
         {[...series].reverse().map((s) => (
-          <XStack key={s.key} ai="center" gap={6}>
-            <YStack width={9} height={9} borderRadius={3} backgroundColor={s.color} />
-            <Text fontSize={12} color={tokens.textSecondary}>
+          <View key={s.key} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View style={{ width: 9, height: 9, borderRadius: 3, backgroundColor: s.color }} />
+            <T step="12" tone="text2">
               {s.label}
-            </Text>
-            <Text fontSize={12} fontFamily="$mono" color={tokens.textTertiary}>
+            </T>
+            <T step="code" tone="text3">
               {compact(s.values.reduce((a, b) => a + b, 0))}
-            </Text>
-          </XStack>
+            </T>
+          </View>
         ))}
-      </XStack>
-    </YStack>
+      </View>
+    </View>
   )
 }
 
@@ -159,6 +216,7 @@ function Tooltip({
   unit: string
   format: (v: number) => string
 }) {
+  const c = useColors()
   const leftPct = (cx / W) * 100
   const flip = leftPct > 58
   const rows = series
@@ -166,43 +224,58 @@ function Tooltip({
     .filter((r) => r.v > 0)
     .reverse()
   return (
-    <YStack
-      position="absolute"
-      top={4}
-      left={`${leftPct}%`}
-      x={flip ? "calc(-100% - 12px)" : 12}
-      backgroundColor={tokens.bgPress}
-      borderWidth={1}
-      borderColor={tokens.borderHover}
-      borderRadius={6}
-      padding={10}
-      minWidth={150}
-      gap={2}
+    <View
       pointerEvents="none"
-      zIndex={5}
+      style={[
+        {
+          position: "absolute",
+          top: 4,
+          left: `${leftPct}%`,
+          backgroundColor: c.bgStep,
+          borderRadius: 12,
+          padding: 12,
+          minWidth: 150,
+          gap: 2,
+          zIndex: 5,
+        },
+        Platform.OS === "web"
+          ? ({
+              transform: flip ? "translateX(calc(-100% - 12px))" : "translateX(12px)",
+              boxShadow: c.elevRaised,
+            } as any)
+          : { transform: [{ translateX: flip ? -170 : 12 }] },
+      ]}
     >
-      <Text fontFamily="$mono" fontSize={11} color={tokens.textTertiary} marginBottom={4}>
+      <T step="codenote" tone="text3" style={{ marginBottom: 4 }}>
         {labels[h]}
-      </Text>
+      </T>
       {rows.map((r) => (
-        <XStack key={r.s.key} ai="center" gap={7}>
-          <YStack width={8} height={8} borderRadius={2} backgroundColor={r.s.color} />
-          <Text fontSize={11} color={tokens.textSecondary} flex={1} numberOfLines={1}>
+        <View key={r.s.key} style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: r.s.color }} />
+          <T step="12" tone="text2" numberOfLines={1} style={{ flex: 1 }}>
             {r.s.label}
-          </Text>
-          <Text fontSize={11} fontFamily="$mono" fontWeight="600" color={tokens.text}>
-            {format(r.v)}
-          </Text>
-        </XStack>
+          </T>
+          <T step="code">{format(r.v)}</T>
+        </View>
       ))}
-      <XStack jc="space-between" gap={12} marginTop={6} paddingTop={6} borderTopWidth={1} borderTopColor={tokens.border}>
-        <Text fontSize={11} color={tokens.textTertiary}>
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          gap: 12,
+          marginTop: 6,
+          paddingTop: 6,
+          borderTopWidth: 1,
+          borderTopColor: c.border,
+        }}
+      >
+        <T step="12" tone="text3">
           Total
-        </Text>
-        <Text fontSize={11} fontFamily="$mono" fontWeight="700" color={tokens.text}>
+        </T>
+        <T step="code">
           {format(totals[h])} {unit}
-        </Text>
-      </XStack>
-    </YStack>
+        </T>
+      </View>
+    </View>
   )
 }

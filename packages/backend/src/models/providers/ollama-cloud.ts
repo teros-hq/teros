@@ -17,6 +17,44 @@ export const MODELS_OLLAMA_CLOUD: ModelDefinition[] = [
   // Requires API key from https://ollama.com/settings/api-keys
   // ============================================================================
   {
+    // Mistral Large 4 — public preview 2026-10-06, open-weight multimodal MoE
+    // (52B active / 1.05T total, 1.6B vision encoder, 1M context). Cloud-only
+    // on Ollama: there is NO local tag (verified 2026-10-31 — `ollama pull
+    // mistral-large-4` fails "file does not exist"; only :cloud exists).
+    // "Large 3" is the previous model (2025-12); "4 Pro" does not exist.
+    modelId: "ollama-cloud-mistral-large-4",
+    provider: "ollama-cloud",
+    name: "Mistral Large 4 (Cloud)",
+    description:
+      "Mistral Large 4 hosted by Ollama Cloud. Open-weight multimodal MoE (52B active of 1.05T), 1M context, vision + tools.",
+    modelString: "mistral-large-4:cloud",
+    capabilities: {
+      streaming: true,
+      tools: true,
+      vision: true,
+      thinking: false,
+    },
+    context: {
+      maxTokens: 1000000,
+      maxOutputTokens: 32768,
+    },
+    defaults: {
+      temperature: 0.7,
+      maxTokens: 16384,
+    },
+    reservations: {
+      systemPrompt: 4000,
+      memory: 8000,
+      output: 16384,
+    },
+    compaction: {
+      triggerAt: 800000,
+      targetSize: 500000,
+      protectRecent: 20000,
+    },
+    status: "active",
+  },
+  {
     modelId: "ollama-cloud-glm-5.2",
     provider: "ollama-cloud",
     name: "GLM 5.2 (Cloud)",

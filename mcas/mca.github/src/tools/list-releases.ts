@@ -1,29 +1,22 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo } from '../lib';
+import { PAGE_PARAMS, PAGED_RESULT_NOTE, type PageArgs, arrayPayload, curateRelease, pagedRequest } from '../lib/curate';
 
 export const listReleases: ToolConfig = {
   annotations: { readOnlyHint: true },
-  description:
-    'List releases of a repository, newest first. Each release includes {id, tag_name, name, draft, prerelease, body, html_url, published_at, author}.',
+  description: `List releases for a repository. ${PAGED_RESULT_NOTE}`,
   parameters: {
     type: 'object',
     properties: {
       owner: { type: 'string', description: 'Repository owner' },
       repo: { type: 'string', description: 'Repository name' },
-      per_page: { type: 'number', description: 'Results per page (default: 30, max: 100)' },
-      page: { type: 'number', description: 'Page index (1-based)' },
+      ...PAGE_PARAMS,
     },
     required: ['owner', 'repo'],
   },
   handler: async (args, context) => {
-    const { owner, repo, per_page, page } = args as {
-      owner: string;
-      repo: string;
-      per_page?: number;
-      page?: number;
-    };
-    return await githubRequest(context, `/repos/${owner}/${repo}/releases`, {
-      params: { per_page, page },
-    });
+    const a = args as PageArgs & { owner: string; repo: string };
+    assertOwnerRepo(a.owner, a.repo);
+    return pagedRequest(context, `/repos/${a.owner}/${a.repo}/releases`, a, {}, arrayPayload, curateRelease);
   },
 };

@@ -3,6 +3,7 @@
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
+import { channelListScope } from '@teros/shared'
 import type { WsHandlerContext } from '@teros/shared'
 import type { ChannelManager } from '../../../services/channel-manager'
 import type { SessionManager } from '../../../services/session-manager'
@@ -45,7 +46,7 @@ export function createAutonameChannelHandler(
       status: renamed!.status,
       createdAt: renamed!.createdAt,
       updatedAt: renamed!.updatedAt,
-      workspaceId: renamed!.workspaceId,
+      ...channelListScope(renamed!),
     })
 
     // Broadcast channel_list_status to all user sessions (for conversation list)

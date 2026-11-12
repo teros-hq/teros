@@ -1,0 +1,75 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Herramienta de verificación de salud interna. Verifica credenciales OAuth y conectividad."
+    },
+    "list-notebooks": {
+      "name": "list-notebooks",
+      "description": "Listar todos los cuadernos de OneNote que la cuenta puede abrir, incluyendo los compartidos."
+    },
+    "get-notebook": {
+      "name": "get-notebook",
+      "description": "Obtener un cuaderno de OneNote por id, con su nombre, estado de compartir y URL web."
+    },
+    "create-notebook": {
+      "name": "create-notebook",
+      "description": "Crear un nuevo cuaderno de OneNote."
+    },
+    "list-sections": {
+      "name": "list-sections",
+      "description": "Listar secciones de OneNote, opcionalmente limitadas a un cuaderno."
+    },
+    "create-section": {
+      "name": "create-section",
+      "description": "Crear una sección dentro de un cuaderno de OneNote."
+    },
+    "list-section-groups": {
+      "name": "list-section-groups",
+      "description": "Listar grupos de secciones de OneNote — carpetas que contienen secciones dentro de un cuaderno."
+    },
+    "list-pages": {
+      "name": "list-pages",
+      "description": "Listar páginas de OneNote, las más recientes primero. Devuelve solo metadatos — use get-page-content para leer una página."
+    },
+    "get-page": {
+      "name": "get-page",
+      "description": "Obtener una página de OneNote por id: título, fechas, posición y sección principal."
+    },
+    "get-page-content": {
+      "name": "get-page-content",
+      "description": "Leer el cuerpo de una página de OneNote. Devuelve markdown por defecto."
+    },
+    "create-page": {
+      "name": "create-page",
+      "description": "Crear una página de OneNote en una sección con contenido markdown o HTML."
+    },
+    "delete-page": {
+      "name": "delete-page",
+      "description": "Eliminar una página de OneNote."
+    },
+    "copy-page-to-section": {
+      "name": "copy-page-to-section",
+      "description": "Copiar una página de OneNote a otra sección, incluyendo entre cuadernos."
+    },
+    "append-to-page": {
+      "name": "append-to-page",
+      "description": "Añadir contenido a una página existente de OneNote sin eliminar nada."
+    },
+    "replace-page-content": {
+      "name": "replace-page-content",
+      "description": "Reemplazar el contenido de una página de OneNote, o solo su título."
+    },
+    "search-pages": {
+      "name": "search-pages",
+      "description": "Buscar páginas de OneNote por texto en todos los cuadernos."
+    }
+  },
+  "name": "OneNote",
+  "description": "Integración de Microsoft OneNote — explorar cuadernos y secciones, leer y escribir páginas como markdown, y buscar notas",
+  "changelog": [
+    {
+      "notes": "Versión inicial — leer, escribir y buscar cuadernos, secciones y páginas de OneNote"
+    }
+  ]
+}

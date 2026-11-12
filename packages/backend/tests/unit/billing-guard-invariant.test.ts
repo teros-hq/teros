@@ -24,6 +24,11 @@ import { describe, expect, it } from 'bun:test'
 
 const SRC = resolve(__dirname, '../../src')
 const ROLLUP_JOB = 'services/agent-usage-rollup-job.ts'
+// Reviewed second caller (940f1b729, WS2 my-usage-channels-summary): the
+// handler READS usage through the same exported guard to decide billable
+// per-channel hours — same semantics as the rollup, no aggregation write,
+// no bypass. Allowed here after that review; a third caller still fails.
+const MY_USAGE = 'handlers/domains/user-api/my-usage.ts'
 
 function sourceFiles(): string[] {
   return readdirSync(SRC, { recursive: true })
@@ -57,14 +62,15 @@ describe('billing guard invariant — isNonBillableSession (TER-650)', () => {
     expect(/if\s*\(isNonBillableSession\(/.test(src)).toBe(true)
   })
 
-  it('no other source file calls isNonBillableSession (single guard site)', () => {
+  it('only the reviewed call sites use isNonBillableSession', () => {
     // Not a correctness requirement per se, but pins the surface: if the guard
-    // grows a second caller, that path must be reviewed for the same bypass risk.
+    // grows a new caller, that path must be reviewed for the same bypass risk
+    // and added here explicitly.
     const callers = sourceFiles().filter((rel) => {
       const src = readFileSync(resolve(SRC, rel), 'utf8')
       return /isNonBillableSession\(/.test(src)
     })
-    expect(callers).toEqual([ROLLUP_JOB])
+    expect(callers).toEqual([ROLLUP_JOB, MY_USAGE])
   })
 
   it('the rollup job skips sessions with no execution anchor (billable ⟹ ran) (TER-650/G1)', () => {

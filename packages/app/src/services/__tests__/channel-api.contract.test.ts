@@ -91,8 +91,8 @@ describe('ChannelApi — request payload contract', () => {
     })
   })
 
-  it('setPrivate / rename carry their second argument', () => {
-    api.setPrivate('ch_1', true)
+  it('setScope / rename carry their second argument', () => {
+    api.setScope('ch_1', 'personal')
     expect(transport.last()).toEqual({
       action: 'channel.set-private',
       payload: { channelId: 'ch_1', isPrivate: true },
@@ -100,6 +100,15 @@ describe('ChannelApi — request payload contract', () => {
     })
     api.rename('ch_1', 'Nuevo nombre')
     expect(transport.last().payload).toEqual({ channelId: 'ch_1', name: 'Nuevo nombre' })
+  })
+
+  it('moveToWorkspace sends { channelId, targetWorkspaceId } — NOT workspaceId (backend expects targetWorkspaceId)', () => {
+    void api.moveToWorkspace('ch_1', 'ws_target')
+    expect(transport.last()).toEqual({
+      action: 'channel.move-to-workspace',
+      payload: { channelId: 'ch_1', targetWorkspaceId: 'ws_target' },
+      options: undefined,
+    })
   })
 
   it('sendMessage omits wakeUpAgent unless explicitly provided', () => {
@@ -173,16 +182,17 @@ describe('ChannelApi.getMessages', () => {
     })
     expect(emitter.count('messages_history')).toBe(1) // listener registered
 
+    // Token usage is admin-only (2026-10-30): messages_history no longer
+    // carries tokenBudget — admins read it via admin-api.channel-token-budget.
     emitter.emit('messages_history', {
       channelId: 'ch_1',
       messages: [{ messageId: 'm1' }],
       hasMore: true,
-      tokenBudget: { used: 10 },
     })
     await expect(p).resolves.toEqual({
       messages: [{ messageId: 'm1' }],
       hasMore: true,
-      tokenBudget: { used: 10 },
+      tokenBudget: undefined,
     })
     expect(emitter.count('messages_history')).toBe(0) // listener cleaned up
   })

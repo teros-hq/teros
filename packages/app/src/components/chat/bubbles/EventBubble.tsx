@@ -1,9 +1,9 @@
-import { Bell, CheckCircle, Clock, ExternalLink, Lock, Pause, RefreshCw, XCircle } from '@tamagui/lucide-icons';
-import { useTranslation } from 'react-i18next';
-import { Image } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui'
-import { useColors } from '../../mca/primitives/useColors'
-import { useTilingStore } from '../../../store/tilingStore';
+import { useTranslation } from "react-i18next"
+import { Image } from "react-native"
+import { Text, XStack, YStack } from "tamagui"
+import { useColors } from "../../mca/primitives/useColors"
+import { useTilingStore } from "../../../store/tilingStore"
+import { ChipBtn, Ph, T } from "../../ui/ds"
 
 /**
  * EventBubble — renders all event types emitted by EventHandler:
@@ -22,88 +22,101 @@ export function EventBubble({
   timestamp,
   showTimestamp = true,
 }: {
-  eventType: string;
-  eventData: Record<string, any>;
-  description?: string;
-  timestamp: Date;
-  showTimestamp?: boolean;
+  eventType: string
+  eventData: Record<string, any>
+  description?: string
+  timestamp: Date
+  showTimestamp?: boolean
 }) {
   const { t } = useTranslation()
-  const c = useColors();
-  const openWindow = useTilingStore((s) => s.openWindow);
+  const c = useColors()
+  const openWindow = useTilingStore((s) => s.openWindow)
   const getIconAndLabel = () => {
     switch (eventType) {
-      case 'channel_started':
-        return { icon: <Clock size={14} color={c.text3} />, label: t('conversation.events.started') };
-      case 'channel_finished':
-        return { icon: <CheckCircle size={14} color="rgba(34,197,94,0.5)" />, label: t('conversation.events.finished') };
-      case 'task_update':
+      case "channel_started":
+        return {
+          icon: <Ph name="clock" size={13} color={c.text3} />,
+          label: t("conversation.events.started"),
+        }
+      case "channel_finished":
+        return {
+          icon: <Ph name="check-circle" size={13} color={c.tint.g.tx} />,
+          label: t("conversation.events.finished"),
+        }
+      case "task_update":
         return eventData.running
-          ? { icon: <Clock size={14} color={c.text3} />, label: t('conversation.events.taskUpdated') }
-          : { icon: <Pause size={14} color={c.text3} />, label: t('conversation.events.taskUpdated') };
-      case 'reminder':
-        return { icon: <Bell size={14} color="rgba(255,200,100,0.6)" />, label: t('conversation.events.reminder') };
-      case 'recurring_task':
-        return { icon: <RefreshCw size={14} color={c.text3} />, label: t('conversation.events.recurringTask') };
-      case 'system_resume':
-        return { icon: <RefreshCw size={14} color={c.text3} />, label: t('conversation.events.systemResume') };
+          ? {
+              icon: <Ph name="clock" size={13} color={c.text3} />,
+              label: t("conversation.events.taskUpdated"),
+            }
+          : {
+              icon: <Ph name="pause" size={13} color={c.text3} />,
+              label: t("conversation.events.taskUpdated"),
+            }
+      case "reminder":
+        return {
+          icon: <Ph name="bell" size={13} color={c.tint.a.tx} />,
+          label: t("conversation.events.reminder"),
+        }
+      case "recurring_task":
+        return {
+          icon: <Ph name="arrows-clockwise" size={13} color={c.text3} />,
+          label: t("conversation.events.recurringTask"),
+        }
+      case "system_resume":
+        return {
+          icon: <Ph name="arrows-clockwise" size={13} color={c.text3} />,
+          label: t("conversation.events.systemResume"),
+        }
       default:
-        return { icon: <Clock size={14} color={c.text3} />, label: t('conversation.events.event') };
+        return {
+          icon: <Ph name="clock" size={13} color={c.text3} />,
+          label: t("conversation.events.event"),
+        }
     }
-  };
+  }
 
-  const { icon, label } = getIconAndLabel();
+  const { icon, label } = getIconAndLabel()
 
   // ------------------------------------------------------------------
   // channel_permission — observed channel needs approval
   // ------------------------------------------------------------------
-  if (eventType === 'channel_permission') {
-    const { observedChannelId, observedChannelName, toolName } = eventData;
-    const shortTool = toolName ? String(toolName).split('_').pop() : 'tool';
+  if (eventType === "channel_permission") {
+    const { observedChannelId, observedChannelName, toolName } = eventData
+    const shortTool = toolName ? String(toolName).split("_").pop() : "tool"
     return (
       <XStack
         width="100%"
-        paddingVertical="$2"
-        paddingHorizontal="$3"
-        backgroundColor="rgba(251,191,36,0.05)"
-        borderTopWidth={1}
-        borderBottomWidth={1}
-        borderColor="rgba(251,191,36,0.15)"
+        paddingVertical={8}
+        paddingHorizontal={12}
+        backgroundColor={c.tint.a.bg}
+        borderRadius={12}
+        borderWidth={1}
+        borderColor={c.tint.a.bd}
         alignItems="center"
-        gap="$2"
-        marginVertical="$1"
+        gap={8}
       >
-        <Lock size={13} color="rgba(251,191,36,0.7)" />
+        <Ph name="lock" size={13} color={c.tint.a.tx} />
         <YStack flex={1} gap={1}>
-          <Text color="rgba(251,191,36,0.9)" fontSize={11} fontWeight="500">
-            {t('conversation.events.needsApproval', { channel: observedChannelName || t('conversation.events.observedChannel') })}
-          </Text>
-          <Text color={c.text3} fontSize={10}>
-            {t('conversation.events.tool', { tool: shortTool })}
-          </Text>
+          <T step="12" color={c.tint.a.tx}>
+            {t("conversation.events.needsApproval", {
+              channel: observedChannelName || t("conversation.events.observedChannel"),
+            })}
+          </T>
+          <T step="codenote" tone="text3">
+            {t("conversation.events.tool", { tool: shortTool })}
+          </T>
         </YStack>
         {observedChannelId && (
-          <XStack
-            paddingHorizontal={8}
-            paddingVertical={4}
-            borderRadius={4}
-            backgroundColor="rgba(251,191,36,0.12)"
-            borderWidth={1}
-            borderColor="rgba(251,191,36,0.25)"
-            alignItems="center"
-            gap={4}
-            cursor="pointer"
-            hoverStyle={{ backgroundColor: 'rgba(251,191,36,0.2)' }}
-            onPress={() => openWindow('chat', { channelId: observedChannelId }, true)}
+          <ChipBtn
+            icon="arrow-square-out"
+            onPress={() => openWindow("chat", { channelId: observedChannelId }, false)}
           >
-            <ExternalLink size={11} color="rgba(251,191,36,0.8)" />
-            <Text color="rgba(251,191,36,0.9)" fontSize={10} fontWeight="500">
-              {t('conversation.events.goToApprove')}
-            </Text>
-          </XStack>
+            {t("conversation.events.goToApprove")}
+          </ChipBtn>
         )}
       </XStack>
-    );
+    )
   }
 
   // ------------------------------------------------------------------
@@ -112,80 +125,65 @@ export function EventBubble({
   // message-handler.emitTurnEvent / complete-my-task) y ruta MCA
   // event-subscription (channel*, payload crudo del topic channel:turn_end).
   // ------------------------------------------------------------------
-  if (eventType === 'channel_finished') {
-    const channelId = eventData.observedChannelId ?? eventData.channelId;
-    const channelName = eventData.observedChannelName ?? eventData.channelName;
+  if (eventType === "channel_finished") {
+    const channelId = eventData.observedChannelId ?? eventData.channelId
+    const channelName = eventData.observedChannelName ?? eventData.channelName
     return (
       <XStack
         width="100%"
-        paddingVertical="$2"
-        paddingHorizontal="$3"
-        backgroundColor="rgba(34,197,94,0.04)"
-        borderTopWidth={1}
-        borderBottomWidth={1}
-        borderColor="rgba(34,197,94,0.12)"
+        paddingVertical={8}
+        paddingHorizontal={12}
+        backgroundColor={c.tint.g.bg}
+        borderRadius={12}
+        borderWidth={1}
+        borderColor={c.tint.g.bd}
         alignItems="center"
-        gap="$2"
-        marginVertical="$1"
+        gap={8}
       >
-        <CheckCircle size={13} color="rgba(34,197,94,0.7)" />
-        <Text color="rgba(34,197,94,0.85)" fontSize={11} flex={1}>
-          {t('conversation.events.channelFinished', { channel: channelName || channelId })}
-        </Text>
+        <Ph name="check-circle" size={13} color={c.tint.g.tx} />
+        <T step="12" color={c.tint.g.tx} style={{ flex: 1 }}>
+          {t("conversation.events.channelFinished", { channel: channelName || channelId })}
+        </T>
         {channelId && (
-          <XStack
-            paddingHorizontal={8}
-            paddingVertical={4}
-            borderRadius={4}
-            backgroundColor="rgba(34,197,94,0.10)"
-            borderWidth={1}
-            borderColor="rgba(34,197,94,0.22)"
-            alignItems="center"
-            gap={4}
-            cursor="pointer"
-            hoverStyle={{ backgroundColor: 'rgba(34,197,94,0.18)' }}
-            onPress={() => openWindow('chat', { channelId }, true)}
-          >
-            <ExternalLink size={11} color="rgba(34,197,94,0.8)" />
-            <Text color="rgba(34,197,94,0.9)" fontSize={10} fontWeight="500">
-              {t('conversation.events.open')}
-            </Text>
-          </XStack>
+          <ChipBtn icon="arrow-square-out" onPress={() => openWindow("chat", { channelId }, false)}>
+            {t("conversation.events.open")}
+          </ChipBtn>
         )}
       </XStack>
-    );
+    )
   }
 
   // ------------------------------------------------------------------
   // channel_resolved — permission approved or denied
   // ------------------------------------------------------------------
-  if (eventType === 'channel_resolved') {
-    const { observedChannelName, toolName, resolution } = eventData;
-    const shortTool = toolName ? String(toolName).split('_').pop() : 'tool';
-    const isGranted = resolution === 'granted';
+  if (eventType === "channel_resolved") {
+    const { observedChannelName, toolName, resolution } = eventData
+    const shortTool = toolName ? String(toolName).split("_").pop() : "tool"
+    const isGranted = resolution === "granted"
     return (
       <XStack
         width="100%"
-        paddingVertical="$2"
-        paddingHorizontal="$3"
-        backgroundColor={isGranted ? 'rgba(34,197,94,0.04)' : 'rgba(239,68,68,0.04)'}
-        borderTopWidth={1}
-        borderBottomWidth={1}
-        borderColor={isGranted ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)'}
+        paddingVertical={8}
+        paddingHorizontal={12}
+        backgroundColor={isGranted ? c.tint.g.bg : c.tint.r.bg}
+        borderRadius={12}
+        borderWidth={1}
+        borderColor={isGranted ? c.tint.g.bd : c.tint.r.bd}
         alignItems="center"
-        gap="$2"
-        marginVertical="$1"
+        gap={8}
       >
-        {isGranted
-          ? <CheckCircle size={13} color="rgba(34,197,94,0.7)" />
-          : <XCircle size={13} color="rgba(239,68,68,0.7)" />}
-        <Text color={isGranted ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)'} fontSize={11} flex={1}>
+        {isGranted ? (
+          <Ph name="check-circle" size={13} color={c.tint.g.tx} />
+        ) : (
+          <Ph name="x-circle" size={13} color={c.tint.r.tx} />
+        )}
+        <T step="12" color={isGranted ? c.tint.g.tx : c.tint.r.tx} style={{ flex: 1 }}>
           {isGranted
-            ? t('conversation.events.approved', { channel: observedChannelName, tool: shortTool })
-            : t('conversation.events.denied', { channel: observedChannelName, tool: shortTool })}
-        </Text>
+            ? t("conversation.events.approved", { channel: observedChannelName, tool: shortTool })
+            : t("conversation.events.denied", { channel: observedChannelName, tool: shortTool })}
+        </T>
       </XStack>
-    );
+    )
   }
 
   // ------------------------------------------------------------------
@@ -193,102 +191,83 @@ export function EventBubble({
   // removed (requests now wait indefinitely); this renderer stays so
   // old persisted events in channel history still display correctly.
   // ------------------------------------------------------------------
-  if (eventType === 'permission_timeout') {
-    const { toolName } = eventData;
-    const shortTool = toolName ? String(toolName).split('_').pop() : 'tool';
+  if (eventType === "permission_timeout") {
+    const { toolName } = eventData
+    const shortTool = toolName ? String(toolName).split("_").pop() : "tool"
     return (
       <XStack
         width="100%"
-        paddingVertical="$2"
-        paddingHorizontal="$3"
-        backgroundColor={c.bgInner}
-        borderTopWidth={1}
-        borderBottomWidth={1}
-        borderColor={c.border}
+        paddingVertical={8}
+        paddingHorizontal={12}
+        backgroundColor={c.wash}
+        borderRadius={12}
         alignItems="center"
-        gap="$2"
-        marginVertical="$1"
+        gap={8}
       >
-        <Clock size={13} color={c.text3} />
+        <Ph name="clock" size={13} color={c.text3} />
         <YStack flex={1} gap={1}>
-          <Text color={c.text2} fontSize={11} fontWeight="500">
-            {t('conversation.events.permissionTimedOut')}
-          </Text>
-          <Text color={c.text3} fontSize={10}>
-            {t('conversation.events.autodenied', { tool: shortTool })}
-          </Text>
+          <T step="12" tone="text2">
+            {t("conversation.events.permissionTimedOut")}
+          </T>
+          <T step="codenote" tone="text3">
+            {t("conversation.events.autodenied", { tool: shortTool })}
+          </T>
         </YStack>
       </XStack>
-    );
+    )
   }
 
   // ------------------------------------------------------------------
   // channel_started — sub-channel started working
   // ------------------------------------------------------------------
-  if (eventType === 'channel_started') {
+  if (eventType === "channel_started") {
     // Acepta los dos shapes de emisor: ruta interna (observedChannel*) y
     // ruta MCA event-subscription (channel*). Ver channel_finished.
-    const channelId = eventData.observedChannelId ?? eventData.channelId;
-    const channelName = eventData.observedChannelName ?? eventData.channelName;
+    const channelId = eventData.observedChannelId ?? eventData.channelId
+    const channelName = eventData.observedChannelName ?? eventData.channelName
     return (
       <XStack
         width="100%"
-        paddingVertical="$2"
-        paddingHorizontal="$3"
-        backgroundColor="rgba(94,106,210,0.04)"
-        borderTopWidth={1}
-        borderBottomWidth={1}
-        borderColor="rgba(94,106,210,0.12)"
+        paddingVertical={8}
+        paddingHorizontal={12}
+        backgroundColor={c.tint.i.bg}
+        borderRadius={12}
+        borderWidth={1}
+        borderColor={c.tint.i.bd}
         alignItems="center"
-        gap="$2"
-        marginVertical="$1"
+        gap={8}
       >
-        <Clock size={13} color="rgba(94,106,210,0.7)" />
-        <Text color="rgba(94,106,210,0.85)" fontSize={11} flex={1}>
-          {t('conversation.events.channelStarted', { channel: channelName || channelId })}
-        </Text>
+        <Ph name="clock" size={13} color={c.tint.i.tx} />
+        <T step="12" color={c.tint.i.tx} style={{ flex: 1 }}>
+          {t("conversation.events.channelStarted", { channel: channelName || channelId })}
+        </T>
         {channelId && (
-          <XStack
-            paddingHorizontal={8}
-            paddingVertical={4}
-            borderRadius={4}
-            backgroundColor="rgba(94,106,210,0.10)"
-            borderWidth={1}
-            borderColor="rgba(94,106,210,0.22)"
-            alignItems="center"
-            gap={4}
-            cursor="pointer"
-            hoverStyle={{ backgroundColor: 'rgba(94,106,210,0.18)' }}
-            onPress={() => openWindow('chat', { channelId }, true)}
-          >
-            <ExternalLink size={11} color="rgba(94,106,210,0.8)" />
-            <Text color="rgba(94,106,210,0.9)" fontSize={10} fontWeight="500">
-              {t('conversation.events.open')}
-            </Text>
-          </XStack>
+          <ChipBtn icon="arrow-square-out" onPress={() => openWindow("chat", { channelId }, false)}>
+            {t("conversation.events.open")}
+          </ChipBtn>
         )}
       </XStack>
-    );
+    )
   }
 
   // Parse message to extract agent name and create badge
   const renderMessage = () => {
-    const message = eventData.message || description || t('conversation.events.systemEvent');
-    const agentName = eventData.agentName;
-    const agentAvatar = eventData.agentAvatar;
+    const message = eventData.message || description || t("conversation.events.systemEvent")
+    const agentName = eventData.agentName
+    const agentAvatar = eventData.agentAvatar
 
     // If we have agent info, render message with agent badge
     if (agentName && agentAvatar) {
       // Split message to insert agent badge
       // Common patterns: "Nira started...", "Task assigned to Nira", "Nira created..."
-      const messageWithoutEmoji = message.replace(/^[🔄⏸️📋⏰🔄]+\s*/, '');
+      const messageWithoutEmoji = message.replace(/^[🔄⏸️📋⏰🔄]+\s*/, "")
 
       // Try to find agent name in message and replace with badge
-      const agentNameIndex = messageWithoutEmoji.indexOf(agentName);
+      const agentNameIndex = messageWithoutEmoji.indexOf(agentName)
 
       if (agentNameIndex !== -1) {
-        const before = messageWithoutEmoji.substring(0, agentNameIndex);
-        const after = messageWithoutEmoji.substring(agentNameIndex + agentName.length);
+        const before = messageWithoutEmoji.substring(0, agentNameIndex)
+        const after = messageWithoutEmoji.substring(agentNameIndex + agentName.length)
 
         return (
           <XStack gap="$1.5" alignItems="center" flexWrap="wrap" flex={1}>
@@ -298,29 +277,18 @@ export function EventBubble({
               </Text>
             )}
             <XStack
-              gap="$1.5"
+              gap={6}
               alignItems="center"
               paddingVertical={2}
               paddingHorizontal={8}
               paddingLeft={2}
-              backgroundColor={c.border}
-              borderRadius={10}
-              borderWidth={1}
-              borderColor={c.border}
+              backgroundColor={c.wash}
+              borderRadius={100}
             >
-              <Image
-                source={{ uri: agentAvatar }}
-                width={16}
-                height={16}
-                borderRadius={8}
-              />
-              <Text
-                color={c.text2}
-                fontSize={11}
-                fontWeight="500"
-              >
+              <Image source={{ uri: agentAvatar }} width={16} height={16} borderRadius={8} />
+              <T step="12" tone="text2">
                 {agentName}
-              </Text>
+              </T>
             </XStack>
             {after.length > 0 && (
               <Text color={c.text3} fontSize="$2">
@@ -328,64 +296,50 @@ export function EventBubble({
               </Text>
             )}
           </XStack>
-        );
+        )
       }
     }
 
     // Fallback: render plain message without emoji
-    const messageWithoutEmoji = message.replace(/^[🔄⏸️📋⏰🔄]+\s*/, '');
+    const messageWithoutEmoji = message.replace(/^[🔄⏸️📋⏰🔄]+\s*/, "")
     return (
       <Text color={c.text3} fontSize="$2" flex={1}>
         {messageWithoutEmoji}
       </Text>
-    );
-  };
+    )
+  }
 
+  // The quiet system line (`.sys`): codenote EVENT · message · type glyph.
   return (
     <XStack
       width="100%"
-      paddingVertical="$2"
-      paddingHorizontal="$3"
-      backgroundColor={c.bgInner}
-      borderTopWidth={1}
-      borderBottomWidth={1}
-      borderColor={c.border}
+      paddingVertical={8}
+      paddingHorizontal={12}
+      backgroundColor={c.wash}
+      borderRadius={12}
       alignItems="center"
-      gap="$2"
-      marginVertical="$1"
+      gap={8}
     >
       {/* Left section: EVENT badge */}
-      <XStack gap="$1.5" alignItems="center">
-        <Text
-          color={c.text3}
-          fontSize="$1"
-          fontWeight="500"
-          textTransform="uppercase"
-          letterSpacing={1}
-        >
-          {t('conversation.events.eventLabel')}
-        </Text>
-        <Text color={c.text3} fontSize="$2">
-          •
-        </Text>
+      <XStack gap={6} alignItems="center">
+        <T step="codenote" tone="text3">
+          {t("conversation.events.eventLabel")}
+        </T>
+        <T step="codenote" tone="text3">
+          ·
+        </T>
       </XStack>
 
       {/* Center: Message with agent badge */}
       {renderMessage()}
 
       {/* Right section: Event type label + icon */}
-      <XStack gap="$1.5" alignItems="center">
-        <Text
-          color={c.text3}
-          fontSize="$1"
-          fontWeight="500"
-          textTransform="uppercase"
-          letterSpacing={0.5}
-        >
+      <XStack gap={6} alignItems="center">
+        <T step="codenote" tone="text3">
           {label}
-        </Text>
+        </T>
         {icon}
       </XStack>
     </XStack>
-  );
+  )
 }

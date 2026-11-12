@@ -22,15 +22,18 @@ import {
   ResourceCard,
   Specsheet,
   type SpecsheetSection,
-  colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
   GITHUB_PALETTE,
   type GitHubUserRef,
   GitHubToolShell,
+  actionLabel,
   scrollStyle,
+  noun,
+  detailText,
 } from './shared';
 
 // =============================================================================
@@ -49,7 +52,46 @@ interface InstallationContextResult {
   install_url: string;
 }
 
+interface AuthenticatedUser {
+  login: string;
+  name?: string | null;
+  type?: string;
+  html_url?: string;
+}
+
+export function GetAuthenticatedUserRenderer({ toolName, status, output, error }: ToolCallRendererProps) {
+  const parsed = output ? parseOutput<AuthenticatedUser>(output) : null;
+  const user =
+    parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'login' in (parsed as object)
+      ? (parsed as AuthenticatedUser)
+      : null;
+  const rows: KeyValueRow[] = [];
+  if (user?.name) rows.push({ key: 'name', value: user.name });
+  if (user?.type) rows.push({ key: 'type', value: user.type });
+  if (user?.html_url) rows.push({ key: 'profile', value: user.html_url });
+
+  return (
+    <GitHubToolShell
+      toolName={toolName}
+      status={status}
+      description={actionLabel(toolName, status, user ? `@${user.login}` : noun('user'))}
+    >
+      {error && <ErrorBlock error={error} />}
+      {!error && user && (
+        <ResourceCard
+          leading={<IconTile icon={<User size={14} color={GITHUB_PALETTE.brand} />} accent={GITHUB_PALETTE.brand} size={28} />}
+          title={`@${user.login}`}
+          subtitle={user.name ?? undefined}
+        >
+          <KeyValueGrid rows={rows} />
+        </ResourceCard>
+      )}
+    </GitHubToolShell>
+  );
+}
+
 export function GetUserRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<InstallationContextResult>(output) : null;
   const ctx =
     parsed &&
@@ -84,7 +126,7 @@ export function GetUserRenderer({ toolName, status, output, error, duration }: T
   const repoFullNames = ctx?.installation.repositories.map((r) => r.full_name) ?? [];
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, ctx?.installation.account ? `@${ctx.installation.account}` : noun('installationContext'))}>
       {error && <ErrorBlock error={error} />}
       {!error && ctx && (
         <ResourceCard
@@ -102,7 +144,7 @@ export function GetUserRenderer({ toolName, status, output, error, duration }: T
           {repoFullNames.length > 0 && (
             <YStack gap={4}>
               <Text
-                color={globalColors.secondary}
+                color={c.text2}
                 fontSize={9}
                 fontFamily="$mono"
                 textTransform="uppercase"
@@ -114,11 +156,11 @@ export function GetUserRenderer({ toolName, status, output, error, duration }: T
           )}
           <YStack gap={4}>
             {ctx.manage_url && (
-              <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+              <Text color={c.text2} fontSize={9} fontFamily="$mono">
                 manage: {ctx.manage_url}
               </Text>
             )}
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               install more: {ctx.install_url}
             </Text>
           </YStack>
@@ -138,9 +180,11 @@ interface CloneResult {
   branch?: string;
   sha?: string;
   recentCommits?: string[];
+  reused?: boolean;
 }
 
 export function CloneRepoRenderer({ toolName, status, output, error, duration, input }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<CloneResult>(output) : null;
   const result = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as CloneResult) : null;
   const repo = `${input?.owner ?? '?'}/${input?.repo ?? '?'}`;
@@ -148,22 +192,23 @@ export function CloneRepoRenderer({ toolName, status, output, error, duration, i
   if (result?.path) rows.push({ key: 'path', value: result.path });
   if (result?.branch) rows.push({ key: 'branch', value: result.branch });
   if (result?.sha) rows.push({ key: 'head sha', value: result.sha.slice(0, 7) });
+  if (result?.reused) rows.push({ key: 'clone', value: detailText('reused') });
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, repo)}>
       {error && <ErrorBlock error={error} />}
       {!error && result && (
         <ResourceCard
           leading={<IconTile icon={<FolderDown size={14} color={GITHUB_PALETTE.merged} />} accent={GITHUB_PALETTE.merged} size={28} />}
           title={repo}
           subtitle={result.path}
-          verb="created"
+          verb={result.reused ? undefined : 'created'}
         >
           <KeyValueGrid rows={rows} />
           {result.recentCommits && result.recentCommits.length > 0 && (
             <YStack gap={4}>
               <Text
-                color={globalColors.secondary}
+                color={c.text2}
                 fontSize={9}
                 fontFamily="$mono"
                 textTransform="uppercase"
@@ -175,7 +220,7 @@ export function CloneRepoRenderer({ toolName, status, output, error, duration, i
                   <Text
                     // biome-ignore lint/suspicious/noArrayIndexKey: stable ordered git log
                     key={`commit-${i}`}
-                    color={globalColors.primary}
+                    color={c.text}
                     fontSize={10}
                     fontFamily="$mono"
                     numberOfLines={1}
@@ -203,6 +248,9 @@ interface FileContent {
   size: number;
   encoding?: string;
   content?: string;
+  decoded_content?: string;
+  binary?: boolean;
+  truncated?: boolean;
   type?: string;
 }
 
@@ -219,21 +267,26 @@ function decodeBase64(b64: string): string {
 }
 
 export function GetFileContentRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<FileContent>(output) : null;
   const file = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'path' in (parsed as object)
     ? (parsed as FileContent)
     : null;
 
-  const decoded = file?.encoding === 'base64' && file.content ? decodeBase64(file.content) : file?.content ?? '';
+  const decoded = file?.binary
+    ? ''
+    : file?.decoded_content ?? (file?.encoding === 'base64' && file.content ? decodeBase64(file.content) : file?.content ?? '');
   const isMd = file?.path?.toLowerCase().endsWith('.md');
 
   const rows: KeyValueRow[] = [];
   if (file?.path) rows.push({ key: 'path', value: file.path });
   if (file?.sha) rows.push({ key: 'sha', value: file.sha.slice(0, 7) });
   if (typeof file?.size === 'number') rows.push({ key: 'size', value: `${file.size} bytes` });
+  if (file?.binary) rows.push({ key: 'content', value: detailText('binary', { size: file.size }) });
+  if (file?.truncated) rows.push({ key: 'content', value: detailText('truncated') });
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} description={file ? actionLabel(toolName, status, file.path) : actionLabel(toolName, status, noun('file'))}>
       {error && <ErrorBlock error={error} />}
       {!error && file && (
         <ResourceCard
@@ -247,7 +300,7 @@ export function GetFileContentRenderer({ toolName, status, output, error, durati
               {isMd ? (
                 <MarkdownContent text={decoded} />
               ) : (
-                <Text color={globalColors.primary} fontSize={10} fontFamily="$mono" lineHeight={14}>
+                <Text color={c.text} fontSize={10} fontFamily="$mono" lineHeight={14}>
                   {decoded}
                 </Text>
               )}
@@ -280,7 +333,7 @@ export function CreateOrUpdateFileRenderer({ toolName, status, output, error, du
   rows.push({ key: 'branch', value: branch });
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, path)}>
       {error && <ErrorBlock error={error} />}
       {!error && result && (
         <ResourceCard
@@ -312,6 +365,7 @@ interface CodeSearchPayload {
 }
 
 export function SearchCodeRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<CodeSearchPayload>(output) : null;
   const items = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'items' in (parsed as object)
     ? ((parsed as CodeSearchPayload).items ?? [])
@@ -321,7 +375,7 @@ export function SearchCodeRenderer({ toolName, status, output, error, duration }
     : items.length;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={`Search · ${total} match${total === 1 ? '' : 'es'}`}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, noun('code'), detailText('matches', { count: total }))}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && items.length === 0 && <Empty message="No matches." />}
       {!error && status === 'completed' && items.length > 0 && (
@@ -334,7 +388,7 @@ export function SearchCodeRenderer({ toolName, status, output, error, duration }
                 title={it.path}
                 subtitle={it.repository?.full_name}
                 meta={
-                  <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                  <Text color={c.text3} fontSize={9} fontFamily="$mono">
                     {it.sha.slice(0, 7)}
                   </Text>
                 }

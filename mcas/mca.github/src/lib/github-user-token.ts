@@ -11,6 +11,11 @@
  * backend (see `McaOAuth.refreshToken`) preventively when `getAuthStatus`
  * runs (5 min buffer); per-tool-call refresh is therefore rare. If the
  * token is missing entirely, the user must reconnect.
+ *
+ * v5 is user-to-server only: there is no server-side installation-token
+ * resolver anymore (dead since v5 — task_16d9e3d1ee40658d). The error class
+ * below is kept because the error classifier maps upstream 403s
+ * ("installation suspended / not authorized") to APP_NOT_INSTALLED.
  */
 
 import type { ToolContext } from '@teros/mca-sdk';
@@ -20,10 +25,26 @@ export class GitHubUserNotAuthenticatedError extends Error {
   readonly installUrl: string;
 
   constructor(installUrl: string) {
-    super(
-      `Tu cuenta de GitHub no está conectada. Reconecta en ${installUrl} para continuar.`,
-    );
+    super('GitHub is not connected for this user in Teros.');
     this.name = 'GitHubUserNotAuthenticatedError';
+    this.installUrl = installUrl;
+  }
+}
+
+/**
+ * The Teros App is not installed (or its installation was suspended/removed)
+ * on the account. Surfaced by upstream 403 mapping — see
+ * `classifyGitHubError` in `src/tools/_github-error.ts`.
+ */
+export class GitHubAppNotInstalledError extends Error {
+  readonly code = 'APP_NOT_INSTALLED' as const;
+  readonly installUrl: string;
+
+  constructor(installUrl: string) {
+    super(
+      `Teros App is not installed on this account. Install it at ${installUrl} to continue.`,
+    );
+    this.name = 'GitHubAppNotInstalledError';
     this.installUrl = installUrl;
   }
 }

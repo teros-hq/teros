@@ -1,0 +1,37 @@
+# INF-4 — run the compose MongoDB as a single-node replica set, as an OPT-IN override.
+#
+# Enables multi-document transactions (withTransaction in
+# packages/backend/src/lib/mongo-transaction.ts falls back to non-atomic writes
+# until this is applied) and an oplog (change streams, PITR-style backups).
+#
+# NOT applied by the regular deploy. Apply deliberately, in a maintenance
+# window, following docs/runbooks/mongo-replica-set.md:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.replset.yml up -d mongodb
+#
+# Afterwards every `docker compose` call on that host must pass the same -f
+# files (or COMPOSE_FILE=docker-compose.yml:docker-compose.replset.yml in the
+# host .env), otherwise compose recreates mongodb WITHOUT --replSet.
+#
+# The member is announced as localhost:27017, which is how the pm2/host backend
+# connects. A backend running inside compose must add ?directConnection=true.
+#
+# With docker-compose.auth.yml (auth on) a replica set also needs a keyFile —
+# see the runbook; this file alone is for the no-auth setup.
+services:
+  mongodb:
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet --eval \"try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}).ok }\" | grep -q 1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  backend:
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?directConnection=true

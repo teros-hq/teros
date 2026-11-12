@@ -19,6 +19,7 @@
  *   board.update-task           → Update task properties
  *   board.archive-task          → Archive or unarchive a task (manager action)
  *   board.move-task             → Move a task to a different column
+ *   board.save-task-output     → Save output data to task.output.data without completing (replace or append)
  *   board.assign-task           → Assign or unassign an agent to a task
  *   board.start-task            → Start a task (move to in_progress, create channel, send initial message)
  *   board.link-conversation     → Link an existing channel to a task
@@ -60,6 +61,8 @@ import { createGetBoardSummaryHandler } from './get-board-summary'
 import { createUpdateBoardConfigHandler } from './update-board-config'
 import { createSubscribeBoardHandler } from './subscribe-board'
 import { createUnsubscribeBoardHandler } from './unsubscribe-board'
+import { createSubscribeFlowHandler } from './subscribe-flow'
+import { createUnsubscribeFlowHandler } from './unsubscribe-flow'
 import { createCreateTaskHandler } from './create-task'
 import { createBatchCreateTasksHandler } from './batch-create-tasks'
 import { createGetTaskHandler } from './get-task'
@@ -67,6 +70,7 @@ import { createListTasksHandler } from './list-tasks'
 import { createUpdateTaskHandler } from './update-task'
 import { createArchiveTaskHandler } from './archive-task'
 import { createMoveTaskHandler } from './move-task'
+import { createSaveTaskOutputHandler } from './save-task-output'
 import { createAssignTaskHandler } from './assign-task'
 import { createStartTaskHandler } from './start-task'
 import { createLinkConversationHandler } from './link-conversation'
@@ -92,6 +96,11 @@ import { createUnsubscribeFromBoardHandler } from './unsubscribe-from-board'
 import { createListBoardSubscriptionsHandler } from './list-board-subscriptions'
 import { createGetBoardStatusHandler } from './get-board-status'
 import { createStopTaskHandler } from './stop-task'
+import { createRegisterWebhookHandler, createCancelWebhookHandler, createGetWebhookUrlHandler } from './flow-webhook';
+import { createRegisterEventHandler, createCancelEventHandler, createListEventTriggersHandler } from './flow-event';
+import { createGetBoardFeedHandler } from './get-board-feed'
+import { BoardEventService } from '../../../services/board-event-service'
+import type { ActionBridgeManager } from '../../../services/workflow-action-bridge'
 
 export interface BoardDomainDeps {
   boardService: BoardService
@@ -104,10 +113,13 @@ export interface BoardDomainDeps {
   eventHandler?: EventHandler
   autoplayService: AutoplayService
   db: Db
+  actionBridgeManager?: ActionBridgeManager
+  flowWebhookService?: import('../../../services/flow-webhook-service').FlowWebhookService
+  flowEventService?: import('../../../services/flow-event-service').FlowEventService
 }
 
 export function register(router: WsRouter, deps: BoardDomainDeps): void {
-  const { boardService, boardSubscriptionService, workspaceService, pubSubService, channelManager, messageHandler, eventHandler, autoplayService, db } = deps
+  const { boardService, boardSubscriptionService, workspaceService, pubSubService, channelManager, messageHandler, eventHandler, autoplayService, db, actionBridgeManager } = deps
 
   // Projects
   router.register('board.create-project', createCreateProjectHandler(boardService, workspaceService, pubSubService))
@@ -116,6 +128,15 @@ export function register(router: WsRouter, deps: BoardDomainDeps): void {
   router.register('board.update-project', createUpdateProjectHandler(boardService, workspaceService, pubSubService))
   router.register('board.delete-project', createDeleteProjectHandler(boardService, workspaceService, pubSubService))
 
+  // Activity feed (board_events). The handler landed in e145ec4d8 without a
+  // registration, so BoardApi.getBoardFeed always fell back to task.activity.
+  // The event service is a thin collection wrapper, so a local instance is
+  // enough — the writer side lives inside BoardService.
+  router.register(
+    'board.get-board-feed',
+    createGetBoardFeedHandler(boardService, workspaceService, new BoardEventService(db)),
+  )
+
   // Boards
   router.register('board.get', createGetBoardHandler(boardService, workspaceService, db, autoplayService))
   router.register('board.get-summary', createGetBoardSummaryHandler(boardService, workspaceService))
@@ -123,28 +144,33 @@ export function register(router: WsRouter, deps: BoardDomainDeps): void {
   router.register('board.subscribe', createSubscribeBoardHandler(pubSubService))
   router.register('board.unsubscribe', createUnsubscribeBoardHandler(pubSubService))
 
+  // Flow execution realtime events
+  router.register('flow.subscribe', createSubscribeFlowHandler(pubSubService))
+  router.register('flow.unsubscribe', createUnsubscribeFlowHandler(pubSubService))
+
   // Tasks
   router.register('board.create-task', createCreateTaskHandler(boardService, workspaceService, pubSubService, boardSubscriptionService))
-  router.register('board.batch-create-tasks', createBatchCreateTasksHandler(boardService, workspaceService, pubSubService, boardSubscriptionService))
+  router.register('board.batch-create-tasks', createBatchCreateTasksHandler(boardService, workspaceService, pubSubService, boardSubscriptionService, db))
   router.register('board.get-task', createGetTaskHandler(boardService, workspaceService))
   router.register('board.list-tasks', createListTasksHandler(boardService, workspaceService))
   router.register('board.update-task', createUpdateTaskHandler(boardService, workspaceService, pubSubService, boardSubscriptionService))
   router.register('board.archive-task', createArchiveTaskHandler(boardService, workspaceService, pubSubService, autoplayService, boardSubscriptionService))
-  router.register('board.move-task', createMoveTaskHandler(boardService, workspaceService, pubSubService, autoplayService, boardSubscriptionService))
+  router.register('board.move-task', createMoveTaskHandler(boardService, workspaceService, pubSubService, autoplayService, boardSubscriptionService, actionBridgeManager))
+  router.register('board.save-task-output', createSaveTaskOutputHandler(boardService, workspaceService, pubSubService, boardSubscriptionService))
   router.register('board.assign-task', createAssignTaskHandler(boardService, workspaceService, pubSubService, autoplayService, boardSubscriptionService))
   router.register('board.start-task', createStartTaskHandler(boardService, workspaceService, pubSubService, channelManager, messageHandler))
-  router.register('board.link-conversation', createLinkConversationHandler(boardService, workspaceService, pubSubService))
+  router.register('board.link-conversation', createLinkConversationHandler(boardService, workspaceService, pubSubService, channelManager))
   router.register('board.delete-task', createDeleteTaskHandler(boardService, workspaceService, pubSubService))
   router.register('board.add-progress-note', createAddProgressNoteHandler(boardService, workspaceService, pubSubService, boardSubscriptionService))
   router.register('board.get-tasks-by-agent', createGetTasksByAgentHandler(boardService, workspaceService))
   router.register('board.get-task-by-channel', createGetTaskByChannelHandler(boardService, channelManager))
 
   // Runner commands (ownership-validated, semantic — no columnId exposed to runner)
-  router.register('board.complete-my-task', createCompleteMyTaskHandler(boardService, workspaceService, pubSubService, autoplayService, boardSubscriptionService, channelManager, eventHandler))
+  router.register('board.complete-my-task', createCompleteMyTaskHandler(boardService, workspaceService, pubSubService, autoplayService, boardSubscriptionService, channelManager, eventHandler, actionBridgeManager))
   router.register('board.block-my-task', createBlockMyTaskHandler(boardService, workspaceService, pubSubService, boardSubscriptionService))
   router.register('board.cancel-my-task', createCancelMyTaskHandler(boardService, workspaceService, pubSubService, boardSubscriptionService, eventHandler))
   router.register('board.move-my-task', createMoveMyTaskHandler(boardService, workspaceService, pubSubService, autoplayService, boardSubscriptionService))
-  router.register('board.get-my-task', createGetMyTaskHandler(boardService))
+  router.register('board.get-my-task', createGetMyTaskHandler(boardService, channelManager))
   router.register('board.add-my-progress-note', createAddMyProgressNoteHandler(boardService, workspaceService, pubSubService, boardSubscriptionService))
 
   // Read tools (board-manager MCA)
@@ -161,13 +187,29 @@ export function register(router: WsRouter, deps: BoardDomainDeps): void {
 
   // Board supervision (Fase 3)
   if (boardSubscriptionService) {
-    router.register('board.subscribe-to-board', createSubscribeToBoardHandler(boardService, workspaceService, boardSubscriptionService))
-    router.register('board.unsubscribe-from-board', createUnsubscribeFromBoardHandler(boardSubscriptionService))
-    router.register('board.list-board-subscriptions', createListBoardSubscriptionsHandler(boardService, boardSubscriptionService))
+    router.register('board.subscribe-to-board', createSubscribeToBoardHandler(boardService, workspaceService, boardSubscriptionService, channelManager))
+    router.register('board.unsubscribe-from-board', createUnsubscribeFromBoardHandler(boardSubscriptionService, channelManager))
+    router.register('board.list-board-subscriptions', createListBoardSubscriptionsHandler(boardService, boardSubscriptionService, channelManager))
     router.register('board.get-board-status', createGetBoardStatusHandler(boardService, workspaceService, db))
   }
   // stop-task needs eventHandler to inject messages into the runner's channel
   if (eventHandler) {
     router.register('board.stop-task', createStopTaskHandler(boardService, workspaceService, eventHandler, db, boardSubscriptionService))
+  }
+
+  // Flow schedule triggers live in Automate (automate.sync-flow-triggers).
+
+  // Flow webhook triggers (Phase 4)
+  if (deps.flowWebhookService) {
+    router.register('flow.register-webhook', createRegisterWebhookHandler(deps.flowWebhookService, db))
+    router.register('flow.cancel-webhook', createCancelWebhookHandler(deps.flowWebhookService, db))
+    router.register('flow.get-webhook-url', createGetWebhookUrlHandler(deps.flowWebhookService, db))
+  }
+
+  // Flow event triggers (Phase 4)
+  if (deps.flowEventService) {
+    router.register('flow.register-event', createRegisterEventHandler(deps.flowEventService, db))
+    router.register('flow.cancel-event', createCancelEventHandler(deps.flowEventService, db))
+    router.register('flow.list-event-triggers', createListEventTriggersHandler(deps.flowEventService, db))
   }
 }

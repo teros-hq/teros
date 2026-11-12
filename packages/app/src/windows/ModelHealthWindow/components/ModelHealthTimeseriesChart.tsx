@@ -6,33 +6,26 @@
  * `TokenTimeSeriesChart`/`PercentileBandChart` — no charting dependency.
  *
  * X axis = hour bucket (rendered in `bucketTimeZone`, adaptive label density);
- * Y axis = turns. Top-8 upstream×model by total get a stable colour; the rest
- * fold into grey "Other". The legend carries the per-model totals (the same
- * info a hover tooltip would, which react-native-web can't do reliably).
+ * Y axis = turns. Top-8 upstream×model by total get the stable `seriesColor`
+ * (the same swatch the tables use); the rest fold into a muted "Other". The
+ * legend carries the per-model totals (the same info a hover tooltip would,
+ * which react-native-web can't do reliably).
  *
  * Accessibility: a single wrapper aria-label announces the bucket count + span;
  * the SVG itself is aria-hidden, the legend is real text.
  */
 
+import { seriesColor } from "@teros/shared"
 import React from "react"
+import { View } from "react-native"
 import { Line, Rect, Svg, Text as SvgText } from "react-native-svg"
-import { Text, XStack, YStack } from "tamagui"
 import type { ModelHealthHourBucket } from "../../../services/AdminApi"
+import { FONT_MONO } from "../../../components/mca/primitives/fonts"
 import { useColors } from "../../../components/mca/primitives/useColors"
+import { Dot } from "../../../components/ui/ds/Badge"
+import { T } from "../../../components/ui/ds/Text"
 import { formatCount, modelLabel } from "../format"
 import { useChartWidth } from "./useChartWidth"
-
-const PALETTE = [
-  "#3B82F6",
-  "#22C55E",
-  "#A855F7",
-  "#F59E0B",
-  "#EC4899",
-  "#06B6D4",
-  "#84CC16",
-  "#EF4444",
-]
-const OTHER_COLOR = "#71717A"
 
 const DAY_MS = 86_400_000
 
@@ -71,6 +64,7 @@ export function ModelHealthTimeseriesChart({
   const c = useColors()
   const [measured, onLayout] = useChartWidth(720)
   const width = widthProp ?? measured
+  const otherColor = c.text3
   // Per-bucket totals + per-model split, plus model metadata for the legend.
   const buckets = series.map((b) => {
     const perModel = new Map<string, number>()
@@ -86,11 +80,14 @@ export function ModelHealthTimeseriesChart({
   const maxTotal = Math.max(...buckets.map((b) => b.total), 0)
   if (buckets.length === 0 || maxTotal === 0) {
     return (
-      <YStack width="100%" height={height} ai="center" jc="center" onLayout={onLayout}>
-        <Text color={c.text2} fontSize={13}>
+      <View
+        style={{ width: "100%", height, alignItems: "center", justifyContent: "center" }}
+        onLayout={onLayout}
+      >
+        <T step="sm" tone="text3">
           No request volume in range
-        </Text>
-      </YStack>
+        </T>
+      </View>
     )
   }
 
@@ -101,7 +98,8 @@ export function ModelHealthTimeseriesChart({
     for (const m of b.models) {
       const key = `${m.actualProvider}::${m.modelId}`
       modelTotals.set(key, (modelTotals.get(key) ?? 0) + m.requestCount)
-      if (!modelMeta.has(key)) modelMeta.set(key, { actualProvider: m.actualProvider, modelId: m.modelId })
+      if (!modelMeta.has(key))
+        modelMeta.set(key, { actualProvider: m.actualProvider, modelId: m.modelId })
     }
   }
   const topKeys = [...modelTotals.entries()]
@@ -109,14 +107,13 @@ export function ModelHealthTimeseriesChart({
     .slice(0, 8)
     .map(([k]) => k)
   const topSet = new Set(topKeys)
-  const colorFor = (key: string) =>
-    topSet.has(key) ? PALETTE[topKeys.indexOf(key) % PALETTE.length]! : OTHER_COLOR
+  const colorFor = (key: string) => (topSet.has(key) ? seriesColor(key) : otherColor)
 
   const padding = { top: 16, right: 16, bottom: 24, left: 44 }
   const innerW = width - padding.left - padding.right
   const innerH = height - padding.top - padding.bottom
   const stepX = innerW / buckets.length
-  const barW = stepX * 0.75
+  const barW = stepX * 0.72
 
   const span = buckets[buckets.length - 1]!.time - buckets[0]!.time
   const withDate = span > 2 * DAY_MS
@@ -144,6 +141,7 @@ export function ModelHealthTimeseriesChart({
           y: y + 3,
           fill: c.text3,
           fontSize: 10,
+          fontFamily: FONT_MONO,
           textAnchor: "end",
         },
         formatCount(maxTotal * frac),
@@ -155,10 +153,10 @@ export function ModelHealthTimeseriesChart({
   buckets.forEach((b, i) => {
     const x = padding.left + i * stepX + (stepX - barW) / 2
     let cumY = padding.top + innerH
-    const entries = [...b.perModel.entries()].sort((a, c) => {
+    const entries = [...b.perModel.entries()].sort((a, d) => {
       const ai = topSet.has(a[0]) ? topKeys.indexOf(a[0]) : 999
-      const ci = topSet.has(c[0]) ? topKeys.indexOf(c[0]) : 999
-      return ai - ci
+      const di = topSet.has(d[0]) ? topKeys.indexOf(d[0]) : 999
+      return ai - di
     })
     entries.forEach(([key, n], j) => {
       const h = (n / maxTotal) * innerH
@@ -170,6 +168,7 @@ export function ModelHealthTimeseriesChart({
           y: cumY,
           width: barW,
           height: h,
+          rx: Math.min(2, barW / 2),
           fill: colorFor(key),
           opacity: 0.85,
         }),
@@ -190,6 +189,7 @@ export function ModelHealthTimeseriesChart({
           y: height - 6,
           fill: c.text3,
           fontSize: 10,
+          fontFamily: FONT_MONO,
           textAnchor: "middle",
         },
         fmtTime(b.iso, bucketTimeZone, withDate, bucketUnit),
@@ -202,8 +202,11 @@ export function ModelHealthTimeseriesChart({
   )} turns total`
 
   return (
-    <YStack gap="$2" onLayout={onLayout}>
-      <YStack width="100%" height={height} overflow="hidden" aria-label={ariaLabel}>
+    <View style={{ gap: 8 }} onLayout={onLayout}>
+      <View
+        style={{ width: "100%", height, overflow: "hidden" }}
+        {...({ "aria-label": ariaLabel } as any)}
+      >
         {React.createElement(
           Svg as any,
           // Real-pixel canvas at the measured width (no viewBox scale — a scaled
@@ -211,29 +214,29 @@ export function ModelHealthTimeseriesChart({
           { width, height, "aria-hidden": true },
           ...svgChildren,
         )}
-      </YStack>
-      <XStack gap="$3" flexWrap="wrap">
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
         {topKeys.map((key) => {
           const meta = modelMeta.get(key)!
           return (
-            <XStack key={key} gap="$1" alignItems="center">
-              <YStack width={10} height={10} borderRadius={2} backgroundColor={colorFor(key)} />
-              <Text fontSize="$1" color={c.text2}>
+            <View key={key} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Dot color={colorFor(key)} size={8} />
+              <T step="12" tone="text2">
                 {modelLabel(meta.actualProvider, meta.modelId, 24)} ·{" "}
                 {formatCount(modelTotals.get(key) ?? 0)}
-              </Text>
-            </XStack>
+              </T>
+            </View>
           )
         })}
         {modelTotals.size > topKeys.length ? (
-          <XStack gap="$1" alignItems="center">
-            <YStack width={10} height={10} borderRadius={2} backgroundColor={OTHER_COLOR} />
-            <Text fontSize="$1" color={c.text2}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Dot color={otherColor} size={8} />
+            <T step="12" tone="text2">
               Other ({modelTotals.size - topKeys.length})
-            </Text>
-          </XStack>
+            </T>
+          </View>
         ) : null}
-      </XStack>
-    </YStack>
+      </View>
+    </View>
   )
 }

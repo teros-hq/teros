@@ -498,7 +498,10 @@ async function seedAgents() {
 }
 
 // Run if called directly
-if (import.meta.main) {
+// Note: import.meta.main doesn't work with tsx on Node < 21 (undefined there —
+// Bun and Node >= 21 define it), so we check if this is the main module too.
+const isMain = import.meta.url === `file://${process.argv[1]}` || import.meta.main
+if (isMain) {
   seedAgents()
     .then(() => process.exit(0))
     .catch((error) => {

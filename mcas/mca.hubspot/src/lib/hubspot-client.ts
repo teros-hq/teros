@@ -9,6 +9,7 @@
  */
 
 import type { ToolContext } from '@teros/mca-sdk';
+import { resolveAssociationTypeId } from './association-type-ids';
 
 // =============================================================================
 // TYPES
@@ -222,6 +223,22 @@ export async function hubspotRequest(
         try {
           const errorJson = JSON.parse(errorText);
           errorMessage = errorJson.message || errorJson.error || errorText;
+          // HubSpot puts the per-property failure details in `validationResults`
+          // (e.g. "OUTBOUND was not one of the allowed options: [...]"). Without
+          // them, a 400 like "Some required properties were not set" gives no
+          // clue about WHICH property failed — that opacity is what turned bug
+          // fb_7e877154a68782de into a multi-day diagnosis. Always surface them.
+          if (Array.isArray(errorJson.validationResults) && errorJson.validationResults.length > 0) {
+            const details = errorJson.validationResults
+              .map((v: any) => {
+                const name = v.name ? `${v.name}: ` : '';
+                const msg = v.message || v.localizedErrorMessage || v.error || '';
+                return `${name}${msg}`.trim();
+              })
+              .filter(Boolean)
+              .join('; ');
+            if (details) errorMessage = `${errorMessage} (${details})`;
+          }
         } catch {
           errorMessage = errorText;
         }
@@ -278,17 +295,17 @@ export function formatContact(contact: any) {
   const props = contact.properties || {};
   return {
     id: contact.id,
-    email: props.email?.value ?? null,
-    firstName: props.firstname?.value ?? null,
-    lastName: props.lastname?.value ?? null,
-    phone: props.phone?.value ?? null,
-    company: props.company?.value ?? null,
-    jobTitle: props.jobtitle?.value ?? null,
-    website: props.website?.value ?? null,
-    lifecycleStage: props.lifecyclestage?.value ?? null,
-    leadStatus: props.hs_lead_status?.value ?? null,
-    createdAt: props.createdate?.value ? new Date(parseInt(props.createdate.value)).toISOString() : null,
-    updatedAt: props.lastmodifieddate?.value ? new Date(parseInt(props.lastmodifieddate.value)).toISOString() : null,
+    email: props.email ?? null,
+    firstName: props.firstname ?? null,
+    lastName: props.lastname ?? null,
+    phone: props.phone ?? null,
+    company: props.company ?? null,
+    jobTitle: props.jobtitle ?? null,
+    website: props.website ?? null,
+    lifecycleStage: props.lifecyclestage ?? null,
+    leadStatus: props.hs_lead_status ?? null,
+    createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+    updatedAt: props.lastmodifieddate ? new Date(props.lastmodifieddate).toISOString() : null,
     url: `https://app.hubspot.com/contacts/${contact.id}`,
   };
 }
@@ -298,20 +315,20 @@ export function formatCompany(company: any) {
   const props = company.properties || {};
   return {
     id: company.id,
-    name: props.name?.value ?? null,
-    domain: props.domain?.value ?? null,
-    industry: props.industry?.value ?? null,
-    type: props.type?.value ?? null,
-    phone: props.phone?.value ?? null,
-    website: props.website?.value ?? null,
-    city: props.city?.value ?? null,
-    state: props.state?.value ?? null,
-    country: props.country?.value ?? null,
-    numberOfEmployees: props.numberofemployees?.value ?? null,
-    annualRevenue: props.annualrevenue?.value ?? null,
-    lifecycleStage: props.lifecyclestage?.value ?? null,
-    createdAt: props.createdate?.value ? new Date(parseInt(props.createdate.value)).toISOString() : null,
-    updatedAt: props.hs_lastmodifieddate?.value ? new Date(parseInt(props.hs_lastmodifieddate.value)).toISOString() : null,
+    name: props.name ?? null,
+    domain: props.domain ?? null,
+    industry: props.industry ?? null,
+    type: props.type ?? null,
+    phone: props.phone ?? null,
+    website: props.website ?? null,
+    city: props.city ?? null,
+    state: props.state ?? null,
+    country: props.country ?? null,
+    numberOfEmployees: props.numberofemployees ?? null,
+    annualRevenue: props.annualrevenue ?? null,
+    lifecycleStage: props.lifecyclestage ?? null,
+    createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+    updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
     url: `https://app.hubspot.com/contacts/${company.id}`,
   };
 }
@@ -321,17 +338,17 @@ export function formatDeal(deal: any) {
   const props = deal.properties || {};
   return {
     id: deal.id,
-    name: props.dealname?.value ?? null,
-    amount: props.amount?.value ? parseFloat(props.amount.value) : null,
-    stage: props.dealstage?.value ?? null,
-    pipeline: props.pipeline?.value ?? null,
-    type: props.dealtype?.value ?? null,
-    closeDate: props.closedate?.value ?? null,
-    probability: props.probability?.value ?? null,
-    description: props.description?.value ?? null,
-    source: props.hs_analytics_source?.value ?? null,
-    createdAt: props.createdate?.value ? new Date(parseInt(props.createdate.value)).toISOString() : null,
-    updatedAt: props.hs_lastmodifieddate?.value ? new Date(parseInt(props.hs_lastmodifieddate.value)).toISOString() : null,
+    name: props.dealname ?? null,
+    amount: props.amount ? parseFloat(props.amount) : null,
+    stage: props.dealstage ?? null,
+    pipeline: props.pipeline ?? null,
+    type: props.dealtype ?? null,
+    closeDate: props.closedate ?? null,
+    probability: props.probability ?? null,
+    description: props.description ?? null,
+    source: props.hs_analytics_source ?? null,
+    createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+    updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
     url: `https://app.hubspot.com/contacts/${deal.id}`,
   };
 }
@@ -341,16 +358,16 @@ export function formatTicket(ticket: any) {
   const props = ticket.properties || {};
   return {
     id: ticket.id,
-    subject: props.subject?.value ?? null,
-    content: props.content?.value ?? null,
-    status: props.hs_ticket_priority?.value ?? null,
-    priority: props.hs_pipeline_stage?.value ?? null,
-    category: props.hs_ticket_category?.value ?? null,
-    pipeline: props.hs_pipeline?.value ?? null,
-    stage: props.hs_pipeline_stage?.value ?? null,
-    source: props.source_type?.value ?? null,
-    createdAt: props.createdate?.value ? new Date(parseInt(props.createdate.value)).toISOString() : null,
-    updatedAt: props.hs_lastmodifieddate?.value ? new Date(parseInt(props.hs_lastmodifieddate.value)).toISOString() : null,
+    subject: props.subject ?? null,
+    content: props.content ?? null,
+    status: props.hs_ticket_priority ?? null,
+    priority: props.hs_pipeline_stage ?? null,
+    category: props.hs_ticket_category ?? null,
+    pipeline: props.hs_pipeline ?? null,
+    stage: props.hs_pipeline_stage ?? null,
+    source: props.source_type ?? null,
+    createdAt: props.createdate ? new Date(props.createdate).toISOString() : null,
+    updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
     url: `https://app.hubspot.com/contacts/${ticket.id}`,
   };
 }
@@ -360,15 +377,16 @@ export function formatTask(task: any) {
   const props = task.properties || {};
   return {
     id: task.id,
-    subject: props.hs_task_subject?.value ?? null,
-    body: props.hs_task_body?.value ?? null,
-    status: props.hs_task_status?.value ?? null,
-    priority: props.hs_task_priority?.value ?? null,
-    type: props.hs_task_type?.value ?? null,
-    dueDate: props.hs_timestamp?.value ?? null,
-    reminder: props.hs_reminders?.value ?? null,
-    createdAt: props.hs_createdate?.value ? new Date(parseInt(props.hs_createdate.value)).toISOString() : null,
-    updatedAt: props.hs_lastmodifieddate?.value ? new Date(parseInt(props.hs_lastmodifieddate.value)).toISOString() : null,
+    subject: props.hs_task_subject ?? null,
+    body: props.hs_task_body ?? null,
+    status: props.hs_task_status ?? null,
+    priority: props.hs_task_priority ?? null,
+    type: props.hs_task_type ?? null,
+    dueDate: props.hs_timestamp ?? null,
+    ownerId: props.hubspot_owner_id ?? null,
+    reminder: props.hs_reminders ?? null,
+    createdAt: props.hs_createdate ? new Date(props.hs_createdate).toISOString() : null,
+    updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
   };
 }
 
@@ -377,15 +395,16 @@ export function formatEngagement(engagement: any) {
   const props = engagement.properties || {};
   return {
     id: engagement.id,
-    type: props.hs_engagement_type?.value ?? engagement.properties?.hs_activity_type?.value ?? null,
-    subject: props.hs_email_subject?.value ?? props.hs_call_title?.value ?? props.hs_meeting_title?.value ?? props.hs_note_body?.value ?? null,
-    body: props.hs_email_text?.value ?? props.hs_call_body?.value ?? props.hs_meeting_body?.value ?? props.hs_note_body?.value ?? null,
-    status: props.hs_email_status?.value ?? props.hs_call_status?.value ?? props.hs_meeting_status?.value ?? null,
-    direction: props.hs_email_direction?.value ?? props.hs_call_direction?.value ?? null,
-    duration: props.hs_call_duration?.value ?? props.hs_meeting_end_time?.value ?? null,
-    startTime: props.hs_timestamp?.value ?? props.hs_meeting_start_time?.value ?? null,
-    createdAt: props.hs_createdate?.value ? new Date(parseInt(props.hs_createdate.value)).toISOString() : null,
-    updatedAt: props.hs_lastmodifieddate?.value ? new Date(parseInt(props.hs_lastmodifieddate.value)).toISOString() : null,
+    type: props.hs_engagement_type ?? engagement.properties?.hs_activity_type ?? null,
+    ownerId: props.hubspot_owner_id ?? null,
+    subject: props.hs_email_subject ?? props.hs_call_title ?? props.hs_meeting_title ?? props.hs_note_body ?? null,
+    body: props.hs_email_text ?? props.hs_call_body ?? props.hs_meeting_body ?? props.hs_note_body ?? null,
+    status: props.hs_email_status ?? props.hs_call_status ?? props.hs_meeting_status ?? null,
+    direction: props.hs_email_direction ?? props.hs_call_direction ?? null,
+    duration: props.hs_call_duration ?? props.hs_meeting_end_time ?? null,
+    startTime: props.hs_timestamp ?? props.hs_meeting_start_time ?? null,
+    createdAt: props.hs_createdate ? new Date(props.hs_createdate).toISOString() : null,
+    updatedAt: props.hs_lastmodifieddate ? new Date(props.hs_lastmodifieddate).toISOString() : null,
   };
 }
 
@@ -489,18 +508,29 @@ export function buildProperties(payload: Record<string, any>): { properties: Rec
   return { properties };
 }
 
-/** Build associations payload for HubSpot v4 API. */
+/** Build associations payload for HubSpot v4 API.
+ *
+ * The typeId is pair-specific (from→to), so the from object type is required.
+ * If no explicit associationTypeId is given, the verified default for the pair
+ * is used; unknown pairs throw instead of guessing (the old typeId-1 fallback
+ * was contact→primary company only and HubSpot rejects it with 400 elsewhere).
+ */
 export function buildAssociations(
+  fromObjectType: string,
   toObjectType: string,
   toObjectIds: string[],
-  associationType?: string,
+  associationTypeId?: number | string,
 ): { associations: Array<{ to: { id: string }; types: Array<{ associationCategory: string; associationTypeId: number | string }> }> } {
+  const typeId = associationTypeId ?? resolveAssociationTypeId(fromObjectType, toObjectType);
+  if (typeId === undefined) {
+    throw new Error(
+      `No verified HUBSPOT_DEFINED association type for ${fromObjectType} → ${toObjectType}. Pass an explicit associationTypeId.`,
+    );
+  }
   return {
     associations: toObjectIds.map((id) => ({
       to: { id },
-      types: associationType
-        ? [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: associationType }]
-        : [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 1 }],
+      types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: typeId }],
     })),
   };
 }

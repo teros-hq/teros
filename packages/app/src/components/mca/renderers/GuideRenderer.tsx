@@ -30,7 +30,6 @@ import {
   MAX_ITEMS,
   parseOutput,
   ResourceCard,
-  tenseByStatus,
   ToolCallCard,
 } from '../primitives';
 import type { ToolCallRendererProps } from '../types';
@@ -101,11 +100,7 @@ function ListGuideTopicsRenderer(props: ToolCallRendererProps): React.ReactNode 
   const topics = data?.topics ?? [];
   const count = data?.count ?? topics.length;
 
-  const description = tenseByStatus(status, {
-    future: 'list the Teros guide topics',
-    present: 'Reading the guide index',
-    past: `Listed ${count} guide topics`,
-  });
+  const description = `Listed ${count} guide topics`;
 
   const badge =
     status === 'completed' && count > 0 ? (
@@ -137,11 +132,7 @@ function SearchGuideRenderer(props: ToolCallRendererProps): React.ReactNode {
   const count = data?.count ?? results.length;
   const shortQuery = query.length > 48 ? `${query.slice(0, 48)}…` : query;
 
-  const description = tenseByStatus(status, {
-    future: `search the guide for "${shortQuery}"`,
-    present: 'Searching the guide',
-    past: `Guide search: "${shortQuery}"`,
-  });
+  const description = `Guide search: "${shortQuery}"`;
 
   const badge =
     status === 'completed' && count > 0 ? (
@@ -171,11 +162,7 @@ function GetGuideSectionRenderer(props: ToolCallRendererProps): React.ReactNode 
   const requestedTopic = (input?.topic as string) || data?.id || '';
   const title = data?.title || requestedTopic;
 
-  const description = tenseByStatus(status, {
-    future: `open the guide section: ${requestedTopic}`,
-    present: 'Reading the guide',
-    past: `Guide: ${title}`,
-  });
+  const description = `Guide: ${title}`;
 
   return (
     <ToolCallCard status={status} description={description} iconUri={appIcon}>

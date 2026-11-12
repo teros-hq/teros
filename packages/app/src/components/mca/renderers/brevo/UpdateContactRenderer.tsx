@@ -27,7 +27,7 @@ export function UpdateContactRenderer({ input, status, output, error, appIcon }:
   return (
     <ToolCallCard
       status={status}
-      verb="Update contact"
+      description="Update contact"
       iconUri={appIcon}
       animateExpand
       defaultExpanded={status === 'completed'}

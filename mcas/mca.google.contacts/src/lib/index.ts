@@ -1,5 +1,4 @@
 export {
-  ensureAuthenticated,
   type GoogleClients,
   getGoogleClients,
   initializeGoogleClients,

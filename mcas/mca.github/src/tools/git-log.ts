@@ -7,6 +7,7 @@ import {
   runGit,
 } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { agentGitTool } from './_locked';
 
 /**
  * Local commit history with parsed fields per entry: `sha`, `shortSha`,
@@ -15,7 +16,7 @@ import { throwClassifiedGitError } from './_git-error';
  * Default returns the last 20 commits on the current branch. Use `ref` to
  * inspect another branch, `path` to filter, `since` / `until` for ranges.
  */
-export const gitLog: ToolConfig = {
+export const gitLog: ToolConfig = agentGitTool({
   annotations: { readOnlyHint: false },
   description:
     'Local commit history with structured entries. Defaults to last 20 commits on the current branch. Filter by `ref`, `path`, `author`, `since`/`until`.',
@@ -57,7 +58,7 @@ export const gitLog: ToolConfig = {
     if (a.ref) argv.push(a.ref);
     if (a.path) argv.push('--', a.path);
 
-    const result = runGit(repoPath, argv);
+    const result = await runGit(repoPath, argv);
     if (result.code !== 0) throwClassifiedGitError(result);
 
     const commits = parseGitLogPretty(result.stdout);
@@ -68,4 +69,4 @@ export const gitLog: ToolConfig = {
       commits,
     };
   },
-};
+});

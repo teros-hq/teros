@@ -17,8 +17,8 @@ import {
   ResourceCard,
   Specsheet,
   type SpecsheetSection,
-  colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
@@ -26,9 +26,11 @@ import {
   type GitHubCommit,
   type GitHubFileChange,
   GitHubToolShell,
+  actionLabel,
   relativeTime,
   scrollStyle,
   shortSha,
+  listItems,
 } from './shared';
 
 const FILE_STATUS_ACCENT: Record<GitHubFileChange['status'], string> = {
@@ -61,10 +63,10 @@ function CommitRow({ commit }: { commit: GitHubCommit }) {
 
 // list-commits
 export function ListCommitsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
-  const parsed = output ? parseOutput<GitHubCommit[]>(output) : null;
-  const commits = Array.isArray(parsed) ? parsed : [];
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const commits = listItems<GitHubCommit>(parsed);
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={`${commits.length} commit${commits.length === 1 ? '' : 's'}`}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, 'commits', `${commits.length}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && commits.length === 0 && <Empty message="No commits." />}
       {!error && status === 'completed' && commits.length > 0 && (
@@ -82,6 +84,7 @@ export function ListCommitsRenderer({ toolName, status, output, error, duration 
 
 // get-commit
 export function GetCommitRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<GitHubCommit>(output) : null;
   const commit = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'sha' in (parsed as object)
     ? (parsed as GitHubCommit)
@@ -120,7 +123,7 @@ export function GetCommitRenderer({ toolName, status, output, error, duration }:
   }
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} description={commit ? actionLabel(toolName, status, shortSha(commit.sha), commit.commit?.message?.split('\n')[0]) : actionLabel(toolName, status, 'commit')}>
       {error && <ErrorBlock error={error} />}
       {!error && commit && (
         <ResourceCard
@@ -141,10 +144,10 @@ export function GetCommitRenderer({ toolName, status, output, error, duration }:
                 <YStack key={f.filename} gap={3}>
                   <XStack gap={6} alignItems="center">
                     <IconChip text={f.status} accent={FILE_STATUS_ACCENT[f.status]} />
-                    <Text color={globalColors.primary} fontSize={10} fontFamily="$mono" flex={1} numberOfLines={1}>
+                    <Text color={c.text} fontSize={10} fontFamily="$mono" flex={1} numberOfLines={1}>
                       {f.filename}
                     </Text>
-                    <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+                    <Text color={c.text2} fontSize={9} fontFamily="$mono">
                       +{f.additions} / −{f.deletions}
                     </Text>
                   </XStack>
@@ -170,6 +173,7 @@ interface CompareResult {
 }
 
 export function CompareCommitsRenderer({ toolName, status, output, error, duration, input }: ToolCallRendererProps) {
+  const palette = useColors();
   const parsed = output ? parseOutput<CompareResult>(output) : null;
   const result = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as CompareResult) : null;
   const basehead = (input?.basehead as string | undefined) ?? '';
@@ -181,7 +185,7 @@ export function CompareCommitsRenderer({ toolName, status, output, error, durati
   if (typeof result?.total_commits === 'number') summary.rows.push({ key: 'total commits', value: String(result.total_commits) });
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={basehead ? `Compare ${basehead}` : 'Compare'} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, basehead || 'commits')}>
       {error && <ErrorBlock error={error} />}
       {!error && result && (
         <ResourceCard
@@ -192,7 +196,7 @@ export function CompareCommitsRenderer({ toolName, status, output, error, durati
           <Specsheet sections={[summary]} />
           {result.commits && result.commits.length > 0 && (
             <YStack gap={2}>
-              <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono" textTransform="uppercase">
+              <Text color={palette.text2} fontSize={9} fontFamily="$mono" textTransform="uppercase">
                 commits ({result.commits.length})
               </Text>
               {result.commits.slice(0, 10).map((c) => (
@@ -202,17 +206,17 @@ export function CompareCommitsRenderer({ toolName, status, output, error, durati
           )}
           {result.files && result.files.length > 0 && (
             <YStack gap={6}>
-              <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono" textTransform="uppercase">
+              <Text color={palette.text2} fontSize={9} fontFamily="$mono" textTransform="uppercase">
                 files ({result.files.length})
               </Text>
               {result.files.map((f) => (
                 <YStack key={f.filename} gap={3}>
                   <XStack gap={6} alignItems="center">
                     <IconChip text={f.status} accent={FILE_STATUS_ACCENT[f.status]} />
-                    <Text color={globalColors.primary} fontSize={10} fontFamily="$mono" flex={1} numberOfLines={1}>
+                    <Text color={palette.text} fontSize={10} fontFamily="$mono" flex={1} numberOfLines={1}>
                       {f.filename}
                     </Text>
-                    <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+                    <Text color={palette.text2} fontSize={9} fontFamily="$mono">
                       +{f.additions} / −{f.deletions}
                     </Text>
                   </XStack>

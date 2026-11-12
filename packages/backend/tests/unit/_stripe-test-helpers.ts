@@ -22,6 +22,7 @@ import type {
   CreateInvoiceItemParams,
   CreateInvoiceParams,
   CreateSetupIntentParams,
+  CreateTaxIdParams,
   ListInvoicesParams,
   StripeApi,
   StripeCardDetails,
@@ -30,6 +31,7 @@ import type {
   StripeInvoiceRef,
   StripePaymentMethodRef,
   StripeRequestOptions,
+  StripeSetupIntentDetails,
   StripeSetupIntentRef,
   UpdateCustomerParams,
 } from '../../src/services/stripe-api'
@@ -153,13 +155,40 @@ export class FakeStripe implements StripeApi {
     return { id }
   }
 
+  /** SetupIntents minted by createSetupIntent; tests flip them to succeeded via `confirmSetupIntent`. */
+  setupIntents = new Map<string, StripeSetupIntentDetails>()
+
   async createSetupIntent(
     params: CreateSetupIntentParams,
     opts?: StripeRequestOptions,
   ): Promise<StripeSetupIntentRef> {
     this.record('createSetupIntent', [params], opts)
     const id = this.next('seti')
+    this.setupIntents.set(id, { id, status: 'requires_payment_method', payment_method: null, customer: params.customer })
     return { id, client_secret: `${id}_secret` }
+  }
+
+  /** Simulate the frontend (Stripe.js) confirming the intent with a card. */
+  confirmSetupIntent(id: string, paymentMethodId: string, status = 'succeeded'): void {
+    const si = this.setupIntents.get(id)
+    if (!si) throw new Error(`no setup intent ${id}`)
+    this.setupIntents.set(id, { ...si, status, payment_method: paymentMethodId })
+  }
+
+  async retrieveSetupIntent(id: string): Promise<StripeSetupIntentDetails> {
+    this.record('retrieveSetupIntent', [id])
+    const si = this.setupIntents.get(id)
+    if (!si) throw { type: 'StripeInvalidRequestError', message: `No such setupintent: ${id}` }
+    return si
+  }
+
+  async createCustomerTaxId(
+    customerId: string,
+    params: CreateTaxIdParams,
+    opts?: StripeRequestOptions,
+  ): Promise<{ id: string }> {
+    this.record('createCustomerTaxId', [customerId, params], opts)
+    return this.memo(opts, () => ({ id: this.next('txi') }))
   }
 
   async attachPaymentMethod(
@@ -395,7 +424,7 @@ function matchDoc(doc: Doc, filter: Doc): boolean {
       if (!(cond as Doc[]).some((sub) => matchDoc(doc, sub))) return false
       continue
     }
-    if (!matchValue(doc[key], cond)) return false
+    if (!matchValue(getPath(doc, key), cond)) return false
   }
   return true
 }
@@ -560,11 +589,39 @@ export class InMemoryCollection {
   }
 }
 
+/** Read a field by Mongo path ('a.b.c' walks nested objects). */
+function getPath(doc: Doc, path: string): any {
+  if (!path.includes('.')) return doc[path]
+  return path.split('.').reduce((o: any, k) => (o == null ? undefined : o[k]), doc)
+}
+
+/** Write a field by Mongo path, creating intermediate objects (copies, so reads stay isolated). */
+function setPath(doc: Doc, path: string, value: any): void {
+  const keys = path.split('.')
+  let o: Doc = doc
+  for (const k of keys.slice(0, -1)) {
+    o[k] = o[k] != null && typeof o[k] === 'object' ? { ...o[k] } : {}
+    o = o[k]
+  }
+  o[keys[keys.length - 1]] = value
+}
+
+function unsetPath(doc: Doc, path: string): void {
+  const keys = path.split('.')
+  let o: Doc = doc
+  for (const k of keys.slice(0, -1)) {
+    if (o[k] == null || typeof o[k] !== 'object') return
+    o[k] = { ...o[k] }
+    o = o[k]
+  }
+  delete o[keys[keys.length - 1]]
+}
+
 function applyUpdate(doc: Doc, update: Doc, isInsert: boolean): void {
-  if (update.$setOnInsert && isInsert) Object.assign(doc, update.$setOnInsert)
-  if (update.$set) Object.assign(doc, update.$set)
-  if (update.$inc) for (const [k, v] of Object.entries(update.$inc)) doc[k] = (doc[k] ?? 0) + (v as number)
-  if (update.$unset) for (const k of Object.keys(update.$unset)) delete doc[k]
+  if (update.$setOnInsert && isInsert) for (const [k, v] of Object.entries(update.$setOnInsert)) setPath(doc, k, v)
+  if (update.$set) for (const [k, v] of Object.entries(update.$set)) setPath(doc, k, v)
+  if (update.$inc) for (const [k, v] of Object.entries(update.$inc)) setPath(doc, k, (getPath(doc, k) ?? 0) + (v as number))
+  if (update.$unset) for (const k of Object.keys(update.$unset)) unsetPath(doc, k)
 }
 
 export class InMemoryDb {

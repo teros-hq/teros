@@ -1,7 +1,7 @@
 /**
  * Permission description heuristics for browser-evaluation tools:
- *   • `mca.teros.playwright:browser-run-code`
- *   • `mca.teros.playwright:browser-evaluate`
+ *   • `mca.teros.browser:browser-run-code`
+ *   • `mca.teros.browser:browser-evaluate`
  *   • `mca.browserbase:evaluate`
  *
  * The input is a JavaScript snippet that runs inside the page context.

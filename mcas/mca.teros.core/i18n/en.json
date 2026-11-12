@@ -59,25 +59,28 @@
     },
     "get-agent-providers": {
       "name": "get-agent-providers",
-      "description": "Get the LLM provider configuration for an agent. Returns the agent's available providers, preferred provider, and selected model.",
+      "description": "Get the LLM model configuration for an agent. Returns ALL of the owner's active providers (each with isDefault, defaultModelId and its models), the agent pin (selectedProviderId/selectedModelId, null = System Default), the resolved provider/model a run would actually use (source: agent_pin | user_default_provider | unresolved), and warnings for any orphaned or inconsistent configuration. System Default = the user default provider (isDefault) + its defaultModelId.",
       "params": {
         "agentId": "The agent ID to query"
       }
     },
-    "set-agent-providers": {
-      "name": "set-agent-providers",
-      "description": "Set the available LLM providers for an agent. This determines which providers the agent can use. Requires workspace access or agent ownership.",
+    "set-agent-model": {
+      "name": "set-agent-model",
+      "description": "Pin an agent to an exact LLM model. Atomically sets the agent's selected provider + model, a single pin — there is no per-agent provider list anymore. Validates that the model is served by the provider and enforces the billing gate. Changing another agent's model is a considered decision (platform policy) — pass `reason` to document why. The change broadcasts live to the UI.",
       "params": {
         "agentId": "The agent ID to configure",
-        "providerIds": "Array of provider IDs to make available to this agent"
+        "providerId": "Provider ID that serves the model (e.g. a Teros or Helmcode provider)",
+        "modelId": "Exact model ID to pin (must be in the provider's model list)",
+        "reason": "Why this model change is being made. Recorded in the audit log (who/when/why).",
+        "allowReserved": "Set true only with an explicit operator decision to pin a reserved model (e.g. teros-glm-5p3-fast, exclusive to Alice)."
       }
     },
-    "set-agent-preferred-provider": {
-      "name": "set-agent-preferred-provider",
-      "description": "Set the preferred LLM provider for an agent. The provider must be in the agent's available providers list. Pass null to clear the preference.",
+    "reset-agent-model": {
+      "name": "reset-agent-model",
+      "description": "Reset an agent's model to System Default by clearing its explicit provider/model pin. This is the preferred state: the user's default provider/model wins unless there is a considered reason to pin. Broadcasts live to the UI.",
       "params": {
-        "agentId": "The agent ID to configure",
-        "providerId": "Provider ID to set as preferred (must be in availableProviders), or null to clear"
+        "agentId": "The agent ID to reset",
+        "reason": "Why the pin is being cleared. Recorded in the audit log."
       }
     },
     "list-workspaces": {
@@ -118,11 +121,11 @@
     },
     "add-workspace-member": {
       "name": "add-workspace-member",
-      "description": "Add a member to a workspace.",
+      "description": "Add a member to a workspace by email. If the email belongs to an existing Teros account, the member is added as active immediately. If not, a pending membership is created and an invitation email is sent. Only workspace admins can use this tool.",
       "params": {
         "workspaceId": "The workspace ID",
-        "userId": "The user ID to add",
-        "role": "Role for the member"
+        "email": "The email address of the person to invite",
+        "role": "Role for the member (owner is not allowed)"
       }
     },
     "remove-workspace-member": {
@@ -140,13 +143,6 @@
         "workspaceId": "The workspace ID",
         "userId": "The user ID",
         "role": "New role for the member"
-      }
-    },
-    "list-apps": {
-      "name": "list-apps",
-      "description": "List apps owned by the user.",
-      "params": {
-        "workspaceId": "Optional: Filter apps by workspace ID. If not provided, lists all apps owned by the user across all workspaces."
       }
     },
     "get-app": {
@@ -226,6 +222,15 @@
     "list-providers": {
       "name": "list-providers",
       "description": "List all LLM providers available to the user. Returns providers with their models, status, and configuration."
+    },
+    "set-default-provider": {
+      "name": "set-default-provider",
+      "description": "Set the user's System Default provider + model — what EVERY agent without an explicit model pin runs on. This is the highest-blast-radius model setting: changing it switches the model of ALL unpinned agents at once (agents pinned via set-agent-model are NOT affected). Use list-providers first to see current providers, their models and which one is the current default. The switch is atomic (only one default at a time) and the change is live — no restart needed, the next run resolves the new default. Broadcasts live to the UI.",
+      "params": {
+        "providerId": "Provider ID to set as System Default (from list-providers). Must be active and owned by the user.",
+        "modelId": "Exact model ID to use as the provider's default model (must be in the provider's model list from list-providers).",
+        "reason": "Why the System Default is being changed. Recorded in the audit log (who/when/why) — this affects every unpinned agent."
+      }
     },
     "grant-app-access": {
       "name": "grant-app-access",

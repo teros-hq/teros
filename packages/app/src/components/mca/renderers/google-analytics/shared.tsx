@@ -14,12 +14,13 @@
 import type React from 'react';
 import { ToolCallCard, useColors, useMcaTheme } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
+import { backendUrl } from '../../../../config/runtime';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-export const GA_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/mcas/mca.google.analytics/icon.png`;
+export const GA_ICON = `${backendUrl()}/static/mcas/mca.google.analytics/icon.svg`;
 
 /**
  * Official Google Analytics brand palette (validated against GA4 product UI).
@@ -282,17 +283,7 @@ interface ToolShellProps {
   toolName: string;
   status: ToolCallRendererProps['status'];
   duration?: number;
-  /**
-   * Imperative override (e.g. `"Run report"`). Defaults to the tool's
-   * canonical verb so the card auto-tenses the header. A renderer rarely
-   * needs to set this.
-   */
-  verb?: string;
-  /**
-   * Fully-composed contextual description (e.g. `"5 accounts"`). Wins over
-   * `verb` when set — pass it ONLY when there is real data to surface;
-   * otherwise leave it `undefined` and let the verb auto-tense.
-   */
+  /** Fully-composed description (e.g. `"5 accounts"`). Static text. */
   description?: string;
   children?: React.ReactNode;
   defaultExpanded?: boolean;
@@ -308,7 +299,6 @@ export function GoogleAnalyticsToolShell({
   toolName,
   status,
   duration,
-  verb,
   description,
   children,
   defaultExpanded,
@@ -317,8 +307,7 @@ export function GoogleAnalyticsToolShell({
   return (
     <ToolCallCard
       status={toolStatusForPrimitive(status)}
-      verb={verb ?? getToolVerb(toolName)}
-      description={description}
+      description={description ?? getToolLabel(toolName)}
       duration={duration}
       iconUri={GA_ICON}
       badge={badge}

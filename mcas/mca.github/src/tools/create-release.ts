@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 export const createRelease: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -48,6 +48,7 @@ export const createRelease: ToolConfig = {
       prerelease?: boolean;
       generate_release_notes?: boolean;
     };
+    assertOwnerRepo(owner, repo);
     if (!tag_name || tag_name.trim() === '') {
       throw new Error('`tag_name` must be a non-empty string.');
     }

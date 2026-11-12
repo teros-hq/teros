@@ -6,7 +6,7 @@
  *
  * Reference: https://opentelemetry.io/docs/specs/semconv/gen-ai/ (v1.31+).
  *
- *
+ * Design doc: docs/usage-instrumentation.md §10 — Helper toOtelGenAI
  */
 
 import type { AgentUsageSession } from "../types/database.js"
@@ -42,6 +42,8 @@ export function mapProviderToOtel(provider: string): string {
     case "ollama":
     case "ollama-cloud":
       return "ollama"
+    case "helmcode":
+      return "helmcode"
     default:
       return provider
   }

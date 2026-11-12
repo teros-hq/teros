@@ -9,6 +9,7 @@
  *  - Resolves the workspace volume host path from workspaceId or channelId
  *  - Validates the path is within the volume (anti path-traversal)
  *  - Only allows writing inside the authenticated workspace volume
+ *  - The caller needs the write role on the workspace that owns the volume
  */
 
 import { writeFile } from 'fs/promises'
@@ -19,6 +20,7 @@ import type { Db } from 'mongodb'
 import type { VolumeService } from '../../../services/volume-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
 import { resolveVolumeHostPath } from '../../../lib/volume-path-resolver'
+import { canUseVolumeContext } from '../../../auth/workspace-access'
 
 // ============================================================================
 // TYPES
@@ -59,6 +61,11 @@ export function createFsWriteHandler(deps: FsWriteDeps) {
 
     // Use whichever context identifier was provided
     const contextId = (workspaceId ?? channelId)!
+
+    // Authorize the same context the resolver uses, before touching it
+    if (!(await canUseVolumeContext(db, ctx.userId, contextId, 'write'))) {
+      throw new HandlerError('FORBIDDEN', 'Write access to the workspace is required')
+    }
 
     // Resolve the host path using the shared helper from file-watcher
     let hostPath: string

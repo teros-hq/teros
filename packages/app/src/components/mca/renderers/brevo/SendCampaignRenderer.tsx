@@ -23,7 +23,7 @@ export function SendCampaignRenderer({ input, status, output, error, appIcon }: 
   return (
     <ToolCallCard
       status={status}
-      verb="Send campaign"
+      description="Send campaign"
       iconUri={appIcon}
       animateExpand
       defaultExpanded={status === 'completed'}

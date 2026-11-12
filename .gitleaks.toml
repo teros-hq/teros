@@ -11,3 +11,27 @@ regexTarget = "line"
 regexes = [
   '''i18nKey:''',
 ]
+
+[[allowlists]]
+description = "Redaction/masking test suites: their fixtures are synthetic secrets by construction (reviewed 2026-11-08 for the public-release scan)."
+paths = [
+  '''packages/shared/src/mask-secret\.ts''',
+  '''packages/shared/src/mask-secret\.test\.ts''',
+  '''packages/core/src/session/filter-redacted-for-viewer\.test\.ts''',
+  '''packages/backend/src/services/redaction-sweep\.test\.ts''',
+  '''packages/backend/src/routes/app-secrets-handlers\.test\.ts''',
+  '''packages/backend/src/auth/redact-messages-audit\.test\.ts''',
+  '''packages/backend/tests/unit/mca-manifest-secrets-guard-invariant\.test\.ts''',
+  '''packages/shared/src/evaluator/anonymizer\.test\.ts''',
+]
+
+[[allowlists]]
+description = "Obvious synthetic fixture shapes used in unit tests and credentials.example.json files (reviewed 2026-11-08)."
+regexTarget = "match"
+regexes = [
+  '''0123456789abcdef''',
+  '''sk-secret123456''',
+  '''abcDEF123456''',
+  '''hc-test-key-12345''',
+  '''trsk_revoked_key_''',
+]

@@ -78,7 +78,7 @@ describe('EventBubble — ramas por tipo de evento (i18n + shape-agnostic)', () 
     // Antes del fix esto era undefined (leía channelId/channelName ausentes) → nace rojo si se revierte.
     expect(h.t).toHaveBeenCalledWith('conversation.events.channelStarted', { channel: 'Tarea A' })
     fireEvent.click(getByText('conversation.events.open'))
-    expect(h.openWindow).toHaveBeenCalledWith('chat', { channelId: 'ch_int' }, true)
+    expect(h.openWindow).toHaveBeenCalledWith('chat', { channelId: 'ch_int' }, false)
   })
 
   it('channel_started (ruta MCA channel*): resuelve el nombre desde channelName/channelId', () => {
@@ -112,7 +112,7 @@ describe('EventBubble — ramas por tipo de evento (i18n + shape-agnostic)', () 
     // Antes del fix el branch vivo pintaba "X finished" hardcoded → nunca llamaba channelFinished.
     expect(h.t).toHaveBeenCalledWith('conversation.events.channelFinished', { channel: 'Tarea B' })
     fireEvent.click(getByText('conversation.events.open'))
-    expect(h.openWindow).toHaveBeenCalledWith('chat', { channelId: 'ch_fin' }, true)
+    expect(h.openWindow).toHaveBeenCalledWith('chat', { channelId: 'ch_fin' }, false)
   })
 
   it('channel_finished (ruta MCA channel*): resuelve nombre e id desde channel* y navega', () => {
@@ -127,7 +127,7 @@ describe('EventBubble — ramas por tipo de evento (i18n + shape-agnostic)', () 
     // finished" sin botón. Ahora resuelve channel* → nace rojo si se revierte el shape-agnostic.
     expect(h.t).toHaveBeenCalledWith('conversation.events.channelFinished', { channel: 'Sub MCA' })
     fireEvent.click(getByText('conversation.events.open'))
-    expect(h.openWindow).toHaveBeenCalledWith('chat', { channelId: 'ch_mca2' }, true)
+    expect(h.openWindow).toHaveBeenCalledWith('chat', { channelId: 'ch_mca2' }, false)
   })
 
   // ---- channel_resolved ---------------------------------------------------
@@ -181,7 +181,7 @@ describe('EventBubble — ramas por tipo de evento (i18n + shape-agnostic)', () 
     expect(h.t).toHaveBeenCalledWith('conversation.events.needsApproval', { channel: 'Obs' })
     expect(h.t).toHaveBeenCalledWith('conversation.events.tool', { tool: 'message' })
     fireEvent.click(getByText('conversation.events.goToApprove'))
-    expect(h.openWindow).toHaveBeenCalledWith('chat', { channelId: 'ch_perm' }, true)
+    expect(h.openWindow).toHaveBeenCalledWith('chat', { channelId: 'ch_perm' }, false)
   })
 
   // ---- default ------------------------------------------------------------

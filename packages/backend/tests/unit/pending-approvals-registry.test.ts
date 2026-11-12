@@ -14,8 +14,6 @@ import {
 
 function makePerm(overrides: Partial<PendingPermission> = {}): PendingPermission {
   return {
-    resolve: () => {},
-    reject: () => {},
     toolName: 'write-file',
     appId: 'app_fs',
     input: { path: '/tmp/x' },

@@ -1,0 +1,259 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna de salud. Verifica la conectividad con MongoDB."
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "Crea una nueva lista de tareas (contenedor de árbol). Retorna: { list: { listId, name, nodeCount, completedCount, createdAt, updatedAt } }. Usa add-node para añadir elementos a la lista.",
+      "params": {
+        "name": "Nombre de la lista (ej. \"Personal\", \"Trabajo\", \"Compra\"). Máx 200 caracteres."
+      }
+    },
+    "list-lists": {
+      "name": "list-lists",
+      "description": "Lista todas las listas de tareas del usuario. Retorna: { items: [{ listId, name, nodeCount, completedCount, createdAt, updatedAt }], nextCursor? }. Paginado: por defecto 50, máx 200.",
+      "params": {
+        "limit": "Máximo de resultados (por defecto 50, máx 200).",
+        "cursor": "Cursor de paginación de la respuesta anterior."
+      }
+    },
+    "get-tree": {
+      "name": "get-tree",
+      "description": "Obtiene el árbol completo de nodos de una lista como jerarquía anidada (estilo Workflowy). Retorna: { list: { listId, name, nodeCount, completedCount }, tree: [{ nodeId, text, note, completed, collapsed, position, childCount, completedChildren, children?: [...] }] }. Pasa nodeId para obtener solo el subárbol bajo ese nodo.",
+      "params": {
+        "listId": "ID de la lista a obtener.",
+        "nodeId": "Opcional: obtener solo el subárbol bajo este nodo."
+      }
+    },
+    "rename-list": {
+      "name": "rename-list",
+      "description": "Renombra una lista de tareas. Retorna: { list: { listId, name, nodeCount, completedCount, updatedAt } }.",
+      "params": {
+        "listId": "ID de la lista a renombrar.",
+        "name": "Nuevo nombre de la lista. Máx 200 caracteres."
+      }
+    },
+    "delete-list": {
+      "name": "delete-list",
+      "description": "Elimina una lista de tareas y TODOS sus nodos permanentemente. Irreversible. Retorna: { deleted: true, listId }.",
+      "params": {
+        "listId": "ID de la lista a eliminar (todos los nodos serán removidos)."
+      }
+    },
+    "add-node": {
+      "name": "add-node",
+      "description": "Añade un nuevo elemento/nodo a una lista. Si parentId se omite o es null, añade como nodo raíz de nivel superior. Si parentId se proporciona, añade como hijo de ese nodo. Retorna: { node: { nodeId, listId, parentId, text, note, completed, collapsed, position, createdAt, updatedAt } }.",
+      "params": {
+        "listId": "ID de la lista a la que añadir el nodo.",
+        "parentId": "ID del nodo padre bajo el que anidar. Omitir o null para nodo raíz.",
+        "text": "Texto del elemento. Máx 2000 caracteres.",
+        "note": "Nota/descripción opcional bajo el elemento. Máx 2000 caracteres.",
+        "kind": "task (por defecto, completable) o group (contenedor sin estado). Un grupo no puede ir dentro de una tarea.",
+        "state": "Estado inicial de una tarea (por defecto pending). No aplica a grupos. Para bloquear una tarea usa set-state con un motivo.",
+        "expectedOutput": "Salida que debe entregar la tarea: { format: \"markdown\"|\"form\"|\"file\", description?, fileType? (solo file: pdf|docx|xlsx|csv|png|jpg|json|md|txt|html|other), fields? (solo form: 1–40 campos [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, required?, options? }]) }. null la quita. set-output rechaza una salida que no la cumpla (OUTPUT_MISMATCH). No para grupos."
+      }
+    },
+    "update-node": {
+      "name": "update-node",
+      "description": "Actualiza el texto y/o nota de un nodo. Los campos omitidos no cambian. Retorna: { node: { nodeId, text, note, updatedAt } }.",
+      "params": {
+        "nodeId": "ID del nodo a actualizar.",
+        "text": "Nuevo texto del elemento. Máx 2000 caracteres.",
+        "note": "Nueva nota. Máx 2000 caracteres. Pasar string vacío para limpiar.",
+        "expectedOutput": "Salida que debe entregar la tarea: { format: \"markdown\"|\"form\"|\"file\", description?, fileType? (solo file: pdf|docx|xlsx|csv|png|jpg|json|md|txt|html|other), fields? (solo form: 1–40 campos [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, required?, options? }]) }. null la quita. set-output rechaza una salida que no la cumpla (OUTPUT_MISMATCH). No para grupos."
+      }
+    },
+    "toggle-complete": {
+      "name": "toggle-complete",
+      "description": "Alterna el estado de completado de un nodo (tachado en Workflowy). Retorna: { node: { nodeId, completed, updatedAt } }.",
+      "params": {
+        "nodeId": "ID del nodo para alternar completado."
+      }
+    },
+    "toggle-collapse": {
+      "name": "toggle-collapse",
+      "description": "Alterna el estado colapsado/expandido de un nodo (ocultar/mostrar hijos). Retorna: { node: { nodeId, collapsed, updatedAt } }.",
+      "params": {
+        "nodeId": "ID del nodo para alternar colapso."
+      }
+    },
+    "move-node": {
+      "name": "move-node",
+      "description": "Mueve un nodo a un padre y/o posición diferente dentro del árbol. newParentId null mueve a raíz. newPosition es el índice 0-based entre hermanos. Detecta movimientos circulares. Retorna: { node: { nodeId, parentId, position, updatedAt } }.",
+      "params": {
+        "nodeId": "ID del nodo a mover.",
+        "newParentId": "ID del nuevo nodo padre. Null para raíz. Omitir para mantener padre actual.",
+        "newPosition": "Posición 0-based entre los nuevos hermanos (por defecto 0)."
+      }
+    },
+    "delete-node": {
+      "name": "delete-node",
+      "description": "Elimina un nodo y TODOS sus descendientes (subárbol completo). Irreversible. Retorna: { deleted: true, nodeId }.",
+      "params": {
+        "nodeId": "ID del nodo a eliminar. Todos los hijos serán removidos recursivamente."
+      }
+    },
+    "search-nodes": {
+      "name": "search-nodes",
+      "description": "Busca nodos por texto en todas las listas (o en una lista específica). Insensible a mayúsculas. Retorna: { results: [{ nodeId, listId, text, note, completed, path, updatedAt }] } donde path es una ruta como \"Padre / Hijo / Coincidencia\". Máx 50 resultados.",
+      "params": {
+        "query": "Texto de búsqueda (insensible a mayúsculas). Mín 1 carácter, máx 500.",
+        "listId": "Opcional: restringir búsqueda a una lista específica."
+      }
+    },
+    "set-state": {
+      "name": "set-state",
+      "description": "Mueve una tarea a otro estado: planning (idea, aún sin definir) · pending (definida, lista para empezar) · working (en marcha) · blocked (no puede continuar — requiere motivo) · review (trabajo terminado, pendiente de revisión) · done. Movimientos permitidos: planning→pending; pending→working|done; working→review|blocked|pending|done; blocked→working|planning; review→done|working; done→working (reabrir — indica un motivo). Cualquier otro falla con INVALID_TRANSITION. Entrar en review o done pone el progreso a 100; al salir hacia un estado abierto se borra un 100 (cualquier otro valor se conserva). Los grupos no tienen estado (NOT_A_TASK). Añade una entrada al log \"de → a\". Retorna: { node: { nodeId, parentId, text, kind, state, blockedReason, reportedProgress, completed, hasInput, hasOutput, updatedAt, ... }, transition: { from, to } }.",
+      "params": {
+        "nodeId": "ID del nodo tarea.",
+        "state": "Estado destino.",
+        "reason": "Por qué. Obligatorio para blocked (qué falta / a quién espera — se muestra al usuario). Recomendado al reabrir una tarea hecha. Máx 2000 caracteres.",
+        "reply": "Solo para blocked → working (la respuesta a la pregunta del bloqueo, se registra como \"Reply: <texto>\") o review → working (por qué se devuelve la tarea, se registra como \"Sent back: <texto>\"). Si la tarea tiene conversación se publica allí (una devolución como \"Sent back from review: <texto>\") y su agente continúa. Máx. 2000 caracteres."
+      }
+    },
+    "set-kind": {
+      "name": "set-kind",
+      "description": "Convierte un nodo entre tarea y grupo, conservando sus hijos. Un grupo es un contenedor no completable (sin estado, progreso ni salida); una tarea se puede completar y solo contiene tareas. A grupo: falla con GROUP_IN_TASK si su padre es una tarea y con HAS_OUTPUT si tiene salida. A tarea: falla con GROUP_IN_TASK si contiene grupos; empieza en pending. Añade una entrada al log. Retorna: { node: { nodeId, parentId, text, kind, state, ... } }.",
+      "params": {
+        "nodeId": "ID del nodo a convertir.",
+        "kind": "Tipo destino."
+      }
+    },
+    "set-progress": {
+      "name": "set-progress",
+      "description": "Informa del avance de una tarea como porcentaje entero 0–100, o null para borrarlo (el progreso pasa a derivarse de sus hijas). Se puede editar en cualquier estado, incluidos review y done (sin valor, review/done cuentan como 100%); los grupos no tienen progreso (NOT_A_TASK). Añade una entrada al log. Retorna: { node: { nodeId, reportedProgress, state, ... } }.",
+      "params": {
+        "nodeId": "ID del nodo tarea.",
+        "progress": "Porcentaje 0–100, o null para borrarlo."
+      }
+    },
+    "set-input": {
+      "name": "set-input",
+      "description": "Fija la entrada de un nodo — los datos de los que parte la tarea — o la borra con null. Markdown y formularios se guardan en el nodo; un archivo se sube al almacenamiento de objetos y se guarda como { format: \"file\", objectId, url, name, mime, size }. Los grupos pueden tener entrada. Añade una entrada al log. Retorna: { node: { nodeId, hasInput, input, ... } }.",
+      "params": {
+        "nodeId": "ID del nodo.",
+        "input": "Uno de: { format: \"markdown\", markdown } · { format: \"form\", fields: [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, options? }], values: { [fieldId]: valor } } · { format: \"file\", name, mime, data: base64 (máx 10 MB, sin prefijo data:) }. null la borra."
+      }
+    },
+    "set-output": {
+      "name": "set-output",
+      "description": "Entrega la salida de una tarea — su resultado (un resumen en markdown, un formulario rellenado o un archivo como una factura) — o la borra con null. Un archivo se sube al almacenamiento de objetos y se guarda como { format: \"file\", objectId, url, name, mime, size }. Los grupos no tienen salida (NOT_A_TASK). Añade una entrada al log \"Output delivered · <formato>\". Entregar no cambia el estado: usa también set-state (p. ej. working → review). Retorna: { node: { nodeId, hasOutput, output, ... } }.",
+      "params": {
+        "nodeId": "ID del nodo tarea.",
+        "output": "Uno de: { format: \"markdown\", markdown } · { format: \"form\", fields: [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, options? }], values: { [fieldId]: valor } } · { format: \"file\", name, mime, data: base64 (máx 10 MB, sin prefijo data:) }. null la borra."
+      }
+    },
+    "toggle-instruction-item": {
+      "name": "toggle-instruction-item",
+      "description": "Marca o desmarca un elemento de la checklist de las instrucciones de un nodo — la casilla markdown número index (desde 0) (\"- [ ] paso\" / \"- [x] paso\"), contando de arriba abajo e ignorando bloques de código. Falla con ITEM_NOT_FOUND si no existe. Retorna: { node: { nodeId, parentId, instructions, updatedAt }, item: { index, checked, text } }.",
+      "params": {
+        "nodeId": "ID del nodo.",
+        "index": "Índice (desde 0) de la casilla entre todas las casillas de las instrucciones."
+      }
+    },
+    "plan-node": {
+      "name": "plan-node",
+      "description": "Planifica una tarea para un día del calendario (\"Por día\"), la reordena dentro de su día, fija su hora o la quita de su día. day es \"YYYY-MM-DD\" en el calendario del usuario, o null para quitarla de su día (también borra la hora). index la coloca en el plan del día (0 = la primera; sin index = al final del día, o en su sitio actual si el día no cambia); el día se renumera 0..N-1. time \"HH:MM\" fija la hora, null la borra y sin time se conserva. Los grupos nunca se planifican (NOT_A_TASK). Registra \"Planned for <día>\", \"Planned time …\" o \"Removed from the day\". Retorna: { node: { nodeId, plannedFor, dayOrder, plannedTime, state, ... }, day, previousDay }.",
+      "params": {
+        "nodeId": "ID del nodo tarea.",
+        "day": "Día \"YYYY-MM-DD\", o null para quitar la tarea de su día.",
+        "index": "Posición en el plan del día (desde 0). Opcional.",
+        "time": "Hora planificada \"HH:MM\" (24 h), o null para borrarla. Opcional."
+      }
+    },
+    "get-day": {
+      "name": "get-day",
+      "description": "Obtiene un día del plan: las tareas planificadas para day en su orden, las atrasadas (tareas abiertas planificadas antes de today, la más antigua primero) y las abiertas sin planificar (sin día, en orden del árbol). Pasa today con el día actual del usuario \"YYYY-MM-DD\" (por defecto, la fecha UTC). Retorna: { day, today, tasks: [...], overdue: [...], unplanned: [...] } donde cada tarea es { nodeId, parentId, text, state, blockedReason, progress, reportedProgress, plannedFor, dayOrder, plannedTime, hasOutput, path: [títulos de los ancestros, desde la raíz] }.",
+      "params": {
+        "day": "Día \"YYYY-MM-DD\".",
+        "today": "Día actual del usuario \"YYYY-MM-DD\" (decide qué está atrasado). Opcional."
+      }
+    },
+    "assign-node": {
+      "name": "assign-node",
+      "description": "Asigna una tarea a un agente o a una persona del espacio de trabajo («quién hace qué»), o la desasigna con null. assignee es { kind: \"agent\" | \"user\", id }: un agentId usable en este espacio o el userId de un miembro (incluido el propietario); cualquier otra cosa falla con INVALID_ASSIGNEE. Los grupos no se asignan (NOT_A_TASK). Guarda assignedAt y registra \"Assigned to <nombre>\" / \"Unassigned\". Asignar no empieza la tarea. Retorna: { node: { nodeId, assignee, assignedAt, state, ... } }.",
+      "params": {
+        "nodeId": "ID del nodo tarea.",
+        "assignee": "Quién la hace, o null para desasignar.",
+        "kind": "Un agente o una persona.",
+        "id": "agentId o userId."
+      }
+    },
+    "set-reviewer": {
+      "name": "set-reviewer",
+      "description": "Asigna el revisor de una tarea — quién la revisa cuando entra en revisión — o lo quita con null (vuelve a validación manual — nadie evalúa, el comportamiento por defecto). reviewer es { kind: \"agent\" | \"user\", id } — un agentId utilizable en este workspace o el userId de un miembro; cualquier otra cosa falla con INVALID_ASSIGNEE. Los grupos no se revisan (NOT_A_TASK). Vacío por defecto: una tarea sin revisor se comporta igual que antes. Cuando una tarea CON revisor entra en revisión, el revisor recibe la notificación automáticamente y la tarea aparece en su vista — sin necesidad de suscripciones. Registra \"Reviewer set to <name>\" / \"Reviewer removed\". Devuelve: { node: { nodeId, reviewer, reviewedAt, state, ... } }.",
+      "params": {
+        "nodeId": "ID del nodo de la tarea.",
+        "reviewer": "Quién la revisa, o null para quitarlo (validación manual — nadie evalúa)."
+      }
+    },
+    "get-autoplay": {
+      "name": "get-autoplay",
+      "description": "Lista los runners de autoplay de Tareas de este espacio: los agentes que recogen solos sus tareas (pendientes y planificadas para hoy o antes) con un número de slots en paralelo. activeSlots es cuántas tareas del agente están en marcha ahora. Retorna: { runners: [{ agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing }] }."
+    },
+    "set-agent-slots": {
+      "name": "set-agent-slots",
+      "description": "Fija cuántas tareas ejecuta en paralelo un agente del espacio (lo hace runner si no lo es). 0 slots también lo pausa. El agente debe pertenecer al espacio (INVALID_ASSIGNEE). Los miembros de solo lectura no pueden cambiar runners (FORBIDDEN). Retorna: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "params": {
+        "agentId": "ID del agente.",
+        "slots": "Ejecuciones en paralelo (0 = listado pero no puede ejecutar)."
+      }
+    },
+    "set-agent-play": {
+      "name": "set-agent-play",
+      "description": "Activa o pausa el autoplay de un agente (lo hace runner si no lo es). Con play activo, Teros empieza las tareas pendientes del agente planificadas para hoy o antes, respetando sus slots. Activarlo con 0 slots falla con INVALID_STATE. Pausar nunca interrumpe un turno en marcha. Los miembros de solo lectura no pueden cambiar runners (FORBIDDEN). Retorna: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "params": {
+        "agentId": "ID del agente.",
+        "enabled": "true = play, false = pausa."
+      }
+    },
+    "set-agent-scope": {
+      "name": "set-agent-scope",
+      "description": "Fija el ámbito de un runner (lo hace runner si no lo es). Con pickUnassigned a true, el agente también recoge las tareas sin asignar que están pendientes y planificadas para hoy o antes, dentro del grupo del ámbito (a cualquier profundidad; todo el árbol si scopeNodeId es null), después de sus propias tareas; cada una se asigna al agente antes de empezar. Las tareas asignadas al agente se recogen estén donde estén. scopeNodeId debe ser un grupo del espacio (INVALID_INPUT). Los miembros de solo lectura no pueden cambiar runners (FORBIDDEN). Retorna: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "params": {
+        "agentId": "ID del agente.",
+        "scopeNodeId": "ID del grupo que delimita la recogida de tareas sin asignar, o null para todo el árbol.",
+        "pickUnassigned": "true = recoger también las tareas planificadas sin asignar dentro del ámbito."
+      }
+    },
+    "remove-agent": {
+      "name": "remove-agent",
+      "description": "Quita un agente de los runners de autoplay. Sus turnos en marcha no se interrumpen y sus tareas conservan sus conversaciones. Los miembros de solo lectura no pueden cambiar runners (FORBIDDEN). Retorna: { removed: true, agentId }.",
+      "params": {
+        "agentId": "ID del agente."
+      }
+    },
+    "start-node": {
+      "name": "start-node",
+      "description": "Empieza una tarea ahora: una tarea asignada a un agente que está pendiente (o en curso sin conversación), sea cual sea su día planificado y el play/slots del runner. La pasa a working, abre (o reutiliza) su conversación con el agente y le envía la tarea. Sin agente asignado: NOT_AGENT_TASK; cualquier otro estado: INVALID_STATE. Retorna: { node: { nodeId, state, channelId, running, ... }, channelId }.",
+      "params": {
+        "nodeId": "ID del nodo tarea."
+      }
+    },
+    "share-io": {
+      "name": "share-io",
+      "description": "Crea un enlace público a la salida o la entrada de una tarea (o devuelve el que ya creaste). Quien tenga el enlace ve la io ACTUAL de la tarea sin iniciar sesión: el markdown como página web titulada con el texto de la tarea, un archivo como el propio archivo. Una io de formulario o una tarea sin esa io falla con INVALID_STATE. Los miembros de solo lectura no pueden compartir (FORBIDDEN). Retorna: { shareId, publicUrl }.",
+      "params": {
+        "nodeId": "ID del nodo tarea.",
+        "io": "Qué io de la tarea: output (salida) o input (entrada)."
+      }
+    },
+    "get-io-share": {
+      "name": "get-io-share",
+      "description": "Obtiene el enlace público que creaste para la salida o la entrada de una tarea, si existe. Los miembros de solo lectura no pueden usarlo (FORBIDDEN). Retorna: { shareId, publicUrl } o null.",
+      "params": {
+        "nodeId": "ID del nodo tarea.",
+        "io": "Qué io de la tarea: output (salida) o input (entrada)."
+      }
+    },
+    "unshare-io": {
+      "name": "unshare-io",
+      "description": "Revoca un enlace público a la salida o la entrada de una tarea; desde entonces el enlace responde 404. Solo quien lo creó puede revocarlo (FORBIDDEN). Retorna: { ok: true }.",
+      "params": {
+        "shareId": "ID del enlace devuelto por share-io."
+      }
+    }
+  }
+}

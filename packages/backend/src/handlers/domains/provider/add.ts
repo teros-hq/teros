@@ -3,6 +3,7 @@
  */
 
 import type { WsHandlerContext } from "@teros/shared"
+import { isProviderTypeAllowedInEdition } from "@teros/shared"
 import type { ProviderService } from "../../../services/provider-service"
 import { PROVIDER_TYPES_WITHOUT_SECRETS } from "../../../services/provider-service"
 import { HandlerError } from "../../../ws-framework/WsRouter"
@@ -36,6 +37,7 @@ export const VALID_PROVIDER_TYPES = [
   'cloudflare',
   'fireworks',
   'together',
+  'helmcode',
 ]
 
 export function createAddProviderHandler(providerService: ProviderService) {
@@ -49,6 +51,19 @@ export function createAddProviderHandler(providerService: ProviderService) {
 
     if (!VALID_PROVIDER_TYPES.includes(providerType as any)) {
       throw new HandlerError("INVALID_PROVIDER_TYPE", `Invalid providerType: ${providerType}`)
+    }
+
+    // Edition gate (TER-EDITION): the local Ollama provider only exists in the
+    // self-hosted edition — a cloud backend is a shared, CPU-only server nobody
+    // owns, so running "local" models there is meaningless. Rejected BEFORE any
+    // record is created so nothing inactive ever lands in user_providers.
+    // ollama-cloud is unaffected: it is the supported Ollama path in every edition.
+    if (!isProviderTypeAllowedInEdition(providerType)) {
+      throw new HandlerError(
+        "PROVIDER_NOT_AVAILABLE_IN_EDITION",
+        `Provider type '${providerType}' (local Ollama daemon) is only available in the self-hosted edition. ` +
+          `On Teros cloud, use the 'ollama-cloud' provider (hosted models, API key from ollama.com) instead.`,
+      )
     }
 
     const provider = await providerService.addProvider(ctx.userId, {

@@ -66,7 +66,7 @@ describe('PROVIDER_RETENTION coverage', () => {
 
 describe('resolveRetention — tiers', () => {
   it('marks the truly zero-retention providers as zdr', () => {
-    for (const p of ['teros', 'fireworks', 'ollama', 'ollama-cloud', 'cloudflare', 'together']) {
+    for (const p of ['teros', 'fireworks', 'ollama', 'ollama-cloud', 'cloudflare', 'together', 'helmcode']) {
       // `together` is zdr via the account-level ZDR opt-in (enabled for our org,
       // TER-646) — this is what arms the teros→Together failover.
       expect(resolveRetention(p).tier).toBe('zdr');
@@ -83,6 +83,22 @@ describe('resolveRetention — tiers', () => {
     for (const p of ['anthropic-oauth', 'openai-codex-oauth', 'minimax']) {
       expect(resolveRetention(p).tier).toBe('trains');
     }
+  });
+});
+
+describe('resolveRetention — helmcode keeps its EU-specific notice', () => {
+  // Helmcode is ZDR *and* EU-hosted. It must NOT collapse into the generic `zdr`
+  // slug: that copy says nothing is stored, but never says WHERE the data lives,
+  // so the EU-residency half of the claim would silently stop being shown.
+  it('uses its own slug, not the generic zdr one', () => {
+    const info = resolveRetention('helmcode');
+    expect(info.tier).toBe('zdr');
+    expect(info.noticeSlug).toBe('helmcode');
+    expect(info.noticeSlug).not.toBe('zdr');
+  });
+
+  it('does not gate the choice (zdr needs no notice)', () => {
+    expect(retentionNeedsNotice(resolveRetention('helmcode'))).toBe(false);
   });
 });
 
@@ -124,6 +140,38 @@ describe('retentionNeedsNotice', () => {
     expect(retentionNeedsNotice(resolveRetention('ollama'))).toBe(false);
     expect(retentionNeedsNotice(resolveRetention('anthropic'))).toBe(true);
     expect(retentionNeedsNotice(resolveRetention('anthropic-oauth'))).toBe(true);
+  });
+});
+
+describe('resolveRetention — model-level ZDR override (providerConfig.zdr)', () => {
+  // A model marked `providerConfig.zdr: true` in the catalog is ZDR regardless
+  // of the provider's default posture (local Ollama models, enterprise-ZDR
+  // endpoints). `false`/absent never DOWNGRADES a ZDR provider.
+  it('forces zdr on a retains-tier provider', () => {
+    expect(resolveRetention('openai', { zdr: true }).tier).toBe('zdr');
+    expect(resolveRetention('google', { zdr: true }).tier).toBe('zdr');
+  });
+
+  it('forces zdr even on a trains-tier provider (enterprise agreement)', () => {
+    expect(resolveRetention('anthropic-oauth', { zdr: true }).tier).toBe('zdr');
+  });
+
+  it('does not downgrade a zdr provider when the flag is false or absent', () => {
+    expect(resolveRetention('ollama', { zdr: false }).tier).toBe('zdr');
+    expect(resolveRetention('ollama').tier).toBe('zdr');
+    expect(resolveRetention('fireworks', { zdr: false }).tier).toBe('zdr');
+  });
+
+  it('keeps the provider default for retains/trains when the flag is false', () => {
+    expect(resolveRetention('openai', { zdr: false }).tier).toBe('retains');
+    expect(resolveRetention('minimax', { zdr: false }).tier).toBe('trains');
+  });
+
+  it('zhipu useChina (worse posture) still wins over zdr override order — both are explicit config', () => {
+    // useChina routes to the PRC endpoint (trains). If a model ever carried
+    // BOTH flags the China routing is the stronger data-flow statement; the
+    // resolver checks it first. Pin that precedence so it stays deliberate.
+    expect(resolveRetention('zhipu', { useChina: true, zdr: true }).tier).toBe('trains');
   });
 });
 

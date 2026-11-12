@@ -19,15 +19,18 @@ import { useDriveColors, parseOutput, truncate } from './shared';
 // Share File Renderer
 // ============================================================================
 
-interface ShareResult {
+interface SharePermission {
+  id?: string;
+  type?: string;
+  role?: string;
+  emailAddress?: string;
+}
+
+/** share-file returns the bare Drive permission; older shapes wrapped it. */
+interface ShareResult extends SharePermission {
   success?: boolean;
   message?: string;
-  permission?: {
-    id?: string;
-    type?: string;
-    role?: string;
-    emailAddress?: string;
-  };
+  permission?: SharePermission;
   error?: string;
 }
 
@@ -45,15 +48,16 @@ export function ShareFileRenderer({
 
   const parsed = parseOutput<ShareResult>(output || '');
   const result = typeof parsed === 'object' ? parsed : null;
-  const isSuccess = result?.success || result?.permission;
+  const permission = result?.permission ?? (result?.role ? result : undefined);
+  const isSuccess = Boolean(result?.success || permission);
 
   // Get input params
   const inputParsed =
     typeof input === 'string'
       ? parseOutput<{ emailAddress?: string; role?: string }>(input)
       : input;
-  const email = (typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.emailAddress : undefined) || result?.permission?.emailAddress || '';
-  const role = (typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.role : undefined) || result?.permission?.role || 'reader';
+  const email = (typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.emailAddress : undefined) || permission?.emailAddress || '';
+  const role = (typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.role : undefined) || permission?.role || 'reader';
 
   // Badge
   let badge: React.ReactNode = null;

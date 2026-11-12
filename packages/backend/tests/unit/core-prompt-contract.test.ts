@@ -87,3 +87,41 @@ describe("core prompt contract gate (F4·C3)", () => {
     expect(checkPromptContract(contract, "You are a Teros agent. Be helpful.")).toEqual([])
   })
 })
+
+/**
+ * The Terminal + Claude Code section rides EVERY agent's prompt, installed or
+ * not, so it must stay a short pointer: the playbook lives in the guide topic.
+ */
+describe("core prompts — Terminal + Claude Code section", () => {
+  const HEADING = "## Terminal and Claude Code"
+  const MAX_CHARS = 1400
+
+  function section(file: string): string {
+    const text = readPrompt(file)
+    const start = text.indexOf(HEADING)
+    expect(start, `${file} has no "${HEADING}" section`).toBeGreaterThanOrEqual(0)
+    const next = text.indexOf("\n## ", start + HEADING.length)
+    return text.slice(start, next === -1 ? undefined : next)
+  }
+
+  for (const contract of CORE_PROMPT_CONTRACTS) {
+    it(`${contract.file}: the section stays short (≤ ${MAX_CHARS} chars)`, () => {
+      expect(section(contract.file).length).toBeLessThanOrEqual(MAX_CHARS)
+    })
+
+    it(`${contract.file}: the remembered preference is checked before proposing, and the answer is saved`, () => {
+      const s = section(contract.file)
+      const check = s.indexOf("check the user's remembered preference")
+      const propose = s.indexOf("Propose it at most once per conversation")
+      const save = s.indexOf("save it to memory")
+      expect(check).toBeGreaterThanOrEqual(0)
+      expect(propose).toBeGreaterThan(check)
+      expect(save).toBeGreaterThan(propose)
+      expect(s).toContain("`user_preferences`")
+    })
+  }
+
+  it("both cores carry the same section", () => {
+    expect(section("base-agent-core.md")).toBe(section("base-super-agent-core.md"))
+  })
+})

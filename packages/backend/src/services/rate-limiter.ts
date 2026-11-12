@@ -106,6 +106,7 @@ const EXCLUDED_PREFIXES = [
   "/api/event", // MCA internal token
   "/api/mca-event", // MCA internal token
   "/api/feedback", // feedback internal token
+  "/share/", // public share links — content serving, not an API surface
 ]
 
 /** Exact paths never rate-limited. */

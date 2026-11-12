@@ -18,7 +18,7 @@
     },
     "get-my-task": {
       "name": "get-my-task",
-      "description": "Get the task linked to the current conversation (fast path). Returns: { channelId, task: { taskId, title, columnName, columnSlug, running, stopRequested, projectName, progressNotes } | null }. Check stopRequested at every turn; if true, finish current step, add a progress note, call block-my-task, and stop.",
+      "description": "Get the task linked to the current conversation (fast path). Returns: { channelId, task: { taskId, title, description, instructions, columnName, columnSlug, running, stopRequested, projectName, progressNotes, input, output } | null }. Check stopRequested at every turn; if true, finish current step, add a progress note, call block-my-task, and stop.",
       "params": {
         "fields": "Custom subset of fields",
         "includeRaw": "Return full task document"
@@ -26,9 +26,10 @@
     },
     "complete-my-task": {
       "name": "complete-my-task",
-      "description": "Mark your assigned task complete. Moves it to Review (ready for manager review). Works from any column including Blocked. Clears the running flag. Returns: { task: { ...TASK_FIELDS, columnSlug: \"review\" } }.",
+      "description": "Mark your assigned task complete. Moves it to Review (ready for manager review). Works from any column including Blocked. Clears the running flag. Returns: { task: { ...TASK_FIELDS, columnSlug: \"review\" } }. If the task was created by a workflow, pass outputData with the artifact data produced by the task — it will be saved to workflowOutputData before the workflow engine advances.",
       "params": {
         "taskId": "Task ID",
+        "outputData": "Optional output data produced by the task (the deliverable). When the task is linked to a workflow execution, this data is validated against the output gate artifact schema before the workflow advances. Omit for non-workflow tasks.",
         "includeRaw": "Return full task document"
       }
     },
@@ -56,7 +57,8 @@
       "params": {
         "taskId": "Task ID",
         "text": "Progress note text",
-        "includeRaw": "Return full task document"
+        "includeRaw": "Return full task document",
+        "reviewAction": "Set true ONLY when this note is a review verdict posted while reacting to a task_moved→Review event. Enables the single-flight claim so concurrent sessions of yours post at most one review note. Leave unset for normal progress reporting."
       }
     }
   },

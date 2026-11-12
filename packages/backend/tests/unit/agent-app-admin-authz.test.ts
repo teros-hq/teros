@@ -248,7 +248,8 @@ describe("agent.get-apps handler (agent-access gate)", () => {
     const result = await handler(ctx(USER_PLAIN), { agentId: AGENT_OWNED })
 
     expect(result).toMatchObject({ agentId: AGENT_OWNED, apps: [] })
-    expect(mcaService.getAgentApps).toHaveBeenCalledWith(AGENT_OWNED, undefined)
+    // MUW-REQ-12: the caller is the viewer — apps resolve for that user.
+    expect(mcaService.getAgentApps).toHaveBeenCalledWith(AGENT_OWNED, undefined, { userId: USER_PLAIN })
   })
 })
 
@@ -262,7 +263,7 @@ describe("agent.list-providers handler (agent-access gate)", () => {
     })
 
     // The agents collection must only have been hit by canAccessAgent (1 lookup),
-    // never the post-gate `findOne` that reads availableProviders.
+    // never the post-gate `findOne` that reads the agent's model pin.
     const agentsFindOne = db.collection("agents").findOne
     expect(agentsFindOne).toHaveBeenCalledTimes(1)
   })
@@ -272,6 +273,8 @@ describe("agent.list-providers handler (agent-access gate)", () => {
 
     const result = await handler(ctx(USER_PLAIN), { agentId: AGENT_OWNED })
 
-    expect(result).toMatchObject({ agentId: AGENT_OWNED, availableProviders: [], providers: [] })
+    // availableProviders was removed on 2026-10-21 (2-level resolution: pin > user default)
+    expect(result).toMatchObject({ agentId: AGENT_OWNED, providers: [], selectedProviderId: null })
+    expect(result).not.toHaveProperty("availableProviders")
   })
 })

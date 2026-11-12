@@ -4,11 +4,35 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+
+    <!-- Runtime config (WEBCFG-REQ-6): the serving container writes /config.js from its
+         environment. Sync script so it runs before the bundle; Metro and native have no
+         such file and the app falls back to the build-time EXPO_PUBLIC_* values. -->
+    <script src="/config.js"></script>
     
-    <!-- Google Fonts — MCA catalog redesign (DM Sans / Newsreader / JetBrains Mono) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- Teros Design System v0.2.6 — brand fonts.
+         Saans (UI) and Prody (display) are licensed, self-hosted .otf files.
+         Reddit Mono (code) is free, from Google Fonts. -->
+    <link rel="stylesheet" href="/fonts/reddit-mono/reddit-mono.css" />
+    <link rel="stylesheet" href="/fonts/phosphor/regular.css" />
+    <link rel="stylesheet" href="/fonts/phosphor/bold.css" />
+    <link rel="stylesheet" href="/fonts/phosphor/fill.css" />
+    <style>
+      @font-face { font-family: "Saans"; src: url("/fonts/Saans-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+      @font-face { font-family: "Saans"; src: url("/fonts/Saans-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
+      @font-face { font-family: "Saans"; src: url("/fonts/Saans-SemiBold.otf") format("opentype"); font-weight: 600; font-style: normal; font-display: swap; }
+      @font-face { font-family: "Prody"; src: url("/fonts/Prody-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+              /* Ivory Light (trial build: letters, digits and the apostrophe only; every other
+                 glyph is a dot). The face is declared TWICE under the same family: first Prody
+                 for the whole range, then Ivory restricted to its real glyphs — later unicode-range
+                 faces win, so punctuation and accents fall through to Prody while the family name
+                 stays a single "Ivory" (RenderHtml keeps only the first family of a list). */
+              @font-face { font-family: "Ivory"; src: url("/fonts/Prody-Regular.otf") format("opentype"); font-weight: 300 400; font-style: normal; font-display: swap; }
+              @font-face { font-family: "Ivory"; src: url("/fonts/Prody-Regular.otf") format("opentype"); font-weight: 300 400; font-style: italic; font-display: swap; }
+              @font-face { font-family: "Ivory"; src: url("/fonts/Ivory-Light.otf") format("opentype"); font-weight: 300 400; font-style: normal; font-display: swap; unicode-range: U+20, U+2C-39, U+41-5A, U+61-7A, U+2019; }
+              @font-face { font-family: "Ivory"; src: url("/fonts/Ivory-LightItalic.otf") format("opentype"); font-weight: 300 400; font-style: italic; font-display: swap; unicode-range: U+20, U+2C-39, U+41-5A, U+61-7A, U+2019; }
+      /* Phosphor glyph map: the two stylesheet links above (official 2.1.1 styles). */
+    </style>
 
     <!-- SEO Meta Tags -->
     <meta name="description" content="Teros - Plataforma de asistentes IA personalizables con capacidades avanzadas. Automatiza tareas, gestiona proyectos y potencia tu productividad con IA." />
@@ -62,33 +86,39 @@
 
         var root = document.documentElement;
         if (theme === 'light') {
-          root.style.setProperty('--teros-loader-bg', '#EFE9DB');
-          root.style.setProperty('--teros-loader-text', '#1a1a1f');
-          root.style.setProperty('--teros-loader-text-secondary', '#6b7280');
-          root.style.setProperty('--teros-loader-btn-text', '#EFE9DB');
-          root.style.setProperty('--teros-loader-btn-bg', '#1a1a1f');
+          root.style.setProperty('--teros-loader-bg', '#F2F0F7');
+          root.style.setProperty('--teros-loader-text', '#342F3D');
+          root.style.setProperty('--teros-loader-text-secondary', '#797386');
+          root.style.setProperty('--teros-loader-btn-text', '#F2F0F7');
+          root.style.setProperty('--teros-loader-btn-bg', '#342F3D');
         } else {
-          root.style.setProperty('--teros-loader-bg', '#000000');
-          root.style.setProperty('--teros-loader-text', '#ffffff');
-          root.style.setProperty('--teros-loader-text-secondary', '#a1a1aa');
-          root.style.setProperty('--teros-loader-btn-text', '#000000');
-          root.style.setProperty('--teros-loader-btn-bg', '#ffffff');
+          root.style.setProperty('--teros-loader-bg', '#201C27');
+          root.style.setProperty('--teros-loader-text', '#FAF9FC');
+          root.style.setProperty('--teros-loader-text-secondary', '#968FA7');
+          root.style.setProperty('--teros-loader-btn-text', '#201C27');
+          root.style.setProperty('--teros-loader-btn-bg', '#FAF9FC');
         }
 
         // Update meta theme-color to match
         var metaTheme = document.querySelector('meta[name="theme-color"]');
         if (metaTheme) {
-          metaTheme.setAttribute('content', theme === 'light' ? '#EFE9DB' : '#000000');
+          metaTheme.setAttribute('content', theme === 'light' ? '#F2F0F7' : '#201C27');
         }
       })();
     </script>
     
     <title>Teros</title>
     
-    <!-- Teros Design System — Google Fonts (DM Sans, Newsreader, JetBrains Mono) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=Newsreader:ital,opsz,wght@0,6..72,300;1,6..72,300;1,6..72,400&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
+    <!-- Teros Design System v0.2.6 — Reddit Mono (free) + self-hosted Saans/Prody -->
+    <link rel="stylesheet" href="/fonts/reddit-mono/reddit-mono.css" />
+    <link rel="stylesheet" href="/fonts/phosphor/regular.css" />
+    <link rel="stylesheet" href="/fonts/phosphor/bold.css" />
+    <link rel="stylesheet" href="/fonts/phosphor/fill.css" />
+    <style>
+      @font-face { font-family: "Saans"; src: url("/fonts/Saans-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+      @font-face { font-family: "Prody"; src: url("/fonts/Prody-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+      /* Phosphor glyph map: the two stylesheet links above (official 2.1.1 styles). */
+    </style>
     
     <!-- Canonical URL -->
     <link rel="canonical" href="https://os.teros.ai" />

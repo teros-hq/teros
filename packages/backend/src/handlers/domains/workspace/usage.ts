@@ -7,7 +7,7 @@
  * Forces `workspaceId` from the request body so a workspace admin cannot
  * accidentally query other workspaces.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §10
  */
 
 import type { WsHandlerContext } from "@teros/shared"

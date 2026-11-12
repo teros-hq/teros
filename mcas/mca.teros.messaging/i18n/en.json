@@ -2,9 +2,9 @@
   "tools": {
     "send-image": {
       "name": "send-image",
-      "description": "Send an image to the user. The image will be displayed in the chat. Supports public URLs or local file paths.",
+      "description": "DEPRECATED - prefer the universal send-file tool (works for images and every other file type). Send an image to the user; displayed inline in the chat. Supports public URLs or local file paths.",
       "params": {
-        "url": "Public URL of the image (use this OR filePath)",
+        "url": "Public URL of the image, objectId (obj_...) or objects URL (.../objects/obj_...) (use this OR filePath)",
         "filePath": "File path in /workspace/ (e.g., '/workspace/image.png'). This is the shared volume accessible to all MCAs. Use this OR url.",
         "caption": "Optional caption/description for the image",
         "width": "Optional width in pixels",
@@ -13,9 +13,9 @@
     },
     "send-audio": {
       "name": "send-audio",
-      "description": "Send an audio file to the user. The audio will be playable in the chat. Supports public URLs or local file paths.",
+      "description": "DEPRECATED - prefer the universal send-file tool (works for audio and every other file type). Send an audio file to the user; playable in the chat. Supports public URLs or local file paths.",
       "params": {
-        "url": "Public URL of the audio file (use this OR filePath)",
+        "url": "Public URL of the audio, objectId (obj_...) or objects URL (.../objects/obj_...) (use this OR filePath)",
         "filePath": "File path in /workspace/ (e.g., '/workspace/audio.mp3'). This is the shared volume accessible to all MCAs. Use this OR url.",
         "caption": "Optional caption/description for the audio",
         "duration": "Optional duration in seconds",
@@ -24,9 +24,9 @@
     },
     "send-video": {
       "name": "send-video",
-      "description": "Send a video to the user. The video will be playable in the chat. Supports public URLs or local file paths.",
+      "description": "DEPRECATED - prefer the universal send-file tool (works for video and every other file type). Send a video to the user; playable in the chat. Supports public URLs or local file paths.",
       "params": {
-        "url": "Public URL of the video (use this OR filePath)",
+        "url": "Public URL of the video, objectId (obj_...) or objects URL (.../objects/obj_...) (use this OR filePath)",
         "filePath": "File path in /workspace/ (e.g., '/workspace/video.mp4'). This is the shared volume accessible to all MCAs. Use this OR url.",
         "caption": "Optional caption/description for the video",
         "duration": "Optional duration in seconds",
@@ -38,14 +38,14 @@
     },
     "send-file": {
       "name": "send-file",
-      "description": "Send a document or file to the user. The file will be downloadable from the chat. Supports public URLs or local file paths.",
+      "description": "Send ANY file to the user — markdown, images, PDF, audio, video, CSV, JSON, text or any other type. The chat renders each type appropriately (markdown formatted, images inline, PDF readable inline, players for audio/video, tables for CSV, syntax highlight for JSON) and the user always gets the same 4 actions: download, open in FileViewer, fullscreen and share. Prefer this tool over send-image/send-audio/send-video/send-html-file. Supports public URLs or file paths on the shared /workspace volume.",
       "params": {
-        "url": "Public URL of the file (use this OR filePath)",
-        "filePath": "File path in /workspace/ (e.g., '/workspace/document.pdf'). This is the shared volume accessible to all MCAs. Use this OR url.",
+        "url": "Public URL of the file, objectId (obj_...) or objects URL (.../objects/obj_...) (use this OR filePath)",
+        "filePath": "File path in /workspace/ (e.g., '/workspace/report.md'). This is the shared volume accessible to all MCAs. Use this OR url. Volume files are sent as live references: the FileViewer auto-refreshes when the file changes.",
         "filename": "Display name for the file (e.g., 'report.pdf'). Required if using url, optional for filePath.",
         "caption": "Optional caption/description for the file",
-        "mimeType": "Optional MIME type (e.g., 'application/pdf')",
-        "size": "Optional file size in bytes"
+        "mimeType": "Optional MIME type (e.g., 'application/pdf') — inferred from the extension when omitted",
+        "size": "Optional file size in bytes — read from the file when omitted"
       }
     },
     "send-html": {
@@ -59,7 +59,7 @@
     },
     "send-html-file": {
       "name": "send-html-file",
-      "description": "Send an HTML file to the user. The file will be rendered inline in the chat (fetched from its path) AND can be opened in a dedicated FileViewer window that auto-refreshes when the file changes. Use this when you want the user to see a live preview of an HTML file you are editing.",
+      "description": "DEPRECATED — prefer the universal send-file tool (same live FileViewer auto-refresh for HTML and every other file type). Send an HTML file to the user; the file will be rendered inline in the chat and can be opened in a dedicated FileViewer window that auto-refreshes when the file changes.",
       "params": {
         "filePath": "Absolute path to the HTML file (e.g., '/workspace/mockup.html'). The file must exist on the shared volume.",
         "caption": "Optional caption/description for the widget"
@@ -73,11 +73,39 @@
         "content": "Email body content as email-safe HTML. The backend sends it as-is (no wrapping template) and appends a Teros banner at the bottom. See the tool description for HTML formatting guidelines. If contentType is \"text\", line breaks are converted to <br> tags.",
         "contentType": "Format of the content. \"text\" = plain text (will be converted to HTML with line breaks). \"html\" = raw HTML (will be embedded as-is). Default: \"html\"."
       }
+    },
+    "share-file": {
+      "name": "share-file",
+      "description": "Create a PUBLIC share link for a file on the workspace volume. ⚠️ The URL is PUBLIC: ANYONE who has it can view the file content (markdown rendered as a page, HTML as-is, other types served directly) until the share is revoked with unshare-file. Returns { shareId, url } — send the url to the user or via whatsapp send-text / any channel. The FileViewer will show the file as shared. Prefer markdown (.md) or HTML files for readable shared pages.",
+      "params": {
+        "filePath": "File path in /workspace/ (e.g., '/workspace/report.md'). Must be on the shared workspace volume.",
+        "channelId": "Channel that provides the workspace context (e.g. ch_xxx). Defaults to the current conversation channel."
+      }
+    },
+    "unshare-file": {
+      "name": "unshare-file",
+      "description": "Revoke a PUBLIC share link created with share-file. Pass the shareId returned by share-file, or the filePath (the share is looked up in the current workspace). After revocation the URL returns a 404 page — nobody can access the content anymore. The link is public until revoked, so revoke it as soon as sharing is no longer needed.",
+      "params": {
+        "shareId": "Share ID returned by share-file (use this OR filePath).",
+        "filePath": "File path in /workspace/ whose share should be revoked (use this OR shareId). Resolved against the current workspace.",
+        "channelId": "Channel that provides the workspace context (required with filePath when not called from a channel)."
+      }
+    },
+    "get-share": {
+      "name": "get-share",
+      "description": "Check whether a file on the workspace volume currently has a PUBLIC share link. Returns { shared: boolean, shareId?, url? }. Use it to avoid creating a duplicate share, or to find the existing URL before revoking with unshare-file.",
+      "params": {
+        "filePath": "File path in /workspace/ (e.g., '/workspace/report.md').",
+        "channelId": "Channel that provides the workspace context. Defaults to the current conversation channel."
+      }
     }
   },
   "name": "Messaging",
-  "description": "Send multimedia messages to the user: images, audio, video, documents, HTML widgets, and notification emails via Resend",
+  "description": "Send multimedia messages to the user: images, audio, video, documents, HTML widgets, notification emails via Resend, and public share links for workspace files",
   "changelog": [
+    {
+      "notes": "Public share links: share-file / unshare-file / get-share over the backend share.* WS domain (same actions the FileViewer UI uses). The generated URL is public — anyone with it can view the file until revoked."
+    },
     {
       "notes": "Initial release — send images, audio, video, and documents to the chat, plus live HTML previews"
     }

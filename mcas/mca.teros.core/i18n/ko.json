@@ -118,11 +118,11 @@
     },
     "add-workspace-member": {
       "name": "add-workspace-member",
-      "description": "작업 공간에 구성원을 추가합니다.",
+      "description": "이메일로 작업 공간에 구성원을 추가합니다. 이메일이 기존 Teros 계정에 속하면 구성원이 즉시 활성으로 추가됩니다. 그렇지 않으면 대기 중 구성원이 생성되고 초대 이메일이 발송됩니다. 작업 공간 관리자만 이 도구를 사용할 수 있습니다.",
       "params": {
         "workspaceId": "작업 공간 ID",
-        "userId": "추가할 사용자 ID",
-        "role": "구성원의 역할"
+        "email": "초대할 사람의 이메일 주소",
+        "role": "구성원 역할 (owner는 허용되지 않음)"
       }
     },
     "remove-workspace-member": {
@@ -140,13 +140,6 @@
         "workspaceId": "작업 공간 ID",
         "userId": "사용자 ID",
         "role": "구성원에 대한 새 역할"
-      }
-    },
-    "list-apps": {
-      "name": "list-apps",
-      "description": "사용자가 소유한 앱을 나열합니다.",
-      "params": {
-        "workspaceId": "선택 사항: 작업 공간 ID로 앱을 필터링합니다. 제공되지 않으면 모든 작업 공간에서 사용자가 소유한 모든 앱을 나열합니다."
       }
     },
     "get-app": {

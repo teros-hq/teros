@@ -108,7 +108,9 @@ test.describe("autoplay auto-wake cap (TER-650/G2) @usage", () => {
       }>
       const blockEntry = activity.find((a) => a.details?.reason === "auto_wakes_exhausted")
       expect(blockEntry, "there is an activity entry with reason=auto_wakes_exhausted").toBeTruthy()
-      expect(blockEntry?.actor, "block actor = system:autoplay").toBe("system:autoplay")
+      // Attributed to the task's agent since d2d32979b (activity log credits agents, not
+      // "System"); 'system:autoplay' is only the fallback for an unassigned task.
+      expect(blockEntry?.actor, "block actor = the assigned agent").toBe(agentId)
     } finally {
       await wsRequest(terosPage, "board.set-agent-play", {
         projectId,

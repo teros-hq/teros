@@ -151,7 +151,7 @@ export const updateEvent: ToolConfig = {
 
     const needsAttendeeMerge = Boolean(a.addAttendees?.length || a.removeAttendees?.length)
     if (needsAttendeeMerge) {
-      const existing = await wrapCalendarCall(() =>
+      const existing = await wrapCalendarCall(context, () =>
         calendar.events.get({ calendarId, eventId: a.eventId }),
       )
       const current = (existing.data.attendees ?? []).filter(
@@ -183,7 +183,7 @@ export const updateEvent: ToolConfig = {
       })
     }
 
-    const response = await runCalendarCall(() =>
+    const response = await runCalendarCall(context, () =>
       calendar.events.patch({
         calendarId,
         eventId: a.eventId,

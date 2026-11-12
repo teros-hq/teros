@@ -172,3 +172,17 @@ describe("billing.get-subscription — boostPricing (TER-596 I4)", () => {
     expect(res.boostPricing).toBeNull()
   })
 })
+
+describe("billing.get-subscription — non-card methods", () => {
+  test("a Link method is reported (not 'no card on file')", async () => {
+    const db = new InMemoryDb()
+    await seedSub(db)
+    const fake = new FakeStripe()
+    fake.setCard({ type: "link", brand: "link", last4: "", expMonth: 0, expYear: 0, email: "p@x.io" })
+    const svc = new StripePaymentService(db as unknown as Db, fake, "pk_test")
+    await svc.setDefaultPaymentMethod("u1", "pm_link")
+    const handler = createGetSubscriptionHandler(db as unknown as Db, svc, { boostHourPrice: null, boostCurrency: "EUR" })
+    const res = (await handler(ctx("u1"), {})) as any
+    expect(res.paymentMethod).toMatchObject({ type: "link", brand: "link", email: "p@x.io" })
+  })
+})

@@ -1,14 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { colors } from './mca/primitives/colors';
+import { useColors } from './mca/primitives/useColors';
 
 interface TerosLoadingProps {
   size?: number;
   color?: string;
 }
 
-export function TerosLoading({ size = 24, color = colors.indigo }: TerosLoadingProps) {
+export function TerosLoading({ size = 24, color }: TerosLoadingProps) {
+  // Bug 2026-10-06: the default was a FIXED palette color (indigo = Purple/300) —
+  // weak on dark surfaces whenever a caller forgot to pass one. Resolve the ACTIVE
+  // theme's accent instead (Purple/200 dark / Purple/300 light) so a forgotten prop
+  // can never draw a dark-on-dark dot.
+  const c = useColors()
+  const resolvedColor = color ?? c.accent
   const [activeIndex, setActiveIndex] = useState(0);
 
   // Coordinates of the 6 hexagon points
@@ -44,7 +50,7 @@ export function TerosLoading({ size = 24, color = colors.indigo }: TerosLoadingP
           const radius = size * 0.08 * (distance === 0 ? 1.2 : 1);
 
           return (
-            <Circle key={i} cx={point.x} cy={point.y} r={radius} fill={color} opacity={opacity} />
+            <Circle key={i} cx={point.x} cy={point.y} r={radius} fill={resolvedColor} opacity={opacity} />
           );
         })}
       </Svg>

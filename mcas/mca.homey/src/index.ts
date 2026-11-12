@@ -21,6 +21,7 @@ import {
   listDevices,
   setCapability,
   // Flows
+  getFlow,
   listFlows,
   triggerFlow,
   // Zones
@@ -55,6 +56,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies Homey API credentials and connectivity.',
   parameters: {
     type: 'object',
@@ -87,7 +89,7 @@ server.tool('-health-check', {
       }
     } catch (error) {
       builder.addIssue(
-        'CONNECTION_ERROR',
+        'DEPENDENCY_UNAVAILABLE',
         error instanceof Error ? error.message : 'Failed to connect to Homey',
         {
           type: 'user_action',
@@ -119,6 +121,7 @@ server.tool('homey-set-capability', setCapability);
 // =============================================================================
 
 server.tool('homey-list-flows', listFlows);
+server.tool('homey-get-flow', getFlow);
 server.tool('homey-trigger-flow', triggerFlow);
 
 // =============================================================================

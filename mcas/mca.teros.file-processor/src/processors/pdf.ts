@@ -1,5 +1,10 @@
 /**
  * PDF Processor with intelligent chunking
+ *
+ * Estrategia en cascada:
+ * 1. Extracción local de texto (unpdf) — PDFs digitales, sin LLM ni OCR.
+ * 2. OCR local (@teros/ocr, tesseract.js WASM) — PDFs escaneados, sin API key.
+ * 3. LLM vision (Claude) — último recurso si el OCR local falla y hay API key.
  */
 
 import { readFileSync, statSync, writeFileSync } from 'fs';
@@ -10,7 +15,6 @@ import type {
   ClaudeResponse,
   FileProcessor,
   FileProcessorOptions,
-  FileType,
   ProcessorResult,
 } from '../types.js';
 import { type ChunkInfo, cleanupChunks, splitPDFIntoChunks } from '../utils/chunker.js';
@@ -35,13 +39,14 @@ export function hasMeaningfulText(text: string): boolean {
 export class PDFProcessor implements FileProcessor {
   private apiKey: string;
 
-  // apiKey is optional: it is only needed to OCR scanned PDFs via an LLM.
-  // Digital PDFs (the common case) are extracted locally with no LLM at all.
+  // apiKey is optional: it is only needed as a last-resort LLM fallback for
+  // scanned PDFs when local OCR fails. Digital PDFs and most scanned PDFs
+  // are handled locally with no key at all.
   constructor(apiKey = '') {
     this.apiKey = apiKey;
   }
 
-  supportsType(fileType: FileType): boolean {
+  supportsType(fileType: string): boolean {
     return fileType === 'pdf';
   }
 
@@ -52,12 +57,11 @@ export class PDFProcessor implements FileProcessor {
 
     console.log(`📄 Processing PDF: ${basename(filePath)} (${fileSizeMB.toFixed(2)}MB)`);
 
-    // 1) Primary path: extract the text layer locally (no LLM, no provider, no
-    //    cost). This handles the vast majority of PDFs and works even when no
-    //    LLM is configured on the platform.
+    // 1) Primary path: extract the text layer locally (no LLM, no OCR, no
+    //    cost). This handles the vast majority of PDFs.
     const localText = await this.extractLocally(filePath);
     if (localText && hasMeaningfulText(localText)) {
-      console.log(`✅ Extracted ${localText.length} chars locally (no LLM)`);
+      console.log(`✅ Extracted ${localText.length} chars locally (no OCR needed)`);
       const outputPath = `${filePath}.md`;
       writeFileSync(outputPath, localText);
       return {
@@ -72,19 +76,65 @@ export class PDFProcessor implements FileProcessor {
       };
     }
 
-    // 2) No text layer → scanned/image-only PDF. This needs vision (OCR via an
-    //    LLM). Only possible if a system LLM key is configured; otherwise fail
-    //    loud with an actionable message instead of pretending it worked.
-    console.log('🔍 No extractable text layer (likely a scanned PDF)');
-    if (!this.apiKey) {
-      throw new Error(
-        `[NO_TEXT_LAYER] "${basename(filePath)}" looks like a scanned/image-only PDF with no extractable text, ` +
-          'and no system LLM is configured to OCR it. ' +
-          'Re-save the PDF with a text layer (run OCR on it) and try again.',
+    // 2) No text layer → scanned/image-only PDF. Try local OCR first
+    //    (@teros/ocr — tesseract.js WASM, no API key needed).
+    console.log('🔍 No extractable text layer (likely a scanned PDF) — trying local OCR…');
+    try {
+      return await this.processWithLocalOcr(filePath, fileStats.size, startTime);
+    } catch (ocrError) {
+      console.log(
+        `   ⚠️  Local OCR failed: ${ocrError instanceof Error ? ocrError.message : String(ocrError)}`,
       );
     }
 
+    // 3) Local OCR failed → fall back to LLM vision if a key is available.
+    if (!this.apiKey) {
+      throw new Error(
+        `[OCR_FAILED] "${basename(filePath)}" could not be processed: no text layer, ` +
+          'local OCR failed, and no system LLM key is configured as fallback.',
+      );
+    }
+
+    console.log('🤖 Falling back to LLM vision extraction…');
     return this.processWithLlm(filePath, fileSizeMB, fileStats.size, startTime, options);
+  }
+
+  /** OCR local via @teros/ocr (tesseract.js WASM). No API key needed. */
+  private async processWithLocalOcr(
+    filePath: string,
+    fileSize: number,
+    startTime: number,
+  ): Promise<ProcessorResult> {
+    const buffer = readFileSync(filePath);
+    const { extractText: ocrExtract, formatResult } = await import('../vendor/teros-ocr/index.js');
+
+    const result = await ocrExtract(buffer, {
+      languages: ['spa', 'eng'],
+      onProgress: ({ page, totalPages, stage }) => {
+        if (stage === 'ocr') console.log(`  · página ${page}/${totalPages} — OCR…`);
+      },
+    });
+
+    const markdown = formatResult(result, 'markdown');
+    const outputPath = `${filePath}.md`;
+    writeFileSync(outputPath, markdown);
+
+    console.log(
+      `✅ PDF OCR'd locally (${result.pages.length} page(s), ` +
+        `confidence ${result.meanConfidence?.toFixed(0) ?? 'N/A'}%, ` +
+        `${((Date.now() - startTime) / 1000).toFixed(1)}s)`,
+    );
+
+    return {
+      markdown,
+      outputPath,
+      metadata: {
+        inputFile: filePath,
+        fileType: 'pdf',
+        fileSize,
+        processingTime: Date.now() - startTime,
+      },
+    };
   }
 
   /** Fallback: OCR a scanned PDF via the LLM (chunked for large files). */
@@ -95,7 +145,6 @@ export class PDFProcessor implements FileProcessor {
     startTime: number,
     options?: FileProcessorOptions,
   ): Promise<ProcessorResult> {
-    console.log('🤖 Falling back to LLM vision extraction…');
     const shouldChunk = fileSizeMB > MAX_FILE_SIZE_MB;
     const chunkSize = options?.chunkSize || 10;
 

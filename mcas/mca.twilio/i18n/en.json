@@ -1,0 +1,86 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Twilio credentials and API connectivity."
+    },
+    "get-account": {
+      "name": "get-account",
+      "description": "Get Twilio account information including friendly name, status, and current balance."
+    },
+    "list-phone-numbers": {
+      "name": "list-phone-numbers",
+      "description": "List all phone numbers owned by the Twilio account with their capabilities (voice, SMS, MMS, fax).",
+      "params": {
+        "limit": "Maximum number of results (default: 50)"
+      }
+    },
+    "list-available-numbers": {
+      "name": "list-available-numbers",
+      "description": "Search for available phone numbers to purchase in a given country. Optionally filter by area code and capabilities. Use this before buy-phone-number to see options and pricing.",
+      "params": {
+        "countryCode": "ISO 3166-1 alpha-2 country code (e.g. \"US\", \"ES\", \"GB\")",
+        "areaCode": "Optional area code to filter by (e.g. \"415\" for San Francisco)",
+        "smsEnabled": "Only show SMS-capable numbers (default: true)",
+        "voiceEnabled": "Only show voice-capable numbers (default: false)",
+        "limit": "Maximum number of results (default: 10)"
+      }
+    },
+    "buy-phone-number": {
+      "name": "buy-phone-number",
+      "description": "Purchase a phone number from Twilio. IMPORTANT: This spends real money from the account balance — always confirm with the user before buying. Use list-available-numbers first to find options.",
+      "params": {
+        "phoneNumber": "The exact E.164 phone number to purchase (from list-available-numbers)",
+        "friendlyName": "Optional friendly name for the number",
+        "voiceUrl": "Optional webhook URL for incoming voice calls",
+        "smsUrl": "Optional webhook URL for incoming SMS"
+      }
+    },
+    "send-sms": {
+      "name": "send-sms",
+      "description": "Send an SMS message from a Twilio phone number. The fromNumber must be a number owned by the account with SMS capability. Costs apply per message sent.",
+      "params": {
+        "to": "Destination phone number in E.164 format (e.g. +34600123456)",
+        "fromNumber": "Twilio phone number to send from (E.164). Must have SMS capability.",
+        "body": "Message text (up to 1600 characters)"
+      }
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "List SMS message history for the account. Can filter by sender, recipient, or date range.",
+      "params": {
+        "to": "Filter by recipient number (E.164)",
+        "fromNumber": "Filter by sender number (E.164)",
+        "dateSentAfter": "Filter messages sent after this date (YYYY-MM-DD)",
+        "dateSentBefore": "Filter messages sent before this date (YYYY-MM-DD)",
+        "limit": "Maximum number of results (default: 20)"
+      }
+    },
+    "list-calls": {
+      "name": "list-calls",
+      "description": "List call history for the account. Can filter by caller, recipient, status, or date range.",
+      "params": {
+        "to": "Filter by recipient number (E.164)",
+        "fromNumber": "Filter by caller number (E.164)",
+        "status": "Filter by call status: queued, ringing, in-progress, completed, busy, failed, no-answer, canceled",
+        "startTimeAfter": "Filter calls started after this date (YYYY-MM-DD)",
+        "startTimeBefore": "Filter calls started before this date (YYYY-MM-DD)",
+        "limit": "Maximum number of results (default: 20)"
+      }
+    },
+    "get-call": {
+      "name": "get-call",
+      "description": "Get detailed information about a specific call, including duration, price, and recording URL if available.",
+      "params": {
+        "callSid": "The Call SID (starts with CA...)"
+      }
+    }
+  },
+  "name": "Twilio",
+  "description": "Twilio integration - manage phone numbers, send SMS, and track calls directly from your Twilio account",
+  "changelog": [
+    {
+      "notes": "Initial release — manage Twilio phone numbers, send SMS, browse message/call history, and monitor account balance"
+    }
+  ]
+}

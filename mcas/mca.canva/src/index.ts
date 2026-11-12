@@ -70,6 +70,7 @@ const server = new McaServer({
 // ============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description:
     'Internal health check tool. Verifies OAuth credentials and connectivity to Canva.',
   parameters: { type: 'object', properties: {} },

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { extractReasoningDelta } from './reasoningDelta';
 
 describe('extractReasoningDelta (TER-650)', () => {

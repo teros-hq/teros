@@ -1,30 +1,34 @@
+# Backend image (also used by the container-agent service with another CMD).
+#
+# Size discipline: this image is published for every release, so it only
+# carries what the backend needs at runtime. The frontend, e2e and MCA
+# workspaces are NOT part of the install (their dependencies used to be hoisted
+# in here: ~1 GB of Expo, Tamagui, React Native and per-MCA node_modules). MCA
+# code runs in the mca-runtime images, which bring their own dependencies; the
+# backend only reads the MCAs' manifests, tool definitions and static files.
+
 # Stage 1: Build
-FROM node:20-alpine AS builder
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
 
 WORKDIR /app
 
-# Install build tools required for native modules (node-pty, etc.)
+# Install build tools required for native modules (node-pty, bcrypt, sharp)
 RUN apk add --no-cache python3 make g++
 
 # Copy workspace root files
 COPY package.json yarn.lock ./
 
-# Copy only the package.json files needed to resolve the workspace
+# Only the workspaces the backend is built from. @teros/testing is a backend
+# devDependency, so its manifest must exist for the install to resolve.
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/core/package.json ./packages/core/
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/mca-sdk/package.json ./packages/mca-sdk/
 COPY packages/testing/package.json ./packages/testing/
-COPY packages/app/package.json ./packages/app/
-COPY packages/e2e/package.json ./packages/e2e/
+COPY packages/workflows/package.json ./packages/workflows/
 
-# Stub out MCA package.json files so yarn workspace resolution works
-# (yarn.lock references them but we don't need their deps in the backend image)
-COPY mcas ./mcas
-
-# Install all workspace dependencies
-# --no-frozen-lockfile: yarn.lock has host-absolute paths for local MCAs that
-# differ inside Docker; we let yarn regenerate those entries.
+# --no-frozen-lockfile: the lockfile covers the whole monorepo (app, e2e, MCAs);
+# with those workspaces absent yarn prunes their entries instead of failing.
 RUN yarn install --no-frozen-lockfile --ignore-engines
 
 # Copy source code
@@ -33,26 +37,31 @@ COPY packages/core ./packages/core
 COPY packages/backend ./packages/backend
 COPY packages/mca-sdk ./packages/mca-sdk
 COPY packages/testing ./packages/testing
-COPY scripts ./scripts
+COPY packages/workflows ./packages/workflows
 
-# Build shared package first
+# Build the TS packages in dependency order
 WORKDIR /app/packages/shared
 RUN yarn build
-
-# Build core package
 WORKDIR /app/packages/core
 RUN yarn build
-
-# Build mca-sdk package
 WORKDIR /app/packages/mca-sdk
 RUN yarn build
-
-# Build backend
+WORKDIR /app/packages/workflows
+RUN yarn build
 WORKDIR /app/packages/backend
 RUN yarn build
 
+# Drop devDependencies (typescript, vitest, @types, …) now that dist/ exists.
+# tsx itself is installed globally in the runtime stage.
+WORKDIR /app
+RUN yarn install --production --no-frozen-lockfile --ignore-engines && yarn cache clean
+
+# MCAs: manifests, tool definitions, static assets and sources for the boot sync.
+# They are not workspaces of this install, so no node_modules come with them.
+COPY mcas ./mcas
+
 # Stage 2: Production
-FROM node:20-alpine
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
 WORKDIR /app
 
@@ -83,13 +92,16 @@ COPY --from=builder /app/packages/mca-sdk/dist ./packages/mca-sdk/dist
 COPY --from=builder /app/packages/mca-sdk/src ./packages/mca-sdk/src
 COPY --from=builder /app/packages/mca-sdk/package.json ./packages/mca-sdk/
 
+# Copy workflows package (compiled + source for resolution)
+COPY --from=builder /app/packages/workflows/dist ./packages/workflows/dist
+COPY --from=builder /app/packages/workflows/src ./packages/workflows/src
+COPY --from=builder /app/packages/workflows/package.json ./packages/workflows/
+
 # Copy backend package (compiled + source for sync scripts)
 COPY --from=builder /app/packages/backend/dist ./packages/backend/dist
 COPY --from=builder /app/packages/backend/src ./packages/backend/src
 COPY --from=builder /app/packages/backend/package.json ./packages/backend/
-
-# Copy root scripts needed for sync
-COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/packages/backend/static ./packages/backend/static
 
 # Copy MCAs (needed for MCA boot sync and tool definitions)
 COPY --from=builder /app/mcas ./mcas
@@ -99,7 +111,8 @@ RUN rm -rf node_modules/@teros && \
     mkdir -p node_modules/@teros && \
     ln -s /app/packages/shared node_modules/@teros/shared && \
     ln -s /app/packages/core node_modules/@teros/core && \
-    ln -s /app/packages/mca-sdk node_modules/@teros/mca-sdk
+    ln -s /app/packages/mca-sdk node_modules/@teros/mca-sdk && \
+    ln -s /app/packages/workflows node_modules/@teros/workflows
 
 # Set working directory to backend
 WORKDIR /app/packages/backend

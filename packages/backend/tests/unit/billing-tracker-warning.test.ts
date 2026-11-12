@@ -14,6 +14,9 @@ import { describe, expect, it } from 'bun:test'
 import { AgentHoursTracker } from '../../src/services/agent-hours-tracker'
 import { boostsCollectionFake } from './_billing-fakes'
 
+/** Every rolled-up hour counts as final here (the billable horizon has its own tests). */
+const billAllHours = async () => new Date(8_640_000_000_000_000)
+
 const stubLogger = { info() {}, warn() {}, error() {}, debug() {} } as any
 
 const HOUR_MS = 3_600_000
@@ -132,7 +135,7 @@ function proSub(over: Record<string, any> = {}) {
 }
 
 function tracker(db: any, spy: any) {
-  return new AgentHoursTracker(db, stubLogger, null, undefined, spy)
+  return new AgentHoursTracker(db, stubLogger, null, undefined, spy, billAllHours)
 }
 
 describe('AgentHoursTracker — 80% usage warning (FASE 6a)', () => {
@@ -205,7 +208,7 @@ describe('AgentHoursTracker — 80% usage warning (FASE 6a)', () => {
 
   it('is a no-op when no publisher is wired (warnings disabled)', async () => {
     const sub = proSub()
-    await new AgentHoursTracker(makeDb(sub, 65), stubLogger, null, undefined, null).runOnce()
+    await new AgentHoursTracker(makeDb(sub, 65), stubLogger, null, undefined, null, billAllHours).runOnce()
     expect(sub.warned80At).toBeUndefined() // never claimed
   })
 

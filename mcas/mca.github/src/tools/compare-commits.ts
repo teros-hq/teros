@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 const BASEHEAD_PATTERN = /^[\w.\-/:]+\.\.\.[\w.\-/:]+$/;
 
@@ -29,6 +29,7 @@ export const compareCommits: ToolConfig = {
       per_page?: number;
       page?: number;
     };
+    assertOwnerRepo(owner, repo);
     if (!BASEHEAD_PATTERN.test(basehead)) {
       throw new Error(
         '`basehead` must match `BASE...HEAD` (e.g. `main...feat/x` or `octocat:main...alice:patch`).',

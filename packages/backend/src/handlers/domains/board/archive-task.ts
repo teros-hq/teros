@@ -62,6 +62,7 @@ export function createArchiveTaskHandler(
         tags: result.tags,
         columnId: result.columnId,
         archived,
+        actorUserId: ctx.userId,
       }
       boardSubscriptionService.notifySubscribers(result.boardId, {
         eventType: 'board.task_archived',

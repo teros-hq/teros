@@ -1,19 +1,18 @@
 /**
- * MCAs window wrapper — owns the tab navigation chrome (Phase 2).
+ * MCAs window wrapper — owns the page head + tab navigation chrome (Phase 2).
  *
- * Renders a segmented-control tab bar ABOVE the content surface (so it stays visible
- * while the Management view loads/errors), then conditionally renders the unchanged
- * Management view (McasWindowContent) or the MCA Status placeholder. The inactive tab
- * is unmounted (conditional render). All copy is i18n-driven; no new dependency — the
- * tab bar is built from Tamagui XStack + Buttons.
+ * Renders the OS-prototype page head (eyebrow · serif title · lead) with the Controls / Health
+ * `PTabs` as its action, ABOVE the content surface (so it stays visible while the Management view
+ * loads/errors), then conditionally renders the Management view (McasWindowContent) or the MCA
+ * Status dashboard. The inactive tab is unmounted (conditional render). All copy is i18n-driven.
  */
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Button, XStack, YStack } from "tamagui"
+import { View } from "react-native"
 import { McaStatusDashboard } from "./McaStatusDashboard"
 import { McasWindowContent } from "./McasWindowContent"
 import { useColors } from "../../components/mca/primitives/useColors"
-import { colors as semanticColors } from "../../components/mca/primitives/colors"
+import { PageHead, PTabs, usePagePadding } from "../../components/ui/ds"
 
 type Tab = "management" | "status"
 
@@ -21,45 +20,40 @@ export function McasWindow({ windowId }: { windowId: string }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<Tab>("management")
   const c = useColors()
+  const p = usePagePadding()
 
   return (
-    <YStack flex={1} backgroundColor="$background">
-      <XStack
-        backgroundColor={c.bgInner}
-        borderRadius="$4"
-        borderWidth={1}
-        borderColor={c.border}
-        padding="$2"
-        gap="$2"
+    <View style={{ flex: 1, backgroundColor: c.bgSheet }}>
+      <View
+        style={{
+          paddingHorizontal: p.h,
+          paddingTop: p.t,
+          width: "100%",
+          maxWidth: 1072,
+          alignSelf: "center",
+        }}
       >
-        <Button
-          size="$3"
-          backgroundColor={tab === "management" ? semanticColors.indigoGlow : c.bgInner}
-          borderWidth={1}
-          borderColor={tab === "management" ? semanticColors.indigo : c.borderStrong}
-          color={tab === "management" ? semanticColors.indigo : "$gray11"}
-          fontWeight={tab === "management" ? "600" : "500"}
-          hoverStyle={tab === "management" ? undefined : { backgroundColor: c.bgCardHover }}
-          pressStyle={{ opacity: 0.8 }}
-          onPress={() => setTab("management")}
-        >
-          {t("mca.status.tabManagement")}
-        </Button>
-        <Button
-          size="$3"
-          backgroundColor={tab === "status" ? semanticColors.indigoGlow : c.bgInner}
-          borderWidth={1}
-          borderColor={tab === "status" ? semanticColors.indigo : c.borderStrong}
-          color={tab === "status" ? semanticColors.indigo : "$gray11"}
-          fontWeight={tab === "status" ? "600" : "500"}
-          hoverStyle={tab === "status" ? undefined : { backgroundColor: c.bgCardHover }}
-          pressStyle={{ opacity: 0.8 }}
-          onPress={() => setTab("status")}
-        >
-          {t("mca.status.tabStatus")}
-        </Button>
-      </XStack>
+        <PageHead
+          eyebrow={t("mcas.eyebrow", { defaultValue: "MCAs" })}
+          title={t("windows.mcaCatalog")}
+          lead={t("windows.mcaCatalogSub")}
+          actions={
+            <PTabs<Tab>
+              value={tab}
+              onChange={setTab}
+              items={[
+                {
+                  key: "management",
+                  label: t("mca.status.tabManagement"),
+                  icon: "sliders-horizontal",
+                },
+                { key: "status", label: t("mca.status.tabStatus"), icon: "heartbeat" },
+              ]}
+            />
+          }
+        />
+      </View>
       {tab === "management" ? <McasWindowContent windowId={windowId} /> : <McaStatusDashboard />}
-    </YStack>
+    </View>
   )
 }

@@ -469,6 +469,74 @@ describe('authentication handshake', () => {
     expect(t.getSessionToken()).toBe('tok_refreshed') // updated from the ack
   })
 
+  // F2: web reload path — no in-memory token exists (it is not readable by
+  // JS), so the transport authenticates with the httpOnly cookie carried on
+  // the WS upgrade request. The auth frame carries NO credential.
+  it('sends the credential-less cookie auth frame when setCookieAuth(true) and no token is set', async () => {
+    const t = new WsTransport()
+    const connected = jest.fn()
+    t.subscribe('connected', connected)
+    t.setCookieAuth(true)
+    expect(t.isCookieAuth()).toBe(true)
+    t.connect('wss://example/ws')
+    const ws = FakeWebSocket.last()
+    ws.simulateOpen()
+
+    // The frame must not contain any token — the cookie is the credential
+    expect(ws.sentJson()[0]).toEqual({ type: 'auth', method: 'cookie' })
+    expect(JSON.stringify(ws.sentJson()[0])).not.toContain('token')
+    expect(connected).not.toHaveBeenCalled() // not until auth completes
+
+    // auth_success without a sessionToken (F2: the server never echoes the
+    // token back to a cookie-authenticated client)
+    ws.simulateMessage({ type: 'auth_success', userId: 'user_abc' })
+    await flush()
+
+    expect(connected).toHaveBeenCalledTimes(1)
+    expect(t.getSessionToken()).toBeNull()
+  })
+
+  it('an explicit token overrides cookie auth (login/OAuth/impersonation/native)', () => {
+    const t = new WsTransport()
+    t.setCookieAuth(true)
+    t.setSessionToken('tok_explicit')
+    expect(t.isCookieAuth()).toBe(false)
+    expect(t.getSessionToken()).toBe('tok_explicit')
+  })
+
+  it('cookie auth failure emits auth_failed and does not reconnect', async () => {
+    const t = new WsTransport()
+    const authFailed = jest.fn()
+    t.subscribe('auth_failed', authFailed)
+    t.setCookieAuth(true)
+    t.connect('wss://example/ws')
+    const ws = FakeWebSocket.last()
+    ws.simulateOpen()
+
+    ws.simulateMessage({ type: 'auth_error', error: 'Invalid or expired session' })
+    await flush()
+
+    expect(authFailed).toHaveBeenCalledTimes(1)
+    expect(t.getState()).toBe(ConnectionState.ERROR)
+  })
+
+  it('cookie auth failure stops offering the cookie: the next connect is anonymous', async () => {
+    const t = new WsTransport()
+    const authFailed = jest.fn()
+    t.subscribe('auth_failed', authFailed)
+    t.setCookieAuth(true)
+    connectOpen(t).simulateMessage({ type: 'auth_error', error: 'Invalid or expired session' })
+    await flush()
+    expect(t.isCookieAuth()).toBe(false)
+
+    // The sign-in screen reconnects: no auth frame, no second auth_failed.
+    const ws2 = connectOpen(t)
+    await flush()
+    expect(ws2.sentJson()).toEqual([])
+    expect(authFailed).toHaveBeenCalledTimes(1)
+    expect(t.getState()).toBe(ConnectionState.CONNECTED)
+  })
+
   it('on auth failure: clears token, stops reconnect, ERROR, emits auth_failed', async () => {
     const t = new WsTransport()
     const authFailed = jest.fn()
@@ -501,6 +569,67 @@ describe('authentication handshake', () => {
   it('authenticate() rejects when not connected', async () => {
     const t = new WsTransport()
     await expect(t.authenticate('tok')).rejects.toThrow('not connected')
+  })
+
+  it('routes an auth_error carrying an email challenge to email_verification_required, not auth_error', async () => {
+    const t = new WsTransport()
+    const ws = connectOpen(t)
+    const verification = jest.fn()
+    const authError = jest.fn()
+    t.subscribe('email_verification_required', verification)
+    t.subscribe('auth_error', authError)
+
+    ws.simulateMessage({
+      type: 'auth_error',
+      error: 'Email verification required',
+      errorCode: 'email_verification_required',
+      emailVerification: { challengeToken: 'chl_1', email: 'dana@example.com' },
+    })
+    await flush()
+
+    expect(verification).toHaveBeenCalledWith({
+      challengeToken: 'chl_1',
+      email: 'dana@example.com',
+      message: 'Email verification required',
+    })
+    expect(authError).not.toHaveBeenCalled()
+    expect(t.getState()).toBe(ConnectionState.CONNECTED)
+  })
+
+  it('sends the verify_email and resend_email_verification frames', async () => {
+    const t = new WsTransport()
+    const ws = connectOpen(t)
+
+    await t.verifyEmail('chl_1', '424242')
+    expect(ws.lastSent()).toEqual({ type: 'auth', method: 'verify_email', challengeToken: 'chl_1', code: '424242' })
+
+    await t.resendEmailVerification('chl_1')
+    expect(ws.lastSent()).toEqual({ type: 'auth', method: 'resend_email_verification', challengeToken: 'chl_1' })
+  })
+
+  it('dev auto-login: sends the credential-less dev frame; auth_success authenticates as usual', async () => {
+    const t = new WsTransport()
+    const ws = connectOpen(t) // no token -> no token frame first
+    const authenticated = jest.fn()
+    t.subscribe('authenticated', authenticated)
+
+    await t.authenticateDev()
+    expect(ws.sentJson()).toEqual([{ type: 'auth', method: 'dev' }])
+
+    ws.simulateMessage({ type: 'auth_success', userId: 'user_dev', sessionToken: 'tok_dev' })
+    await flush()
+    expect(authenticated).toHaveBeenCalledTimes(1)
+    expect(t.getSessionToken()).toBe('tok_dev')
+  })
+
+  it('dev auto-login: rejects when not connected', async () => {
+    await expect(new WsTransport().authenticateDev()).rejects.toThrow('not connected')
+  })
+
+  it('verifyEmail() and resendEmailVerification() reject when not connected', async () => {
+    const t = new WsTransport()
+    await expect(t.verifyEmail('chl_1', '424242')).rejects.toThrow('not connected')
+    await expect(t.resendEmailVerification('chl_1')).rejects.toThrow('not connected')
   })
 })
 
@@ -697,5 +826,48 @@ describe('regressions', () => {
     ws2.simulateMessage(ackFrame(1000, 500))
     jest.advanceTimersByTime(500) // a SINGLE missed pong on the fresh connection
     expect(dead).not.toHaveBeenCalled() // 1 < maxMissedPongs — must survive
+  })
+})
+
+// ============================================================================
+// Server restart (1012) — blue/green handoff, spec DEP-REQ-5
+// ============================================================================
+
+describe('server restart close code (1012)', () => {
+  it('[DEP-AC-7] reconnects within 1500ms of a 1012 close without consuming an attempt or emitting error', () => {
+    const t = new WsTransport({ initialReconnectDelay: 10_000, maxReconnectAttempts: 1 })
+    const errored = jest.fn()
+    t.subscribe('error', errored)
+    connectOpen(t)
+
+    FakeWebSocket.last().simulateServerClose(1012, 'server-restart')
+    expect(t.getState()).toBe(ConnectionState.RECONNECTING)
+    expect(t.getReconnectAttempts()).toBe(0) // not a network drop: no attempt spent
+
+    jest.advanceTimersByTime(249)
+    expect(FakeWebSocket.instances).toHaveLength(1) // jitter floor: never before 250ms
+    jest.advanceTimersByTime(1500 - 249)
+    expect(FakeWebSocket.instances).toHaveLength(2) // reconnected well before the 10s backoff
+    expect(errored).not.toHaveBeenCalled()
+  })
+
+  it('[DEP-AC-7] a 1006 close still takes the exponential backoff path', () => {
+    const t = new WsTransport({ initialReconnectDelay: 10_000, maxReconnectAttempts: 3 })
+    connectOpen(t)
+    FakeWebSocket.last().simulateServerClose(1006)
+    expect(t.getReconnectAttempts()).toBe(1)
+    jest.advanceTimersByTime(1500)
+    expect(FakeWebSocket.instances).toHaveLength(1) // nothing yet: backoff is 10s
+    jest.advanceTimersByTime(8500)
+    expect(FakeWebSocket.instances).toHaveLength(2)
+  })
+
+  it('[DEP-AC-7] a 1012 close after disconnect() does not reconnect (shouldReconnect is off)', () => {
+    const t = new WsTransport({ initialReconnectDelay: 10 })
+    connectOpen(t)
+    t.disconnect()
+    FakeWebSocket.last().simulateServerClose(1012)
+    jest.advanceTimersByTime(2000)
+    expect(FakeWebSocket.instances).toHaveLength(1)
   })
 })

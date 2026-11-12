@@ -15,25 +15,31 @@
  * Auth: requireSystemAdmin enforced server-side (users.role ∈ admin|super).
  */
 
-import { Activity } from '@tamagui/lucide-icons'
-import type { WindowTypeDefinition } from '../../services/windowRegistry'
-import { AgentActivityContent, type AgentActivityProps } from './AgentActivityContent'
+import { Activity } from "@tamagui/lucide-icons"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+import type { AgentActivityProps } from "./AgentActivityContent"
+const AgentActivityContent = lazyWithRetry(() =>
+  import("./AgentActivityContent").then((m) => ({ default: m.AgentActivityContent })),
+)
 
 // Accepts the optional drill/deep-link props (period + fixed bucket range).
 export type AgentUsageWindowProps = AgentActivityProps
 
 export const agentUsageWindowDefinition: WindowTypeDefinition<AgentUsageWindowProps> = {
-  type: 'agent-usage',
-  displayName: 'Agent Activity',
+  type: "agent-usage",
+  audience: "admin",
+  displayName: "Agent Activity",
   icon: Activity,
-  color: '#3B82F6',
+  phIcon: "pulse",
+  color: "#6F27FF",
   component: AgentActivityContent,
 
   defaultSize: { width: 1100, height: 760 },
   minSize: { width: 700, height: 480 },
 
-  getTitle: () => 'Agent Activity',
-  getSubtitle: () => 'Sessions, tools & hourly activity',
+  getTitle: () => "Agent Activity",
+  getSubtitle: () => "Sessions, tools & hourly activity",
 
   serialize: () => ({}),
   deserialize: () => ({}),

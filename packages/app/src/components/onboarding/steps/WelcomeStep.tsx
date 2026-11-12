@@ -9,12 +9,12 @@
 
 import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { Animated, Easing, Image } from "react-native"
-import { Text, XStack, YStack } from "tamagui"
+import { Animated, Easing, Image, View } from "react-native"
 import { TerosLogo } from "../../TerosLogo"
-import { colors as semanticColors } from "../../mca/primitives/colors"
 import { useColors } from "../../mca/primitives/useColors"
+import { Badge, SectionLabel, T } from "../../ui/ds"
 import type { StepFooterConfig } from "../StepFooter"
+import { type OnboardingStepId, setupItems } from "../onboardingSteps"
 
 // ── Animation hooks ────────────────────────────────────────────────────────────
 
@@ -60,63 +60,62 @@ function useInstantIn(trigger: boolean) {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-const SETUP_STEP_KEYS = [
-  { n: "1", labelKey: "onboarding.setupStep1Label", subKey: "onboarding.setupStep1Sub" },
-  { n: "2", labelKey: "onboarding.setupStep2Label", subKey: "onboarding.setupStep2Sub" },
-  { n: "3", labelKey: "onboarding.setupStep3Label", subKey: "onboarding.setupStep3Sub" },
-]
-
-function SetupPreview() {
+/** ONB-REQ-9: exactly the steps of this run after Welcome. */
+function SetupPreview({ steps }: { steps: OnboardingStepId[] }) {
   const { t } = useTranslation()
   const c = useColors()
+  const SETUP_STEP_KEYS = setupItems(steps).map((it, i) => ({
+    n: String(i + 1),
+    labelKey: it.labelKey,
+    subKey: it.subKey,
+  }))
+  if (SETUP_STEP_KEYS.length === 0) return null
   return (
-    <YStack gap={8}>
-      <Text
-        fontSize={11}
-        fontWeight="600"
-        color={c.text2}
-        textTransform="uppercase"
-        letterSpacing={1}
-      >
-        {t('onboarding.whatWeWillSetUp')}
-      </Text>
-      {SETUP_STEP_KEYS.map((s) => (
-        <XStack
-          key={s.n}
-          gap={12}
-          alignItems="center"
-          padding={12}
-          backgroundColor={c.bgInner}
-          borderWidth={1}
-          borderColor={c.border}
-          borderRadius={8}
-        >
-          <YStack
-            width={26}
-            height={26}
-            borderRadius={13}
-            backgroundColor={semanticColors.indigoGlow}
-            borderWidth={1}
-            borderColor={`${semanticColors.indigo}33`}
-            justifyContent="center"
-            alignItems="center"
-            flexShrink={0}
+    <View>
+      <SectionLabel
+        label={t("onboarding.whatWeWillSetUp")}
+        count={SETUP_STEP_KEYS.length}
+        style={{ marginTop: 0, marginBottom: 10 }}
+      />
+      <View style={{ borderRadius: 16, backgroundColor: c.nest, overflow: "hidden" }}>
+        {SETUP_STEP_KEYS.map((s, i) => (
+          <View
+            key={s.n}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              paddingVertical: 10,
+              paddingHorizontal: 14,
+              borderTopWidth: i > 0 ? 1 : 0,
+              borderTopColor: c.border,
+            }}
           >
-            <Text fontSize={11} fontWeight="700" color={semanticColors.indigo}>
-              {s.n}
-            </Text>
-          </YStack>
-          <YStack flex={1}>
-            <Text fontSize={13} fontWeight="600" color={c.text}>
-              {t(s.labelKey)}
-            </Text>
-            <Text fontSize={11} color={c.text2}>
-              {t(s.subKey)}
-            </Text>
-          </YStack>
-        </XStack>
-      ))}
-    </YStack>
+            <View
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 13,
+                backgroundColor: c.tile,
+                justifyContent: "center",
+                alignItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              <T step="code" tone="accent" style={{ fontSize: 11 }}>
+                {s.n}
+              </T>
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <T step="sm">{t(s.labelKey)}</T>
+              <T step="12" tone="text3">
+                {t(s.subKey)}
+              </T>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
   )
 }
 
@@ -136,70 +135,71 @@ function IriaCard({ agentName, agentAvatarUrl }: IriaCardProps) {
     .toUpperCase()
 
   return (
-    <YStack
-      padding={18}
-      backgroundColor={semanticColors.indigoGlow}
-      borderWidth={1}
-      borderColor={`${semanticColors.indigo}33`}
-      borderRadius={14}
-      gap={12}
+    <View
+      style={{
+        padding: 16,
+        backgroundColor: c.tint.i.bg,
+        borderWidth: 1,
+        borderColor: c.tint.i.bd,
+        borderRadius: 16,
+        gap: 12,
+      }}
     >
-      <XStack gap={14} alignItems="center">
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
         {agentAvatarUrl ? (
           <Image
             source={{ uri: agentAvatarUrl }}
-            style={{ width: 52, height: 52, borderRadius: 26 }}
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              borderWidth: 2,
+              borderColor: c.borderAccent,
+            }}
           />
         ) : (
-          <YStack
-            width={52}
-            height={52}
-            borderRadius={26}
-            backgroundColor={semanticColors.indigoGlow}
-            borderWidth={1.5}
-            borderColor={`${semanticColors.indigo}66`}
-            justifyContent="center"
-            alignItems="center"
+          <View
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              backgroundColor: c.bgStep,
+              borderWidth: 2,
+              borderColor: c.borderAccent,
+              justifyContent: "center",
+              alignItems: "center",
+            }}
           >
-            <Text fontSize={18} fontWeight="700" color={semanticColors.indigo}>
+            <T step="hsm" tone="accent">
               {initials || "AI"}
-            </Text>
-          </YStack>
+            </T>
+          </View>
         )}
-        <YStack flex={1} gap={2}>
-          <XStack alignItems="center" gap={6}>
-            <Text fontSize={15} fontWeight="700" color={c.text}>
-              {agentName}
-            </Text>
-            <YStack
-              paddingHorizontal={7}
-              paddingVertical={2}
-              borderRadius={4}
-              backgroundColor={semanticColors.indigoGlow}
-              borderWidth={1}
-              borderColor={`${semanticColors.indigo}40`}
-            >
-              <Text fontSize={10} fontWeight="600" color={semanticColors.indigo} letterSpacing={0.5}>
-                {t('onboarding.yourAgent')}
-              </Text>
-            </YStack>
-          </XStack>
-          <Text fontSize={12} color={c.text2}>
-            {t('onboarding.agentReadyToHelp')}
-          </Text>
-        </YStack>
-      </XStack>
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <T step="base">{agentName}</T>
+            <Badge tone="i" pill cap>
+              {t("onboarding.yourAgent")}
+            </Badge>
+          </View>
+          <T step="12" tone="text3">
+            {t("onboarding.agentReadyToHelp")}
+          </T>
+        </View>
+      </View>
 
-      <Text fontSize={13} color={c.text2} lineHeight={20}>
-        {t('onboarding.agentIntro', { agentName })}
-      </Text>
-    </YStack>
+      <T step="sm" tone="text2" style={{ lineHeight: 19 }}>
+        {t("onboarding.agentIntro", { agentName })}
+      </T>
+    </View>
   )
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
 interface WelcomeStepProps {
+  /** Steps of this run (ONB-REQ-5), for the setup list. */
+  steps: OnboardingStepId[]
   agentName: string
   agentAvatarUrl?: string
   animateIn: boolean
@@ -209,6 +209,7 @@ interface WelcomeStepProps {
 }
 
 export function WelcomeStep({
+  steps,
   agentName,
   agentAvatarUrl,
   animateIn,
@@ -227,44 +228,38 @@ export function WelcomeStep({
     setFooterConfig({
       showBack: false,
       showSkip: false,
-      continueLabel: t('onboarding.letsGetStarted'),
+      continueLabel: t("onboarding.letsGetStarted"),
       continueDisabled: false,
     })
     registerContinueHandler(onComplete)
   }, [setFooterConfig, registerContinueHandler, onComplete, t])
 
   return (
-    <YStack gap={28} paddingBottom={8}>
-      <YStack alignItems="center" gap={16} paddingTop={12}>
+    <View style={{ gap: 24, paddingBottom: 8 }}>
+      <View style={{ alignItems: "center", gap: 16, paddingTop: 8 }}>
         <Animated.View style={logoStyle}>
-          <TerosLogo size={80} color={semanticColors.indigo} animated />
+          <TerosLogo size={80} color={c.accent} animated />
         </Animated.View>
 
         <Animated.View style={titleStyle}>
-          <YStack alignItems="center" gap={6}>
-            <Text
-              fontSize={22}
-              fontWeight="800"
-              color={c.text}
-              textAlign="center"
-              letterSpacing={-0.5}
-            >
-              {t('onboarding.welcomeTitle')}
-            </Text>
-            <Text fontSize={14} color={c.text2} textAlign="center" lineHeight={22}>
-              {t('onboarding.welcomeSubtitle')}
-            </Text>
-          </YStack>
+          <View style={{ alignItems: "center", gap: 6 }}>
+            <T step="2xl" center style={{ fontSize: 30, lineHeight: 34 }}>
+              {t("onboarding.welcomeTitle")}
+            </T>
+            <T step="sm" tone="text2" center style={{ lineHeight: 19 }}>
+              {t("onboarding.welcomeSubtitle")}
+            </T>
+          </View>
         </Animated.View>
-      </YStack>
+      </View>
 
       <Animated.View style={iriaStyle}>
         <IriaCard agentName={agentName} agentAvatarUrl={agentAvatarUrl} />
       </Animated.View>
 
       <Animated.View style={stepsStyle}>
-        <SetupPreview />
+        <SetupPreview steps={steps} />
       </Animated.View>
-    </YStack>
+    </View>
   )
 }

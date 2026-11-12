@@ -31,8 +31,7 @@
       "description": "Retrieve a page's full content as markdown using the native Notion v5 endpoint. Replaces `get-page-content` (eliminated 2026-05). Pass `includeTranscript=true` to inline meeting_notes transcripts. Response: { markdown }.",
       "params": {
         "pageId": "Page UUID.",
-        "includeTranscript": "Inline transcripts of meeting_notes blocks. Default false.",
-        "includeRaw": "Return raw API response. Default false."
+        "includeTranscript": "Inline transcripts of meeting_notes blocks. Default false."
       }
     },
     "create-page": {
@@ -109,7 +108,7 @@
       "name": "get-database",
       "description": "Retrieve a database. Returns curated { id, url, title, description, icon, cover, schema, createdTime, lastEditedTime, parentType, parentId, archived }. Params: databaseId, fields?, includeRaw.",
       "params": {
-        "databaseId": "Database UUID.",
+        "databaseId": "Database UUID or its Notion URL (the table link).",
         "fields": "Override default whitelist.",
         "includeRaw": "Return raw Notion database object. Default false."
       }
@@ -133,7 +132,7 @@
       "name": "create-database",
       "description": "Create a new database as a child of a page. Returns curated { id, url, title, schema, icon, cover, createdTime, parentType, parentId }. Not retryable (no idempotency key).",
       "params": {
-        "parentPageId": "Parent page UUID.",
+        "parentPageId": "Parent page UUID or its Notion URL (page share link).",
         "title": "Database title.",
         "properties": "Notion schema. Ex: { Name: { title: {} }, Status: { select: { options: [...] } } }.",
         "fields": "Override default whitelist.",
@@ -142,9 +141,9 @@
     },
     "update-database-schema": {
       "name": "update-database-schema",
-      "description": "Add/modify/remove database columns and optionally rename. Schema mutations target the data source (Notion API 2025-09-03 split). Pass `dataSourceId` for multi-source DBs; otherwise the first one is used. Set a property value to `null` to remove it. Returns the curated updated database { id, schema, title, description, lastEditedTime }. Idempotent per-field.",
+      "description": "Add/modify/remove database columns and optionally rename. Schema mutations target the data source (Notion API 2025-09-03 split). Pass `dataSourceId` for multi-source DBs; otherwise the first one is used. Set a property value to `null` to remove it. Relation columns: pass `{ relation: { database_id: <id-or-url> } }` — the data_source_id and single_property envelope are resolved server-side. Returns the curated updated database { id, schema, title, description, lastEditedTime }. Idempotent per-field.",
       "params": {
-        "databaseId": "Database UUID.",
+        "databaseId": "Database UUID or its Notion URL (the table link with ?v=…).",
         "dataSourceId": "Specific data source UUID for multi-source DBs.",
         "properties": "Properties to add/modify. Set value to null to remove.",
         "title": "New title. Optional. Sent on the data source.",
@@ -157,7 +156,7 @@
       "name": "create-database-item",
       "description": "Insert a new row (record) into a Notion database. Add to table, create table item, append database row. Pass `properties` as a flat agent-friendly map: `{ Title: \"Spec\", Status: \"In review\", Tags: [\"urgent\"], Assignee: [\"<user-uuid>\"], DueDate: \"2026-05-06\" }`. The handler resolves the schema and serialises each value into Notion's verbose shape automatically. Returns the curated created page. Multi-source DBs: pass `dataSourceId` to target a specific source.",
       "params": {
-        "databaseId": "Database UUID.",
+        "databaseId": "Database UUID or its Notion URL (the table link).",
         "dataSourceId": "Specific data source UUID for multi-source DBs.",
         "properties": "Flat map of column name → simple value. Schema is resolved automatically.",
         "fields": "Override default whitelist on the returned page.",
@@ -189,8 +188,7 @@
       "description": "DEPRECATED — prefer `get-page-content` (markdown) or `get-blocks` (paginated raw). Kept for back-compat: returns { textContent } as recursive markdown. Pass includeBlockIds=true to embed `<!-- block: id -->` comments before each top-level block.",
       "params": {
         "blockId": "Block or page UUID.",
-        "includeBlockIds": "Embed `<!-- block: id -->` comments in the markdown. Default false.",
-        "includeRaw": "Return raw API response. Default false."
+        "includeBlockIds": "Embed `<!-- block: id -->` comments in the markdown. Default false."
       }
     },
     "get-blocks": {
@@ -263,8 +261,7 @@
         "limit": "Results per page. Min 1, max 100, default 50.",
         "startCursor": "Notion pagination cursor.",
         "fields": "Override default whitelist per row.",
-        "includeRaw": "Return raw Notion response. Default false.",
-        "cursor": "Pagination cursor from previous response."
+        "includeRaw": "Return raw Notion response. Default false."
       }
     },
     "get-user": {
@@ -292,8 +289,7 @@
         "limit": "Results per page. Min 1, max 100, default 50.",
         "startCursor": "Notion pagination cursor.",
         "fields": "Override default whitelist per row.",
-        "includeRaw": "Return raw Notion response. Default false.",
-        "cursor": "Pagination cursor from previous response."
+        "includeRaw": "Return raw Notion response. Default false."
       }
     },
     "create-comment": {

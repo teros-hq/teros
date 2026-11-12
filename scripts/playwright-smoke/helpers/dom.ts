@@ -5,8 +5,7 @@
  * rendered widgets — as a user would. RN-Web has no ARIA roles, so we anchor on
  * the testIDs added to the components (data-testid on web).
  */
-import { expect, type Page } from "@playwright/test"
-import { CONFIG, type Creds } from "./config"
+import { expect, type Locator, type Page } from "@playwright/test"
 import { evalTeros } from "./teros"
 
 /**
@@ -87,9 +86,37 @@ export async function openChat(
   )
   await page.waitForTimeout(2000) // let the sidebar receive the realtime channel
   await page.getByText(label, { exact: false }).first().click({ timeout: 10_000 })
-  await page.waitForURL(`**/chat/${channelId}`, { timeout: 10_000 })
-  await page.getByTestId("composer-input").waitFor({ state: "visible", timeout: 10_000 })
+  // No `/chat/<id>` URL anymore (24b6ab36b: the tiling shell owns window state, the URL
+  // stays /workspace/<id>). The opened window is titled with the channel's title (= label),
+  // so it shows up a second time — sidebar entry + window tab/header.
+  await expect
+    .poll(() => page.getByText(label, { exact: false }).count(), {
+      message: `chat window for ${channelId} opened (label also in the window title)`,
+      timeout: 10_000,
+    })
+    .toBeGreaterThanOrEqual(2)
+  await composerInput(page, channelId).waitFor({ state: "visible", timeout: 10_000 })
   return channelId
+}
+
+/**
+ * The composer of ONE chat window. Preview tabs pin on write (docs/specs/ui/preview-tabs.md),
+ * so after a spec types in a chat the next openChat lands in a fresh tab beside it and
+ * `getByTestId("composer-input")` resolves to two textareas (strict-mode violation). The
+ * composer root carries `data-channel-id` (InputComposer.web.tsx) — scope every
+ * composer-* control by it.
+ */
+/** The whole chat window of ONE channel (ChatView root) — scope in-chat widgets by it. */
+export function chat(page: Page, channelId: string): Locator {
+  return page.locator(`[data-testid="chat-view"][data-channel-id="${channelId}"]`)
+}
+
+export function composer(page: Page, channelId: string): Locator {
+  return page.locator(`[data-testid="composer-root"][data-channel-id="${channelId}"]`)
+}
+
+export function composerInput(page: Page, channelId: string): Locator {
+  return composer(page, channelId).getByTestId("composer-input")
 }
 
 /**
@@ -123,54 +150,4 @@ export async function expectToast(
   timeout = 10_000,
 ): Promise<void> {
   await expect(page.getByTestId(`toast-${type}`).first()).toBeVisible({ timeout })
-}
-
-/**
- * Logs in as `creds` WITHOUT skipping the onboarding wizard. The standard
- * login() re-hits root to bypass /login/onboarding (for the seeded users that
- * already finished it); here we WANT the wizard, so we stop on it. Use in a fresh
- * context (browser.newContext, no storageState) so localStorage carries no stale
- * onboardingCompletedAt that would never-downgrade the redirect.
- */
-export async function loginForOnboarding(page: Page, creds: Creds): Promise<void> {
-  await page.goto(CONFIG.targetUrl, { waitUntil: "networkidle", timeout: 30_000 })
-  await page.waitForTimeout(1200)
-  if (!page.url().includes("/login")) {
-    await page.evaluate(() => {
-      try {
-        localStorage.clear()
-        sessionStorage.clear()
-      } catch {
-        /* origin may block storage */
-      }
-    })
-    await page.context().clearCookies()
-    await page.goto(CONFIG.targetUrl, { waitUntil: "networkidle", timeout: 30_000 })
-    await page.waitForTimeout(1200)
-  }
-  if (page.url().includes("/login") && !page.url().includes("/login/email")) {
-    await page.locator("text=Sign in with email").first().click()
-    await page.waitForURL("**/login/email", { timeout: 5000 })
-  }
-  await page.waitForTimeout(400)
-  await page.locator("input[type=email]").fill(creds.email)
-  await page.locator("input[type=password]").fill(creds.password)
-  await page.locator('button:has-text("Sign in")').first().click()
-
-  // Wait for the auth to land (off /login) — the login screen persists the session.
-  await page.waitForFunction(() => !window.location.pathname.startsWith("/login"), null, {
-    timeout: 20_000,
-  })
-
-  // RELOAD to force a fresh root mount: only the session-restore path (app/_layout
-  // onConnected) calls profile.get → setProfileSynced(), and the onboarding gate
-  // requires isProfileSynced. A fresh login without a reload never flips it, so the
-  // gate stays inert. After the reload, hydrate restores the just-saved session,
-  // syncs the profile (no onboardingCompletedAt server-side) and the gate redirects.
-  await page.goto(CONFIG.targetUrl, { waitUntil: "networkidle", timeout: 30_000 })
-
-  // termsAcceptedAt is seeded → no ToS gate. The workspace layout now redirects a
-  // pre-onboarding user to /login/onboarding (gate: accessGranted && termsAcceptedAt
-  // && !onboardingCompletedAt && isProfileSynced).
-  await page.waitForURL("**/login/onboarding", { timeout: 25_000 })
 }

@@ -58,6 +58,77 @@
         "userIds": "Slack user ids (U... / W...) to invite."
       }
     },
+    "leave-channel": {
+      "name": "leave-channel",
+      "description": "Leave a public or private channel. Returns { channelId, notInChannel }. Not retryable. Params: channelId.",
+      "params": {
+        "channelId": "Slack channel id (C... / G...)."
+      }
+    },
+    "list-channel-members": {
+      "name": "list-channel-members",
+      "description": "List user ids that are members of a channel. Returns { channelId, members: string[], nextCursor, hasMore }. Retryable. Use list-users + lookup if you need profile info. Params: channelId, limit (1-1000, def 200), cursor?.",
+      "params": {
+        "channelId": "Channel id (C... / G... / D... / M...).",
+        "limit": "Max members per page (1-1000, default 200).",
+        "cursor": "Pagination cursor."
+      }
+    },
+    "open-dm": {
+      "name": "open-dm",
+      "description": "Open or fetch a direct conversation. Single user → IM (D...); multiple → MPIM (M...). Idempotent (re-opens existing channel). Returns curated channel. Params: users[] (1+ U.../W... ids), returnIm (def true).",
+      "params": {
+        "users": "Array of Slack user ids. 1 user → IM. 2-8 users → MPIM.",
+        "returnIm": "Return full channel object (def true). When false only id is returned."
+      }
+    },
+    "rename-channel": {
+      "name": "rename-channel",
+      "description": "Rename a channel. Name must be ≤80 chars, lowercase, no spaces/periods (Slack normalizes). Returns curated channel. Not retryable. Params: channelId, name.",
+      "params": {
+        "channelId": "Channel id (C... / G...).",
+        "name": "New name. Slack lowercases and strips invalid chars automatically."
+      }
+    },
+    "set-channel-purpose": {
+      "name": "set-channel-purpose",
+      "description": "Set the purpose of a channel (long-form description shown in details). Max 250 chars. Returns { channelId, purpose }. Not retryable. Params: channelId, purpose.",
+      "params": {
+        "channelId": "Channel id.",
+        "purpose": "Channel purpose (≤250 chars)."
+      }
+    },
+    "set-channel-topic": {
+      "name": "set-channel-topic",
+      "description": "Set the topic of a channel (short description in the channel header). Max 250 chars. Returns { channelId, topic }. Not retryable. Params: channelId, topic.",
+      "params": {
+        "channelId": "Channel id.",
+        "topic": "Channel topic (≤250 chars)."
+      }
+    },
+    "kick-from-channel": {
+      "name": "kick-from-channel",
+      "description": "Remove a user from a channel. Requires admin or channel owner permissions. Returns { channelId, userId, kicked: true }. Not retryable. Params: channelId, userId.",
+      "params": {
+        "channelId": "Channel id.",
+        "userId": "User id (U... / W...) to remove."
+      }
+    },
+    "unarchive-channel": {
+      "name": "unarchive-channel",
+      "description": "Unarchive a previously archived channel. Returns curated channel. Not retryable. Params: channelId.",
+      "params": {
+        "channelId": "Channel id (C... / G...)."
+      }
+    },
+    "mark-channel-read": {
+      "name": "mark-channel-read",
+      "description": "Mark all messages in a channel up to and including `timestamp` as read for the authed user. Returns { channelId, timestamp, marked: true }. Idempotent. Params: channelId, timestamp.",
+      "params": {
+        "channelId": "Channel id.",
+        "timestamp": "Message ts as the read cursor (\"1234567890.123456\")."
+      }
+    },
     "send-message": {
       "name": "send-message",
       "description": "Post a message to a channel, DM, or as a top-level message. Returns { ts, channel, message, permalink }. Not retryable (no idempotency key — duplicate messages on retry). Params: channel, text, blocks? (JSON), threadTs?, unfurlLinks (def true), unfurlMedia (def true).",
@@ -96,6 +167,157 @@
         "includeRaw": "Return raw Slack message objects. Default false."
       }
     },
+    "update-message": {
+      "name": "update-message",
+      "description": "Edit an existing message. The token user must be the author. Returns { ts, channel, text, message }. Not retryable. Params: channel, ts, text? or blocks? (at least one required), attachments? (JSON).",
+      "params": {
+        "channel": "Channel id where the message lives (C... / G... / D... / M...).",
+        "ts": "Timestamp of the message to edit (\"1234567890.123456\").",
+        "text": "New plain text body. At least one of text/blocks must be provided.",
+        "blocks": "New Slack Block Kit JSON string (will be parsed). Replaces existing blocks.",
+        "attachments": "New attachments JSON string (legacy). Pass [] to clear."
+      }
+    },
+    "delete-message": {
+      "name": "delete-message",
+      "description": "Delete a message. The token user must be author or workspace admin. Returns { channel, ts, deleted: true }. Not retryable. Params: channel, ts, asUser? (default true — deletes as the user; false impersonates the workspace).",
+      "params": {
+        "channel": "Channel id where the message lives.",
+        "ts": "Timestamp of the message to delete.",
+        "asUser": "Delete as the authenticated user (default true). Set false only if the token has admin scope."
+      }
+    },
+    "get-permalink": {
+      "name": "get-permalink",
+      "description": "Get a permanent URL for a message. Returns { channel, ts, permalink }. Idempotent, retryable. Params: channel, ts.",
+      "params": {
+        "channel": "Channel id.",
+        "ts": "Message timestamp."
+      }
+    },
+    "schedule-message": {
+      "name": "schedule-message",
+      "description": "Schedule a message to be posted at a future unix-seconds timestamp. Returns { channel, scheduledMessageId, postAt }. Slack rejects postAt > 120 days ahead. Not retryable. Params: channel, text, postAt (unix seconds), blocks?, threadTs?, unfurlLinks (def true), unfurlMedia (def true).",
+      "params": {
+        "channel": "Channel id or user id (DM).",
+        "text": "Plain text body (fallback for blocks).",
+        "postAt": "Unix seconds when the message should post. Must be future and ≤120 days ahead.",
+        "blocks": "Optional Slack Block Kit JSON string.",
+        "threadTs": "Parent message ts for thread reply.",
+        "unfurlLinks": "Unfurl links. Default true.",
+        "unfurlMedia": "Unfurl media. Default true."
+      }
+    },
+    "list-scheduled-messages": {
+      "name": "list-scheduled-messages",
+      "description": "List pending scheduled messages for the authenticated user. Returns { messages: [{ id, channelId, postAt, postAtIso, text }], nextCursor, hasMore }. Retryable. Params: channel?, latest?, oldest? (unix-seconds bounds), limit (1-100, def 100), cursor?.",
+      "params": {
+        "channel": "Filter to a single channel id.",
+        "latest": "Upper bound (unix-seconds string).",
+        "oldest": "Lower bound (unix-seconds string).",
+        "limit": "Max items (1-100, default 100).",
+        "cursor": "Pagination cursor from a previous call."
+      }
+    },
+    "delete-scheduled-message": {
+      "name": "delete-scheduled-message",
+      "description": "Cancel a scheduled message. Returns { channel, scheduledMessageId, deleted: true }. Not retryable. Params: channel, scheduledMessageId, asUser? (def true).",
+      "params": {
+        "channel": "Channel id where the message was scheduled.",
+        "scheduledMessageId": "Id returned by chat.scheduleMessage / list-scheduled-messages.",
+        "asUser": "Delete as the authenticated user (default true)."
+      }
+    },
+    "send-ephemeral": {
+      "name": "send-ephemeral",
+      "description": "Post an ephemeral message visible only to one user in a channel. Returns { channel, user, messageTs }. Not retryable. Params: channel, user (recipient), text, blocks?, threadTs?.",
+      "params": {
+        "channel": "Channel id.",
+        "user": "User id of the recipient (U... / W...). Only they will see it.",
+        "text": "Plain text body (fallback for blocks).",
+        "blocks": "Optional Block Kit JSON string.",
+        "threadTs": "Parent message ts for ephemeral thread reply."
+      }
+    },
+    "send-me-message": {
+      "name": "send-me-message",
+      "description": "Send a /me action message (third-person italic in Slack UI). Returns { ts, channel }. Not retryable. Params: channel, text.",
+      "params": {
+        "channel": "Channel id.",
+        "text": "Action text (e.g. \"is testing the feature\")."
+      }
+    },
+    "unfurl-link": {
+      "name": "unfurl-link",
+      "description": "Provide custom unfurl content for links posted in a message (replaces Slack's default preview). unfurls is a JSON map: {\"https://your.url\":{\"blocks\":[...],\"text\":\"...\"}}. Returns { channel, ts, unfurled: true }. Not retryable. Params: channel, ts, unfurls (JSON), userAuthRequired?, userAuthUrl?, userAuthMessage?.",
+      "params": {
+        "channel": "Channel id of the message that has the link.",
+        "ts": "Message ts.",
+        "unfurls": "JSON object: {\"https://link\":{\"blocks\":[...], \"text\":\"fallback\"}}",
+        "userAuthRequired": "Mark this unfurl as requiring user OAuth (Slack will show 'Sign in' button).",
+        "userAuthUrl": "Sign-in URL when userAuthRequired.",
+        "userAuthMessage": "Message to show on sign-in prompt."
+      }
+    },
+    "pin-message": {
+      "name": "pin-message",
+      "description": "Pin a message to a channel. Returns { channel, timestamp, pinned: true }. Idempotent (already_pinned not treated as error). Params: channel, timestamp.",
+      "params": {
+        "channel": "Channel id (C... / G... / D... / M...).",
+        "timestamp": "Message timestamp (\"1234567890.123456\")."
+      }
+    },
+    "unpin-message": {
+      "name": "unpin-message",
+      "description": "Unpin a message. Returns { channel, timestamp, unpinned: true }. Idempotent (no_pin not treated as error). Params: channel, timestamp.",
+      "params": {
+        "channel": "Channel id.",
+        "timestamp": "Message timestamp."
+      }
+    },
+    "list-pins": {
+      "name": "list-pins",
+      "description": "List items pinned to a channel (messages and files). Returns { pins: [{ type, createdAt, createdBy, message? | file? }], count }. Retryable. Params: channel.",
+      "params": {
+        "channel": "Channel id whose pins to list."
+      }
+    },
+    "add-bookmark": {
+      "name": "add-bookmark",
+      "description": "Add a bookmark to a channel (links shown in the channel header). Returns the curated bookmark. Not retryable. Params: channel, title, link (URL), emoji? (e.g. ':notebook:').",
+      "params": {
+        "channel": "Channel id.",
+        "title": "Display title.",
+        "link": "URL the bookmark points to (http/https only).",
+        "emoji": "Optional emoji shortcode for the bookmark icon."
+      }
+    },
+    "remove-bookmark": {
+      "name": "remove-bookmark",
+      "description": "Remove a channel bookmark by id. Returns { channel, bookmarkId, removed: true }. Not retryable. Params: channel, bookmarkId.",
+      "params": {
+        "channel": "Channel id.",
+        "bookmarkId": "Bookmark id from add-bookmark / list-bookmarks."
+      }
+    },
+    "list-bookmarks": {
+      "name": "list-bookmarks",
+      "description": "List bookmarks attached to a channel. Returns { bookmarks: [{ id, channelId, title, link, emoji, type, dateCreated, dateUpdated, rank }], count }. Retryable. Params: channel.",
+      "params": {
+        "channel": "Channel id."
+      }
+    },
+    "edit-bookmark": {
+      "name": "edit-bookmark",
+      "description": "Edit an existing channel bookmark. Partial update. Returns the updated bookmark. Not retryable. Params: channel, bookmarkId, title?, link? (http/https), emoji?.",
+      "params": {
+        "channel": "Channel id.",
+        "bookmarkId": "Bookmark id.",
+        "title": "New title.",
+        "link": "New URL.",
+        "emoji": "New emoji shortcode."
+      }
+    },
     "add-reaction": {
       "name": "add-reaction",
       "description": "Add an emoji reaction to a message. Returns { channel, timestamp, name }. Idempotent (already_reacted raises BUSINESS_RULE). Params: channel, timestamp, name (no colons).",
@@ -112,6 +334,26 @@
         "channel": "Channel id where the message is.",
         "timestamp": "Message ts (1234567890.123456).",
         "name": "Emoji name without colons (e.g. 'thumbsup')."
+      }
+    },
+    "get-reactions": {
+      "name": "get-reactions",
+      "description": "Get reactions on a message or file. Provide EITHER (channel+timestamp) for a message OR (file) for a file. Returns { reactions: [{ name, count, users }], type, target }. Retryable. Params: channel?+timestamp? | file?, full (def true — include all reactors).",
+      "params": {
+        "channel": "Channel id (paired with timestamp for a message).",
+        "timestamp": "Message timestamp.",
+        "file": "File id (F...) — alternative to channel+timestamp.",
+        "full": "If true, all reactors are returned. Default true."
+      }
+    },
+    "list-my-reactions": {
+      "name": "list-my-reactions",
+      "description": "List all items the user has reacted to (messages and files). Returns { items, paging }. Retryable. Params: userId? (def authed), count (1-1000, def 100), page, full (def true).",
+      "params": {
+        "userId": "User id (def authed).",
+        "count": "Items per page (1-1000, def 100).",
+        "page": "Page number (1-indexed).",
+        "full": "Include all reactors. Default true."
       }
     },
     "list-users": {
@@ -140,9 +382,51 @@
       "name": "get-user-presence",
       "description": "Get presence for a Slack user. Returns { user, presence, online, autoAway, manualAway, connectionCount, lastActivity }. Params: userId.",
       "params": {
-        "userId": "Slack user id (U... or W...).",
-        "includeRaw": "Return raw API response. Default false."
+        "userId": "Slack user id (U... or W...)."
       }
+    },
+    "get-user-profile": {
+      "name": "get-user-profile",
+      "description": "Get the full Slack profile for a user (status, custom_fields, image, phone, title, timezone). Returns curated profile. Retryable. Params: userId? (default: authed user), includeLabels (def false), includeRaw.",
+      "params": {
+        "userId": "User id (U... / W...). Omit to get the authenticated user's own profile.",
+        "includeLabels": "Include custom field labels in the response. Default false.",
+        "includeRaw": "Return raw Slack profile object. Default false."
+      }
+    },
+    "update-user-profile": {
+      "name": "update-user-profile",
+      "description": "Update the authenticated user's Slack profile (status, name fields, phone, title, custom fields). Returns the updated profile object. Not retryable. Params: statusText?, statusEmoji?, statusExpiration? (unix seconds), realName?, displayName?, phone?, title?, customFields? (JSON map of field_id → {value, alt?}), userId? (admin-only).",
+      "params": {
+        "statusText": "Short status (≤100 chars). Pass empty string to clear.",
+        "statusEmoji": "Emoji shortcode for status (e.g. \":coffee:\"). Pass empty to clear.",
+        "statusExpiration": "Unix seconds when the status auto-clears. 0 = never expire.",
+        "realName": "Real name.",
+        "displayName": "Display name (shown in messages).",
+        "phone": "Phone number.",
+        "title": "Job title.",
+        "customFields": "JSON string mapping custom field ids to {value, alt?}. Example: '{\"Xf01\":{\"value\":\"v\"}}'",
+        "userId": "Admin-only: target another user's profile (requires admin scope)."
+      }
+    },
+    "list-user-channels": {
+      "name": "list-user-channels",
+      "description": "List channels a user is a member of. Returns { channels, nextCursor, hasMore }. Retryable. Params: userId? (def authed), types? (csv: public_channel,private_channel,mpim,im), excludeArchived (def true), limit (1-1000, def 200), cursor?.",
+      "params": {
+        "userId": "User id (def authenticated user).",
+        "types": "Comma-separated types: public_channel,private_channel,mpim,im.",
+        "excludeArchived": "Skip archived. Default true.",
+        "limit": "Per page (1-1000, default 200).",
+        "cursor": "Pagination cursor."
+      }
+    },
+    "delete-user-photo": {
+      "name": "delete-user-photo",
+      "description": "Delete the authenticated user's profile photo (replaces with default avatar). Returns { deleted: true }. Not retryable. No params."
+    },
+    "get-user-identity": {
+      "name": "get-user-identity",
+      "description": "Get the authenticated user's basic identity from the OAuth context (minimum scope: identity.basic, optionally identity.email/avatar/team). Returns curated identity. Retryable. No params."
     },
     "upload-file": {
       "name": "upload-file",
@@ -169,8 +453,113 @@
         "tsTo": "Filter files created before this Unix timestamp.",
         "types": "Comma-separated types from all, spaces, snippets, images, gdocs, zips, pdfs. Default all.",
         "fields": "Override default whitelist per row.",
-        "includeRaw": "Return raw Slack file objects. Default false.",
-        "cursor": "Pagination cursor from previous response."
+        "includeRaw": "Return raw Slack file objects. Default false."
+      }
+    },
+    "get-file": {
+      "name": "get-file",
+      "description": "Get full info for a file (channels shared, permalinks, optional comments). Returns curated file + comments?[]. Retryable. Params: fileId (F...), includeComments (def false), includeRaw.",
+      "params": {
+        "fileId": "Slack file id (F...).",
+        "includeComments": "Include comment list (legacy API). Default false.",
+        "includeRaw": "Return raw Slack file object. Default false."
+      }
+    },
+    "delete-file": {
+      "name": "delete-file",
+      "description": "Delete a file. The token user must be owner or workspace admin. Returns { fileId, deleted: true }. Not retryable. Params: fileId (F...).",
+      "params": {
+        "fileId": "Slack file id (F...)."
+      }
+    },
+    "get-upload-url": {
+      "name": "get-upload-url",
+      "description": "Step 1 of Slack's modern multi-step upload: get a pre-signed external URL + uploadId. PUT the file bytes to the URL, then call complete-upload with the uploadId. Use this for files >100MB or when progress tracking is needed. Returns { uploadUrl, fileId, length }. Params: filename, length (bytes), altTxt?, snippetType?.",
+      "params": {
+        "filename": "Local filename (used for type detection).",
+        "length": "File size in bytes (required by Slack).",
+        "altTxt": "Alt text for accessibility (images).",
+        "snippetType": "Language for code snippets (e.g., 'javascript', 'python')."
+      }
+    },
+    "complete-upload": {
+      "name": "complete-upload",
+      "description": "Step 2 of the modern upload flow: after PUT-ing bytes to the uploadUrl from get-upload-url, call this with files=[{id, title?}] to finalize. Optionally share to a channel/thread with initialComment. Returns curated file(s). Not retryable. Params: files (JSON array), channelId?, initialComment?, threadTs?.",
+      "params": {
+        "files": "JSON array: [{\"id\":\"F0123\",\"title\":\"My file\"}]",
+        "channelId": "Optional channel to share to.",
+        "initialComment": "Optional message attached to the share.",
+        "threadTs": "Optional parent thread ts."
+      }
+    },
+    "share-file-public": {
+      "name": "share-file-public",
+      "description": "Make a file publicly accessible via URL (anyone with link can view, no login). Returns { fileId, permalinkPublic }. Not retryable. Params: fileId (F...).",
+      "params": {
+        "fileId": "Slack file id."
+      }
+    },
+    "revoke-file-public": {
+      "name": "revoke-file-public",
+      "description": "Revoke a file's public URL (links via permalink_public stop working). Returns { fileId, revoked: true }. Not retryable. Params: fileId.",
+      "params": {
+        "fileId": "Slack file id."
+      }
+    },
+    "list-remote-files": {
+      "name": "list-remote-files",
+      "description": "List remote files (external storage references like Google Drive, Dropbox) registered with Slack. Returns { files, nextCursor, hasMore }. Retryable. Params: channel?, tsFrom?, tsTo?, limit (1-200, def 100), cursor?.",
+      "params": {
+        "channel": "Filter by channel.",
+        "tsFrom": "Lower timestamp bound.",
+        "tsTo": "Upper timestamp bound.",
+        "limit": "Per page (1-200, default 100).",
+        "cursor": "Pagination cursor."
+      }
+    },
+    "add-remote-file": {
+      "name": "add-remote-file",
+      "description": "Register an external file (e.g. Google Drive, Dropbox) with Slack so it's discoverable in search and share-able. Returns curated remote file. Not retryable. Params: externalId, externalUrl, title, fileType?, previewImage?, indexableFileContents?.",
+      "params": {
+        "externalId": "Unique id in the external provider.",
+        "externalUrl": "URL to the file in the external provider.",
+        "title": "Display title.",
+        "fileType": "MIME-ish type hint (e.g. 'pdf', 'docx').",
+        "previewImage": "URL to a preview image.",
+        "indexableFileContents": "Plain text contents for Slack search indexing."
+      }
+    },
+    "update-remote-file": {
+      "name": "update-remote-file",
+      "description": "Update metadata of a remote file (externalUrl, title, etc.). Provide externalId XOR fileId. Returns curated remote file. Not retryable. Params: externalId? | fileId? (one required), and any of externalUrl?, title?, fileType?, previewImage?, indexableFileContents?.",
+      "params": {
+        "externalId": "External provider id (XOR fileId).",
+        "fileId": "Slack file id (XOR externalId)."
+      }
+    },
+    "remove-remote-file": {
+      "name": "remove-remote-file",
+      "description": "Remove a remote file reference from Slack (does not delete the file in the external provider). Provide externalId XOR fileId. Returns { removed: true }. Not retryable. Params: externalId? | fileId? (one required).",
+      "params": {
+        "externalId": "External provider id.",
+        "fileId": "Slack file id."
+      }
+    },
+    "share-remote-file": {
+      "name": "share-remote-file",
+      "description": "Share an existing remote file to one or more channels. Provide externalId XOR fileId. Returns curated remote file. Not retryable. Params: channels (comma-separated channel ids), externalId? | fileId?.",
+      "params": {
+        "channels": "Comma-separated channel ids (e.g. 'C123,C456').",
+        "externalId": "External provider id.",
+        "fileId": "Slack file id."
+      }
+    },
+    "get-remote-file": {
+      "name": "get-remote-file",
+      "description": "Get details of a remote file. Provide externalId XOR fileId. Returns curated remote file. Retryable. Params: externalId? | fileId?.",
+      "params": {
+        "externalId": "External provider id.",
+        "fileId": "Slack file id."
       }
     },
     "search-messages": {
@@ -209,197 +598,79 @@
         "includeRaw": "Return raw Slack team object. Default false."
       }
     },
-    "update-message": {
-      "name": "update-message",
-      "description": "Edit an existing message. The token user must be the author. Returns { ts, channel, text, message }. Not retryable. Params: channel, ts, text? or blocks? (at least one required), attachments? (JSON).",
+    "get-team-preferences": {
+      "name": "get-team-preferences",
+      "description": "Get workspace policy preferences (locale, default channels, who can create/archive channels, message edit window, calls/huddles enabled). Returns curated preferences. Retryable. No params."
+    },
+    "get-team-profile": {
+      "name": "get-team-profile",
+      "description": "Get the schema of custom user profile fields for the workspace. Returns { fields: [{ id, label, type, hint, isHidden, ordering, possibleValues }] }. Retryable. Params: visibility (def all).",
       "params": {
-        "channel": "Channel id where the message lives (C... / G... / D... / M...).",
-        "ts": "Timestamp of the message to edit (\"1234567890.123456\").",
-        "text": "New plain text body. At least one of text/blocks must be provided.",
-        "blocks": "New Slack Block Kit JSON string (will be parsed). Replaces existing blocks.",
-        "attachments": "New attachments JSON string (legacy). Pass [] to clear."
+        "visibility": "Filter by visibility. Default all."
       }
     },
-    "delete-message": {
-      "name": "delete-message",
-      "description": "Delete a message. The token user must be author or workspace admin. Returns { channel, ts, deleted: true }. Not retryable. Params: channel, ts, asUser? (default true).",
+    "get-access-logs": {
+      "name": "get-access-logs",
+      "description": "Get login audit trail for the workspace (paid plans only). Returns { logs, paging }. Retryable. Params: before? (unix seconds), count (1-1000, def 100), page.",
       "params": {
-        "channel": "Channel id where the message lives.",
-        "ts": "Timestamp of the message to delete.",
-        "asUser": "Delete as the authenticated user (default true). Set false only if the token has admin scope."
+        "before": "Filter to logs before this unix timestamp.",
+        "count": "Per page (1-1000, def 100).",
+        "page": "Page number."
       }
     },
-    "get-permalink": {
-      "name": "get-permalink",
-      "description": "Get a permanent URL for a message. Returns { channel, ts, permalink }. Idempotent, retryable. Params: channel, ts.",
+    "get-integration-logs": {
+      "name": "get-integration-logs",
+      "description": "Get integration audit trail (apps installed/uninstalled/scope changes). Paid plans only. Returns { logs, paging }. Retryable. Params: appId?, changeType? (added|removed|enabled|disabled|updated|expanded), serviceId?, user?, count (1-1000, def 100), page.",
+      "params": {
+        "changeType": "Filter by change type."
+      }
+    },
+    "star-item": {
+      "name": "star-item",
+      "description": "Save an item (message / file) to the user's saved items (stars). Provide EITHER (channel+timestamp) OR (file) OR (fileComment). Returns { type, target, starred: true }. Idempotent. Params: channel?+timestamp? | file? | fileComment?.",
+      "params": {
+        "channel": "Channel id (paired with timestamp).",
+        "timestamp": "Message ts.",
+        "file": "File id (F...).",
+        "fileComment": "File comment id."
+      }
+    },
+    "unstar-item": {
+      "name": "unstar-item",
+      "description": "Remove an item from the user's saved items. Same exclusive-choice contract as star-item. Returns { type, target, unstarred: true }. Idempotent (no_pin not treated as error). Params: channel?+timestamp? | file? | fileComment?.",
       "params": {
         "channel": "Channel id.",
-        "ts": "Message timestamp.",
-        "includeRaw": "Return raw API response. Default false."
+        "timestamp": "Message ts.",
+        "file": "File id.",
+        "fileComment": "File comment id."
       }
     },
-    "schedule-message": {
-      "name": "schedule-message",
-      "description": "Schedule a message to be posted at a future unix-seconds timestamp. Returns { channel, scheduledMessageId, postAt }. Slack rejects postAt > 120 days ahead. Not retryable. Params: channel, text, postAt (unix seconds), blocks?, threadTs?, unfurlLinks (def true), unfurlMedia (def true).",
+    "list-stars": {
+      "name": "list-stars",
+      "description": "List the user's saved items (stars). Returns { items, nextCursor, hasMore }. Retryable. Params: count (1-1000, def 100), cursor?.",
       "params": {
-        "channel": "Channel id or user id (DM).",
-        "text": "Plain text body (fallback for blocks).",
-        "postAt": "Unix seconds when the message should post. Must be future and ≤120 days ahead.",
-        "blocks": "Optional Slack Block Kit JSON string.",
-        "threadTs": "Parent message ts for thread reply.",
-        "unfurlLinks": "Unfurl links. Default true.",
-        "unfurlMedia": "Unfurl media. Default true."
+        "count": "Items per page (1-1000, def 100).",
+        "cursor": "Pagination cursor."
       }
     },
-    "list-scheduled-messages": {
-      "name": "list-scheduled-messages",
-      "description": "List pending scheduled messages for the authenticated user. Returns { messages: [{ id, channelId, postAt, postAtIso, text }], nextCursor, hasMore }. Retryable. Params: channel?, latest?, oldest? (unix-seconds bounds), limit (1-100, def 100), cursor?.",
+    "list-emoji": {
+      "name": "list-emoji",
+      "description": "List custom workspace emojis. Returns { emojis: [{ name, url, isAlias, aliasFor }], count }. Retryable. No params."
+    },
+    "add-emoji": {
+      "name": "add-emoji",
+      "description": "Add a custom workspace emoji. Provide EITHER url (new image) OR aliasFor (alias of existing emoji). Returns { name, isAlias, aliasFor?, ok: true }. Not retryable. Params: name, url? | aliasFor?.",
       "params": {
-        "channel": "Filter to a single channel id.",
-        "latest": "Upper bound (unix-seconds string).",
-        "oldest": "Lower bound (unix-seconds string).",
-        "limit": "Max items (1-100, default 100).",
-        "cursor": "Pagination cursor from a previous call.",
-        "includeRaw": "Return raw API response. Default false."
+        "name": "Emoji name (no colons, lowercase, no spaces — e.g. 'teros').",
+        "url": "URL of the image (PNG/JPG/GIF, max 128KB, square recommended).",
+        "aliasFor": "Existing emoji name to alias (no colons)."
       }
     },
-    "delete-scheduled-message": {
-      "name": "delete-scheduled-message",
-      "description": "Cancel a scheduled message. Returns { channel, scheduledMessageId, deleted: true }. Not retryable. Params: channel, scheduledMessageId, asUser? (def true).",
+    "remove-emoji": {
+      "name": "remove-emoji",
+      "description": "Remove a custom workspace emoji. Workspace admin only. Returns { name, removed: true }. Not retryable. Params: name (no colons).",
       "params": {
-        "channel": "Channel id where the message was scheduled.",
-        "scheduledMessageId": "Id returned by chat.scheduleMessage / list-scheduled-messages.",
-        "asUser": "Delete as the authenticated user (default true)."
-      }
-    },
-    "send-ephemeral": {
-      "name": "send-ephemeral",
-      "description": "Post an ephemeral message visible only to one user in a channel. Returns { channel, user, messageTs }. Not retryable. Params: channel, user (recipient), text, blocks?, threadTs?.",
-      "params": {
-        "channel": "Channel id.",
-        "user": "User id of the recipient (U... / W...). Only they will see it.",
-        "text": "Plain text body (fallback for blocks).",
-        "blocks": "Optional Block Kit JSON string.",
-        "threadTs": "Parent message ts for ephemeral thread reply."
-      }
-    },
-    "pin-message": {
-      "name": "pin-message",
-      "description": "Pin a message to a channel. Returns { channel, timestamp, pinned: true }. Idempotent (already_pinned not treated as error). Params: channel, timestamp.",
-      "params": {
-        "channel": "Channel id (C... / G... / D... / M...).",
-        "timestamp": "Message timestamp (\"1234567890.123456\")."
-      }
-    },
-    "unpin-message": {
-      "name": "unpin-message",
-      "description": "Unpin a message. Returns { channel, timestamp, unpinned: true }. Idempotent (no_pin not treated as error). Params: channel, timestamp.",
-      "params": {
-        "channel": "Channel id.",
-        "timestamp": "Message timestamp."
-      }
-    },
-    "list-pins": {
-      "name": "list-pins",
-      "description": "List items pinned to a channel (messages and files). Returns { pins: [{ type, createdAt, createdBy, message? | file? }], count }. Retryable. Params: channel.",
-      "params": {
-        "channel": "Channel id whose pins to list.",
-        "includeRaw": "Return raw API response. Default false.",
-        "cursor": "Pagination cursor from previous response.",
-        "limit": "Maximum results per page."
-      }
-    },
-    "add-bookmark": {
-      "name": "add-bookmark",
-      "description": "Add a bookmark to a channel (links shown in the channel header). Returns the curated bookmark. Not retryable. Params: channel, title, link (URL), emoji? (e.g. ':notebook:').",
-      "params": {
-        "channel": "Channel id.",
-        "title": "Display title.",
-        "link": "URL the bookmark points to (http/https only).",
-        "emoji": "Optional emoji shortcode for the bookmark icon."
-      }
-    },
-    "remove-bookmark": {
-      "name": "remove-bookmark",
-      "description": "Remove a channel bookmark by id. Returns { channel, bookmarkId, removed: true }. Not retryable. Params: channel, bookmarkId.",
-      "params": {
-        "channel": "Channel id.",
-        "bookmarkId": "Bookmark id from add-bookmark / list-bookmarks."
-      }
-    },
-    "list-bookmarks": {
-      "name": "list-bookmarks",
-      "description": "List bookmarks attached to a channel. Returns { bookmarks: [{ id, channelId, title, link, emoji, type, dateCreated, dateUpdated, rank }], count }. Retryable. Params: channel.",
-      "params": {
-        "channel": "Channel id.",
-        "includeRaw": "Return raw API response. Default false.",
-        "cursor": "Pagination cursor from previous response.",
-        "limit": "Maximum results per page."
-      }
-    },
-    "get-file": {
-      "name": "get-file",
-      "description": "Get full info for a file (channels shared, permalinks, optional comments). Returns curated file + comments?[]. Retryable. Params: fileId (F...), includeComments (def false), includeRaw.",
-      "params": {
-        "fileId": "Slack file id (F...).",
-        "includeComments": "Include comment list (legacy API). Default false.",
-        "includeRaw": "Return raw Slack file object. Default false."
-      }
-    },
-    "delete-file": {
-      "name": "delete-file",
-      "description": "Delete a file. The token user must be owner or workspace admin. Returns { fileId, deleted: true }. Not retryable. Params: fileId (F...).",
-      "params": {
-        "fileId": "Slack file id (F...)."
-      }
-    },
-    "leave-channel": {
-      "name": "leave-channel",
-      "description": "Leave a public or private channel. Returns { channelId, notInChannel }. Not retryable. Params: channelId.",
-      "params": {
-        "channelId": "Slack channel id (C... / G...)."
-      }
-    },
-    "list-channel-members": {
-      "name": "list-channel-members",
-      "description": "List user ids that are members of a channel. Returns { channelId, members: string[], nextCursor, hasMore }. Retryable. Use list-users + lookup if you need profile info. Params: channelId, limit (1-1000, def 200), cursor?.",
-      "params": {
-        "channelId": "Channel id (C... / G... / D... / M...).",
-        "limit": "Max members per page (1-1000, default 200).",
-        "cursor": "Pagination cursor.",
-        "includeRaw": "Return raw API response. Default false."
-      }
-    },
-    "open-dm": {
-      "name": "open-dm",
-      "description": "Open or fetch a direct conversation. Single user → IM (D...); multiple → MPIM (M...). Idempotent (re-opens existing channel). Returns curated channel. Params: users[] (1+ U.../W... ids), returnIm (def true).",
-      "params": {
-        "users": "Array of Slack user ids. 1 user → IM. 2-8 users → MPIM.",
-        "returnIm": "Return full channel object (def true)."
-      }
-    },
-    "get-user-profile": {
-      "name": "get-user-profile",
-      "description": "Get the full Slack profile for a user (status, custom_fields, image, phone, title, timezone). Returns curated profile. Retryable. Params: userId? (default: authed user), includeLabels (def false), includeRaw.",
-      "params": {
-        "userId": "User id (U... / W...). Omit to get the authenticated user's own profile.",
-        "includeLabels": "Include custom field labels in the response. Default false.",
-        "includeRaw": "Return raw Slack profile object. Default false."
-      }
-    },
-    "update-user-profile": {
-      "name": "update-user-profile",
-      "description": "Update the authenticated user's Slack profile (status, name fields, phone, title, custom fields). Returns the updated profile object. Not retryable. Params: statusText?, statusEmoji?, statusExpiration? (unix seconds), realName?, displayName?, phone?, title?, customFields? (JSON map of field_id → {value, alt?}), userId? (admin-only).",
-      "params": {
-        "statusText": "Short status (≤100 chars). Pass empty string to clear.",
-        "statusEmoji": "Emoji shortcode for status. Pass empty to clear.",
-        "statusExpiration": "Unix seconds when the status auto-clears. 0 = never expire.",
-        "realName": "Real name.",
-        "displayName": "Display name (shown in messages).",
-        "phone": "Phone number.",
-        "title": "Job title.",
-        "customFields": "JSON string mapping custom field ids to {value, alt?}.",
-        "userId": "Admin-only: target another user's profile (requires admin scope)."
+        "name": "Emoji name (no colons)."
       }
     },
     "set-dnd": {
@@ -417,44 +688,35 @@
       "name": "get-dnd",
       "description": "Get DND status for a user. Returns { snoozeEnabled, snoozeEndtime, snoozeRemaining, nextDndStart, nextDndEnd }. Retryable. Params: userId? (default: authed user).",
       "params": {
-        "userId": "User id (U... / W...). Omit for the authenticated user.",
-        "includeRaw": "Return raw API response. Default false."
+        "userId": "User id (U... / W...). Omit for the authenticated user."
       }
     },
-    "get-reactions": {
-      "name": "get-reactions",
-      "description": "Get reactions on a message or file. Provide EITHER (channel+timestamp) for a message OR (file) for a file. Returns { reactions: [{ name, count, users }], type, target }. Retryable. Params: channel?+timestamp? | file?, full (def true).",
+    "get-team-dnd": {
+      "name": "get-team-dnd",
+      "description": "Get DND status for multiple users at once. users is a comma-separated user id list. Returns { users: [{ userId, snoozeEnabled, ... }] }. Retryable. Params: users (csv).",
       "params": {
-        "channel": "Channel id (paired with timestamp for a message).",
-        "timestamp": "Message timestamp.",
-        "file": "File id (F...) — alternative to channel+timestamp.",
-        "full": "If true, all reactors are returned. Default true.",
-        "includeRaw": "Return raw API response. Default false."
-      }
-    },
-    "get-team-preferences": {
-      "name": "get-team-preferences",
-      "description": "Get workspace policy preferences (locale, default channels, who can create/archive channels, message edit window, calls/huddles enabled). Returns curated preferences. Retryable. No params.",
-      "params": {
-        "includeRaw": "Return raw API response. Default false."
+        "users": "Comma-separated user ids (e.g. \"U001,U002,U003\")."
       }
     },
     "create-list": {
       "name": "create-list",
-      "description": "Create a Slack List (collaborative table). Returns curated list with schema. EXPERIMENTAL. Params: name, description?, schema? (JSON array of {name, type}), todoMode (def false).",
+      "description": "Create a Slack List (collaborative table). Returns curated list with schema. EXPERIMENTAL — Slack Lists API is still evolving (2024+). Params: name, description?, schema? (JSON array of {name, type}), todoMode (def false).",
       "params": {
         "name": "Display name.",
-        "description": "Optional description.",
-        "schema": "JSON array of columns: [{\"name\":\"Title\",\"type\":\"text\"}, ...]. Types: text|number|date|user|checkbox|select|multi_select.",
-        "todoMode": "Enable todo mode. Default false."
+        "description": "Optional description (rich text supported).",
+        "schema": "JSON array of columns: [{\"name\":\"Title\",\"type\":\"text\"}, {\"name\":\"Due\",\"type\":\"date\"}]. Types: text|number|date|user|checkbox|select|multi_select.",
+        "todoMode": "Enable todo mode (rows can be checked off). Default false."
       }
     },
     "update-list": {
       "name": "update-list",
-      "description": "Update list metadata or schema. Partial. Returns curated list. EXPERIMENTAL. Params: listId, name?, description?, schema?, todoMode?.",
+      "description": "Update list metadata or schema. Partial: only fields provided are updated. Returns curated list. EXPERIMENTAL. Params: listId, name?, description?, schema? (JSON), todoMode?.",
       "params": {
         "listId": "List id.",
-        "schema": "New schema JSON array."
+        "name": "New name.",
+        "description": "New description.",
+        "schema": "New schema JSON array.",
+        "todoMode": "Toggle todo mode."
       }
     },
     "delete-list": {
@@ -468,35 +730,33 @@
       "name": "get-list",
       "description": "Get list details + schema. Returns curated list. Retryable. EXPERIMENTAL. Params: listId.",
       "params": {
-        "listId": "List id.",
-        "includeRaw": "Return raw API response. Default false."
+        "listId": "List id."
       }
     },
     "list-list-items": {
       "name": "list-list-items",
-      "description": "List items in a Slack List with cursor pagination. Returns { listId, items, nextCursor, hasMore }. Retryable. EXPERIMENTAL. Params: listId, limit (1-100, def 50), cursor?.",
+      "description": "List items (rows) in a Slack List with cursor pagination. Returns { listId, items, nextCursor, hasMore }. Retryable. EXPERIMENTAL. Params: listId, limit (1-100, def 50), cursor?.",
       "params": {
         "listId": "List id.",
         "limit": "Items per page (1-100, default 50).",
-        "cursor": "Pagination cursor.",
-        "includeRaw": "Return raw API response. Default false."
+        "cursor": "Pagination cursor."
       }
     },
     "create-list-item": {
       "name": "create-list-item",
-      "description": "Add a row to a Slack List. fields is a JSON object mapping column-id → value. Returns curated item. Not retryable. EXPERIMENTAL. Params: listId, fields (JSON).",
+      "description": "Add a row (item) to a Slack List. fields is a JSON object mapping column-id → value. Returns curated item. Not retryable. EXPERIMENTAL. Params: listId, fields (JSON).",
       "params": {
         "listId": "List id.",
-        "fields": "JSON object mapping column id to value."
+        "fields": "JSON object mapping column id to value. Example: '{\"title\":\"Task X\",\"due\":\"2026-05-20\"}'"
       }
     },
     "update-list-item": {
       "name": "update-list-item",
-      "description": "Update fields of a list item. Partial update. Returns curated item. Not retryable. EXPERIMENTAL. Params: listId, itemId, fields (JSON).",
+      "description": "Update fields of a list item. fields is a JSON object — only the keys provided are updated. Returns curated item. Not retryable. EXPERIMENTAL. Params: listId, itemId, fields (JSON).",
       "params": {
         "listId": "List id.",
         "itemId": "Item id.",
-        "fields": "JSON object — partial update."
+        "fields": "JSON object — partial update of column values."
       }
     },
     "delete-list-item": {
@@ -507,20 +767,42 @@
         "itemId": "Item id."
       }
     },
+    "list-list-fields": {
+      "name": "list-list-fields",
+      "description": "List the column schema of a Slack List as individual field objects. Returns { fields, count }. Retryable. EXPERIMENTAL. Params: listId.",
+      "params": {
+        "listId": "List id."
+      }
+    },
+    "create-list-field": {
+      "name": "create-list-field",
+      "description": "Add a new column to a Slack List schema. Returns the created field. Not retryable. EXPERIMENTAL. Params: listId, name, type (text|number|date|user|checkbox|select|multi_select|url|email), required (def false).",
+      "params": {
+        "name": "Column display name."
+      }
+    },
+    "update-list-field": {
+      "name": "update-list-field",
+      "description": "Rename a list column or toggle required. type is immutable. Returns the updated field. Not retryable. EXPERIMENTAL. Params: listId, fieldId, name?, required?."
+    },
+    "delete-list-field": {
+      "name": "delete-list-field",
+      "description": "Delete a column from a Slack List schema (all values in items are also dropped). Returns { listId, fieldId, deleted: true }. Not retryable. EXPERIMENTAL. Params: listId, fieldId."
+    },
     "create-canvas": {
       "name": "create-canvas",
       "description": "Create a standalone Slack Canvas (rich-text doc). Returns curated canvas. EXPERIMENTAL. Params: title, contentMarkdown? (initial content).",
       "params": {
         "title": "Canvas title.",
-        "contentMarkdown": "Initial markdown content."
+        "contentMarkdown": "Initial markdown content (h1/h2/h3, bullets, **bold**, etc.)."
       }
     },
     "edit-canvas": {
       "name": "edit-canvas",
-      "description": "Edit a canvas with a list of changes. changes is a JSON array of operations: [{operation:insert|replace|delete, sectionId?, document_content?:{type:markdown,markdown}}]. Returns curated canvas. Not retryable. EXPERIMENTAL.",
+      "description": "Edit a canvas with a list of changes. Operations: insert_at_start|insert_at_end (no section_id) | insert_before|insert_after|replace|delete (section_id REQUIRED — use canvases.sections.lookup). All except delete also require document_content {type:'markdown',markdown:string}. Returns curated canvas. Not retryable. EXPERIMENTAL.",
       "params": {
         "canvasId": "Canvas id.",
-        "changes": "JSON array of operations."
+        "changes": "JSON array of operations. Example: '[{\"operation\":\"insert_at_end\",\"document_content\":{\"type\":\"markdown\",\"markdown\":\"# New section\"}}]' or '[{\"operation\":\"replace\",\"section_id\":\"S123\",\"document_content\":{\"type\":\"markdown\",\"markdown\":\"updated\"}}]'"
       }
     },
     "delete-canvas": {
@@ -550,7 +832,7 @@
     },
     "append-stream": {
       "name": "append-stream",
-      "description": "Append a chunk of content to an active streaming message. Returns { streamId, appended: true, length }. Not retryable. EXPERIMENTAL. Params: streamId, content.",
+      "description": "Append a chunk of content to an active streaming message. Returns { streamId, appended: true }. Not retryable (each call appends — retry would duplicate content). EXPERIMENTAL. Params: streamId, content.",
       "params": {
         "streamId": "Stream id from start-stream.",
         "content": "Markdown chunk to append."
@@ -558,7 +840,7 @@
     },
     "stop-stream": {
       "name": "stop-stream",
-      "description": "Stop a streaming message (flushes final state). Returns { streamId, stopped: true }. Idempotent. EXPERIMENTAL. Params: streamId.",
+      "description": "Stop a streaming message (flushes final state). Returns { streamId, stopped: true }. Idempotent (stream already stopped not treated as error). EXPERIMENTAL. Params: streamId.",
       "params": {
         "streamId": "Stream id from start-stream."
       }
@@ -567,12 +849,12 @@
       "name": "add-call",
       "description": "Register a call (external provider) with Slack. Returns curated call. EXPERIMENTAL. Params: externalUniqueId, joinUrl, desktopAppJoinUrl?, externalDisplayId?, title?, users? (JSON array), dateStart? (unix seconds).",
       "params": {
-        "externalUniqueId": "Unique id for the call in the external provider.",
+        "externalUniqueId": "Unique id for the call in the external provider (must be stable).",
         "joinUrl": "URL to join the call.",
         "desktopAppJoinUrl": "Deep link for desktop app.",
         "externalDisplayId": "Display id shown to users.",
         "title": "Call title.",
-        "users": "JSON array of participants.",
+        "users": "JSON array of participants: [{\"slackId\":\"U...\"} or {\"externalId\":\"ext-123\",\"displayName\":\"…\"}]",
         "dateStart": "Unix seconds when the call started."
       }
     },
@@ -588,15 +870,17 @@
       "name": "update-call",
       "description": "Update call metadata (title or join URLs). Returns curated call. Not retryable. EXPERIMENTAL. Params: callId, title?, joinUrl?, desktopAppJoinUrl?.",
       "params": {
-        "callId": "Slack call id."
+        "callId": "Slack call id.",
+        "title": "New title.",
+        "joinUrl": "New join URL.",
+        "desktopAppJoinUrl": "New desktop deep link."
       }
     },
     "get-call": {
       "name": "get-call",
       "description": "Get call details (participants, duration, status). Returns curated call. Retryable. EXPERIMENTAL. Params: callId.",
       "params": {
-        "callId": "Slack call id.",
-        "includeRaw": "Return raw API response. Default false."
+        "callId": "Slack call id."
       }
     },
     "add-call-participants": {
@@ -604,7 +888,7 @@
       "description": "Add participants to an active call. users is a JSON array of {slackId|externalId, displayName?, avatarUrl?}. Returns { callId, added: count }. Not retryable. EXPERIMENTAL.",
       "params": {
         "callId": "Slack call id.",
-        "users": "JSON array of participants."
+        "users": "JSON array of participants: [{\"slackId\":\"U...\"} or {\"externalId\":\"ext-123\",\"displayName\":\"…\"}]"
       }
     },
     "remove-call-participants": {
@@ -615,291 +899,65 @@
         "users": "JSON array of participants to remove."
       }
     },
-    "rename-channel": {
-      "name": "rename-channel",
-      "description": "Rename a channel. Name ≤80 chars, lowercase, no spaces/periods (Slack normalizes). Returns curated channel. Not retryable. Params: channelId, name.",
-      "params": {
-        "channelId": "Channel id (C... / G...).",
-        "name": "New name."
-      }
-    },
-    "set-channel-purpose": {
-      "name": "set-channel-purpose",
-      "description": "Set the purpose of a channel (long-form description). Max 250 chars. Returns { channelId, purpose }. Not retryable. Params: channelId, purpose.",
-      "params": {
-        "channelId": "Channel id.",
-        "purpose": "Channel purpose (≤250 chars)."
-      }
-    },
-    "set-channel-topic": {
-      "name": "set-channel-topic",
-      "description": "Set the topic of a channel (short description in header). Max 250 chars. Returns { channelId, topic }. Not retryable. Params: channelId, topic.",
-      "params": {
-        "channelId": "Channel id.",
-        "topic": "Channel topic (≤250 chars)."
-      }
-    },
-    "kick-from-channel": {
-      "name": "kick-from-channel",
-      "description": "Remove a user from a channel. Requires admin or channel owner permissions. Returns { channelId, userId, kicked: true }. Not retryable. Params: channelId, userId.",
-      "params": {
-        "channelId": "Channel id.",
-        "userId": "User id to remove."
-      }
-    },
-    "unarchive-channel": {
-      "name": "unarchive-channel",
-      "description": "Unarchive a previously archived channel. Returns curated channel. Not retryable. Params: channelId.",
-      "params": {
-        "channelId": "Channel id."
-      }
-    },
-    "mark-channel-read": {
-      "name": "mark-channel-read",
-      "description": "Mark all messages in a channel up to and including timestamp as read. Returns { channelId, timestamp, marked: true }. Idempotent. Params: channelId, timestamp.",
-      "params": {
-        "channelId": "Channel id.",
-        "timestamp": "Message ts as the read cursor."
-      }
-    },
-    "get-upload-url": {
-      "name": "get-upload-url",
-      "description": "Step 1 of modern multi-step upload: get pre-signed external URL. PUT bytes then call complete-upload. Returns { uploadUrl, fileId, filename, length }. Params: filename, length (bytes), altTxt?, snippetType?.",
-      "params": {
-        "filename": "Local filename.",
-        "length": "File size in bytes.",
-        "altTxt": "Alt text for images.",
-        "snippetType": "Language for code snippets.",
-        "includeRaw": "Return raw API response. Default false."
-      }
-    },
-    "complete-upload": {
-      "name": "complete-upload",
-      "description": "Step 2 of modern upload: finalize after PUT-ing bytes. files=[{id, title?}]. Optionally share to channel/thread. Returns curated file(s). Not retryable. Params: files (JSON array), channelId?, initialComment?, threadTs?.",
-      "params": {
-        "files": "JSON array of {id, title?}.",
-        "channelId": "Optional channel to share to.",
-        "initialComment": "Optional message.",
-        "threadTs": "Optional parent thread ts."
-      }
-    },
-    "share-file-public": {
-      "name": "share-file-public",
-      "description": "Make a file publicly accessible via URL. Returns { fileId, permalinkPublic }. Not retryable. Params: fileId.",
-      "params": {
-        "fileId": "Slack file id."
-      }
-    },
-    "revoke-file-public": {
-      "name": "revoke-file-public",
-      "description": "Revoke a file's public URL. Returns { fileId, revoked: true }. Not retryable. Params: fileId.",
-      "params": {
-        "fileId": "Slack file id."
-      }
-    },
-    "list-remote-files": {
-      "name": "list-remote-files",
-      "description": "List remote files (external storage like Google Drive). Returns { files, nextCursor, hasMore }. Retryable. Params: channel?, tsFrom?, tsTo?, limit (1-200, def 100), cursor?.",
-      "params": {
-        "includeRaw": "Return raw API response. Default false."
-      }
-    },
-    "add-remote-file": {
-      "name": "add-remote-file",
-      "description": "Register an external file (Google Drive, Dropbox) with Slack. Returns curated remote file. Not retryable. Params: externalId, externalUrl, title, fileType?, previewImage?, indexableFileContents?."
-    },
-    "update-remote-file": {
-      "name": "update-remote-file",
-      "description": "Update metadata of a remote file. Provide externalId XOR fileId. Returns curated remote file. Not retryable."
-    },
-    "remove-remote-file": {
-      "name": "remove-remote-file",
-      "description": "Remove a remote file reference (does not delete in external provider). Provide externalId XOR fileId. Returns { removed: true }. Not retryable."
-    },
-    "share-remote-file": {
-      "name": "share-remote-file",
-      "description": "Share a remote file to channels. Provide externalId XOR fileId. Returns curated remote file. Not retryable. Params: channels (csv), externalId? | fileId?.",
-      "params": {
-        "channels": "Comma-separated channel ids."
-      }
-    },
-    "get-remote-file": {
-      "name": "get-remote-file",
-      "description": "Get details of a remote file. Provide externalId XOR fileId. Returns curated remote file. Retryable.",
-      "params": {
-        "includeRaw": "Return raw API response. Default false."
-      }
-    },
-    "send-me-message": {
-      "name": "send-me-message",
-      "description": "Send a /me action message (third-person italic). Returns { ts, channel }. Not retryable. Params: channel, text.",
-      "params": {
-        "channel": "Channel id.",
-        "text": "Action text."
-      }
-    },
-    "unfurl-link": {
-      "name": "unfurl-link",
-      "description": "Custom unfurl for links in a message. unfurls is JSON map url→{blocks, text}. Returns { channel, ts, unfurled: true, links }. Not retryable.",
-      "params": {
-        "unfurls": "JSON map url → {blocks, text}."
-      }
-    },
-    "list-user-channels": {
-      "name": "list-user-channels",
-      "description": "List channels a user is a member of. Returns { channels, nextCursor, hasMore }. Retryable. Params: userId? (def authed), types? (csv), excludeArchived (def true), limit (1-1000, def 200), cursor?.",
-      "params": {
-        "includeRaw": "Return raw API response. Default false."
-      }
-    },
-    "delete-user-photo": {
-      "name": "delete-user-photo",
-      "description": "Delete the authenticated user's profile photo. Returns { deleted: true }. Not retryable. No params."
-    },
-    "get-user-identity": {
-      "name": "get-user-identity",
-      "description": "Get authenticated user's identity from OAuth (scope identity.basic). Returns curated identity. Retryable. No params.",
-      "params": {
-        "includeRaw": "Return raw API response. Default false."
-      }
-    },
-    "list-my-reactions": {
-      "name": "list-my-reactions",
-      "description": "List all items the user has reacted to. Returns { items, paging }. Retryable. Params: userId? (def authed), count (1-1000, def 100), page, full (def true).",
-      "params": {
-        "includeRaw": "Return raw API response. Default false.",
-        "cursor": "Pagination cursor from previous response.",
-        "limit": "Maximum results per page."
-      }
-    },
-    "get-team-dnd": {
-      "name": "get-team-dnd",
-      "description": "Get DND status for multiple users at once. Returns { users: [{ userId, snoozeEnabled, snoozeEndtime, nextDndStart, nextDndEnd }] }. Retryable. Params: users (csv of user ids).",
-      "params": {
-        "users": "Comma-separated user ids.",
-        "includeRaw": "Return raw API response. Default false."
-      }
-    },
-    "star-item": {
-      "name": "star-item",
-      "description": "Save (star) a message / file / file comment. Provide exactly one of (channel+timestamp), file, fileComment. Returns { type, target, starred: true }. Idempotent."
-    },
-    "unstar-item": {
-      "name": "unstar-item",
-      "description": "Remove saved item. Same exclusive-choice contract as star-item. Returns { type, target, unstarred: true }. Idempotent."
-    },
-    "list-stars": {
-      "name": "list-stars",
-      "description": "List the user's saved items. Returns { items, nextCursor, hasMore }. Retryable. Params: count (1-1000, def 100), cursor?.",
-      "params": {
-        "includeRaw": "Return raw API response. Default false.",
-        "limit": "Maximum results per page."
-      }
-    },
-    "list-emoji": {
-      "name": "list-emoji",
-      "description": "List custom workspace emojis. Returns { emojis: [{ name, url, isAlias, aliasFor }], count }. Retryable.",
-      "params": {
-        "includeRaw": "Return raw API response. Default false.",
-        "cursor": "Pagination cursor from previous response.",
-        "limit": "Maximum results per page."
-      }
-    },
-    "add-emoji": {
-      "name": "add-emoji",
-      "description": "Add a custom workspace emoji. Provide EITHER url OR aliasFor. Returns { name, isAlias, aliasFor?, ok: true }. Workspace admin only. Not retryable.",
-      "params": {
-        "name": "Emoji name (no colons).",
-        "url": "Image URL (PNG/JPG/GIF, ≤128KB).",
-        "aliasFor": "Existing emoji name to alias."
-      }
-    },
-    "remove-emoji": {
-      "name": "remove-emoji",
-      "description": "Remove a custom workspace emoji. Workspace admin only. Returns { name, removed: true }. Not retryable.",
-      "params": {
-        "name": "Emoji name."
-      }
-    },
-    "get-access-logs": {
-      "name": "get-access-logs",
-      "description": "Workspace login audit trail (paid plans). Returns { logs, paging }. Retryable. Params: before? (unix), count (1-1000, def 100), page.",
-      "params": {
-        "includeRaw": "Return raw API response. Default false."
-      }
-    },
-    "get-integration-logs": {
-      "name": "get-integration-logs",
-      "description": "Integration audit trail (apps installed/scope changes). Paid plans. Returns { logs, paging }. Retryable.",
-      "params": {
-        "includeRaw": "Return raw API response. Default false."
-      }
-    },
-    "get-team-profile": {
-      "name": "get-team-profile",
-      "description": "Schema of custom user profile fields for the workspace. Returns { fields }. Retryable. Params: visibility (all|visible|hidden).",
-      "params": {
-        "includeRaw": "Return raw API response. Default false."
-      }
-    },
-    "edit-bookmark": {
-      "name": "edit-bookmark",
-      "description": "Edit a channel bookmark (partial). Returns the updated bookmark. Not retryable. Params: channel, bookmarkId, title?, link?, emoji?."
-    },
-    "list-list-fields": {
-      "name": "list-list-fields",
-      "description": "Schema of a Slack List as individual fields. Returns { fields, count }. Retryable. EXPERIMENTAL. Params: listId.",
-      "params": {
-        "includeRaw": "Return raw API response. Default false.",
-        "cursor": "Pagination cursor from previous response.",
-        "limit": "Maximum results per page."
-      }
-    },
-    "create-list-field": {
-      "name": "create-list-field",
-      "description": "Add a column to a Slack List. EXPERIMENTAL. Params: listId, name, type, required (def false)."
-    },
-    "update-list-field": {
-      "name": "update-list-field",
-      "description": "Rename a list column or toggle required. type immutable. EXPERIMENTAL. Params: listId, fieldId, name?, required?."
-    },
-    "delete-list-field": {
-      "name": "delete-list-field",
-      "description": "Delete a column from a Slack List (drops all values). EXPERIMENTAL. Params: listId, fieldId."
-    },
     "list-connect-invites": {
       "name": "list-connect-invites",
-      "description": "Pending Slack Connect channel invites. Returns { invites, nextCursor, hasMore }. Retryable.",
+      "description": "List pending Slack Connect (cross-workspace) channel invites. Returns { invites, nextCursor, hasMore }. Retryable. Params: count (1-100, def 50), cursor?, teamId?.",
       "params": {
-        "includeRaw": "Return raw API response. Default false.",
-        "limit": "Maximum results per page."
+        "count": "Per page (1-100, def 50).",
+        "teamId": "Filter by team id."
       }
     },
     "invite-shared": {
       "name": "invite-shared",
-      "description": "Send Slack Connect invite. emails (csv) OR userIds (csv). Returns { channel, inviteId, link }."
+      "description": "Send Slack Connect invite to share a channel with external user(s). Provide emails (csv) OR userIds (csv). Returns { channel, inviteId, link }. Not retryable. Params: channel, emails? | userIds?, externalLimited (def false).",
+      "params": {
+        "channel": "Channel id to share.",
+        "emails": "Comma-separated emails of external users.",
+        "userIds": "Comma-separated user ids (if user already in Slack).",
+        "externalLimited": "Limit invite to external-only (no internal accidental clicks). Default false."
+      }
     },
     "accept-shared-invite": {
       "name": "accept-shared-invite",
-      "description": "Accept a Slack Connect invite. Provide inviteId XOR channelId."
+      "description": "Accept a Slack Connect invite (joins the shared channel into the user's workspace). Provide inviteId XOR channelId. Returns { channelId, inviteId }. Not retryable. Params: channelName (local name for the joined channel), inviteId? | channelId?, isPrivate (def false), freeTrial (def false).",
+      "params": {
+        "channelName": "Local name for the channel after joining.",
+        "inviteId": "Invite id from list-connect-invites.",
+        "channelId": "Channel id (alternative to inviteId).",
+        "isPrivate": "Set channel as private. Default false.",
+        "freeTrial": "Use Slack Connect free trial. Default false."
+      }
     },
     "decline-shared-invite": {
       "name": "decline-shared-invite",
-      "description": "Decline a Slack Connect invite."
+      "description": "Decline a Slack Connect channel invite. Returns { inviteId, declined: true }. Not retryable. Params: inviteId, targetTeam? (override target team id).",
+      "params": {
+        "inviteId": "Invite id.",
+        "targetTeam": "Target team id (Enterprise Grid)."
+      }
     },
     "approve-shared-invite": {
       "name": "approve-shared-invite",
-      "description": "Approve a Slack Connect invite as workspace admin."
+      "description": "Approve a Slack Connect channel invite as a workspace admin (when admin approval is required by policy). Returns { inviteId, approved: true }. Not retryable. Params: inviteId, targetTeam? (Enterprise Grid).",
+      "params": {
+        "inviteId": "Invite id.",
+        "targetTeam": "Target team id (Enterprise Grid)."
+      }
     },
     "revoke-auth": {
       "name": "revoke-auth",
-      "description": "Revoke the current OAuth token. Destructive. Params: test (def false)."
+      "description": "Revoke the current OAuth token (logs the user out of this Slack workspace from Teros). Returns { revoked: true }. Not retryable — destructive. Params: test (def false — set true to validate without actually revoking).",
+      "params": {
+        "test": "If true, simulate without revoking (for validation). Default false."
+      }
     },
     "list-auth-teams": {
       "name": "list-auth-teams",
-      "description": "Slack workspaces the current token can access (Enterprise Grid). Retryable.",
+      "description": "List Slack workspaces the current token has access to (relevant in Enterprise Grid). Returns { teams, nextCursor, hasMore }. Retryable. Params: includeIcon (def false), limit (1-100, def 100), cursor?.",
       "params": {
-        "includeRaw": "Return raw API response. Default false."
+        "includeIcon": "Include team icons. Default false.",
+        "limit": "Per page (1-100, def 100).",
+        "cursor": "Pagination cursor."
       }
     }
   },

@@ -1,31 +1,23 @@
 /**
  * AgentHeader — Avatar + contextual quote, shown below the progress bar.
  *
- * Extracted from OnboardingWizard for clarity.
+ * Extracted from OnboardingWizard for clarity. Reads as the prototype's
+ * "Iria · Personal Assistant" row: a 36px disc, the name in text and the
+ * quote in text3.
  */
 
-import React from 'react'
-import { useTranslation } from 'react-i18next'
-import { Image } from 'react-native'
-import { Text, XStack, YStack } from 'tamagui'
-import { colors as semanticColors } from '../mca/primitives/colors'
-import { useColors } from '../mca/primitives/useColors'
-
-// Indexed by `currentStep` — MUST stay aligned with OnboardingWizard's STEP_IDS
-// (welcome, agent, apps, access, done). Provider/plan/payment steps were removed.
-// Exported so onboardingStepAlignment.render.test.tsx can guard the alignment.
-export const STEP_QUOTE_KEYS = [
-  'onboarding.quoteWelcome',
-  'onboarding.quoteAboutYou',
-  'onboarding.quoteApps',
-  'onboarding.quoteAccess',
-  'onboarding.quoteDone',
-]
+import React from "react"
+import { useTranslation } from "react-i18next"
+import { Image, View } from "react-native"
+import { useColors } from "../mca/primitives/useColors"
+import { T } from "../ui/ds"
+import { type OnboardingStepId, STEP_COPY } from "./onboardingSteps"
 
 interface AgentHeaderProps {
   agentName: string
   avatarUrl?: string
-  currentStep: number
+  /** Step of the run; its quote comes from STEP_COPY (spec ONB). */
+  stepId: OnboardingStepId
 }
 
 function AgentAvatar({ avatarUrl, name }: { avatarUrl?: string; name: string }) {
@@ -34,52 +26,66 @@ function AgentAvatar({ avatarUrl, name }: { avatarUrl?: string; name: string }) 
     return (
       <Image
         source={{ uri: avatarUrl }}
-        style={{ width: 36, height: 36, borderRadius: 18 }}
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          borderWidth: 2,
+          borderColor: c.borderAccent,
+        }}
       />
     )
   }
   const initials = name
-    .split(' ')
-    .map((w) => w[0] ?? '')
+    .split(" ")
+    .map((w) => w[0] ?? "")
     .slice(0, 2)
-    .join('')
+    .join("")
     .toUpperCase()
   return (
-    <YStack
-      width={36}
-      height={36}
-      borderRadius={18}
-      backgroundColor={semanticColors.indigoGlow}
-      borderWidth={1}
-      borderColor={`${semanticColors.indigo}66`}
-      justifyContent="center"
-      alignItems="center"
+    <View
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: c.tile,
+        borderWidth: 2,
+        borderColor: c.borderAccent,
+        justifyContent: "center",
+        alignItems: "center",
+      }}
     >
-      <Text fontSize={13} fontWeight="700" color={semanticColors.indigo}>{initials || '?'}</Text>
-    </YStack>
+      <T step="12" tone="accent">
+        {initials || "?"}
+      </T>
+    </View>
   )
 }
 
-export function AgentHeader({ agentName, avatarUrl, currentStep }: AgentHeaderProps) {
+export function AgentHeader({ agentName, avatarUrl, stepId }: AgentHeaderProps) {
   const { t } = useTranslation()
   const c = useColors()
-  const quoteKey = STEP_QUOTE_KEYS[currentStep]
+  const quoteKey = STEP_COPY[stepId].quoteKey
   return (
-    <XStack
-      alignItems="center"
-      gap={12}
-      paddingHorizontal={24}
-      paddingVertical={16}
-      borderBottomWidth={1}
-      borderBottomColor={c.border}
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        paddingHorizontal: 28,
+        paddingVertical: 14,
+        marginTop: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: c.border,
+      }}
     >
       <AgentAvatar avatarUrl={avatarUrl} name={agentName} />
-      <YStack>
-        <Text fontSize={13} fontWeight="600" color={c.text}>{agentName}</Text>
-        <Text fontSize={12} color={c.text2} fontStyle="italic">
-          {quoteKey ? t(quoteKey) : ''}
-        </Text>
-      </YStack>
-    </XStack>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <T step="sm">{agentName}</T>
+        <T step="12" tone="text3" style={{ fontStyle: "italic" }}>
+          {quoteKey ? t(quoteKey) : ""}
+        </T>
+      </View>
+    </View>
   )
 }

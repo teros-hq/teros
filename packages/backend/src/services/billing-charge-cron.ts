@@ -35,8 +35,12 @@ import type { ChargeResult, StripePaymentService } from './stripe-payment-servic
 export interface BillingChargeCronOptions {
   /** How often to scan for chargeable invoices (default: 5 min). */
   intervalMs: number
+  /** Delay of the first pass after start() (default: 30s). 0 runs on the next tick. */
+  initialDelayMs?: number
   /** Leader lock TTL (default: 60s). */
   leaderLockTtlMs: number
+  /** Refresh the leader lock at most this often during a long run (GOV-8). Default 20s. */
+  heartbeatEveryMs?: number
   /** Days from the invoice date before an unpaid invoice blocks the account (decisions B/C). */
   graceDays: number
 }
@@ -54,7 +58,16 @@ export const DEFAULT_CHARGE_OPTS: BillingChargeCronOptions = {
  */
 export const RETRY_BACKOFF_HOURS = [1, 6, 24, 72]
 
+const DEFAULT_INITIAL_DELAY_MS = 30_000
 const HOUR_MS = 3_600_000
+/**
+ * Statuses the cron may still write a charge outcome onto. A failure write is
+ * conditioned on them (BIL-6): a webhook that marked the invoice paid while
+ * the charge was in flight must not be overwritten with overdue/uncollectible
+ * (which would block an account that just paid).
+ */
+const CHARGEABLE_STATUSES: Array<'pending' | 'overdue'> = ['pending', 'overdue']
+
 const DAY_MS = 24 * HOUR_MS
 
 export interface BillingChargeMetrics {
@@ -74,6 +87,7 @@ export interface BillingChargeMetrics {
 
 export class BillingChargeCron {
   private timer: NodeJS.Timeout | null = null
+  private initialTimer: NodeJS.Timeout | null = null
   private running = false
 
   private charge_runs = 0
@@ -107,15 +121,27 @@ export class BillingChargeCron {
       this.log.info('billing-charge-cron: Stripe not configured, cron disabled')
       return
     }
-    this.timer = setInterval(() => {
+    const run = () => {
       this.tick().catch((err) => {
         this.log.error({ err }, 'billing-charge-cron: tick failed')
       })
-    }, this.opts.intervalMs)
+    }
+    // First pass shortly after boot (not only after a full interval): a backend
+    // that restarts more often than the interval would otherwise never run it.
+    this.initialTimer = setTimeout(() => {
+      this.initialTimer = null
+      run()
+    }, this.opts.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS)
+    if (typeof this.initialTimer.unref === 'function') this.initialTimer.unref()
+    this.timer = setInterval(run, this.opts.intervalMs)
     if (typeof this.timer.unref === 'function') this.timer.unref()
   }
 
   stop(): void {
+    if (this.initialTimer) {
+      clearTimeout(this.initialTimer)
+      this.initialTimer = null
+    }
     if (this.timer) {
       clearInterval(this.timer)
       this.timer = null
@@ -149,13 +175,18 @@ export class BillingChargeCron {
     }
   }
 
-  /** Public entry point for tests and manual triggers. */
-  async runOnce(): Promise<{ charged: number; failed: number; blocked: number }> {
+  /**
+   * Public entry point for tests and manual triggers. Under leader election,
+   * tick() injects `heartbeat` so a long run keeps (and checks) its lease.
+   */
+  async runOnce(opts?: {
+    heartbeat?: () => Promise<boolean>
+  }): Promise<{ charged: number; failed: number; blocked: number }> {
     if (this.running) return { charged: 0, failed: 0, blocked: 0 }
     if (!this.stripe.isEnabled()) return { charged: 0, failed: 0, blocked: 0 }
     this.running = true
     try {
-      const result = await this.processChargeableInvoices()
+      const result = await this.processChargeableInvoices(opts?.heartbeat)
       this.charge_runs++
       this.charge_last_run_at = Date.now()
       return result
@@ -175,10 +206,15 @@ export class BillingChargeCron {
         return
       }
     }
-    await this.runOnce()
+    const leader = this.leader
+    await this.runOnce({
+      heartbeat: leader
+        ? () => leader.heartbeat(LEADER_LOCKS.BillingChargeCron, this.opts.leaderLockTtlMs)
+        : undefined,
+    })
   }
 
-  private async processChargeableInvoices(): Promise<{
+  private async processChargeableInvoices(heartbeat?: () => Promise<boolean>): Promise<{
     charged: number
     failed: number
     blocked: number
@@ -189,16 +225,25 @@ export class BillingChargeCron {
     let blocked = 0
 
     // pending = never charged; overdue = in dunning. Only those whose retry time
-    // has arrived (nextAttemptAt absent or due).
-    const invoices = await this.invoicesCol
-      .find({
-        status: { $in: ['pending', 'overdue'] },
-        paymentMethod: 'stripe',
-        $or: [{ nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now } }],
-      })
-      .toArray()
+    // has arrived (nextAttemptAt absent or due). Streamed (GOV-8): a snapshot
+    // loaded up front went stale over a long run, and two overlapping
+    // instances worked from the same stale list.
+    const invoices = this.invoicesCol.find({
+      status: { $in: ['pending', 'overdue'] },
+      paymentMethod: 'stripe',
+      $or: [{ nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now } }],
+    })
+    let lastBeat = Date.now()
 
-    for (const invoice of invoices) {
+    for await (const invoice of invoices) {
+      // Keep the leader lock alive during long runs; stop if it was lost (GOV-8)
+      if (heartbeat && Date.now() - lastBeat > (this.opts.heartbeatEveryMs ?? 20_000)) {
+        lastBeat = Date.now()
+        if (!(await heartbeat())) {
+          this.log.warn('billing-charge-cron: lost leadership mid-run, stopping')
+          break
+        }
+      }
       try {
         // €0 (BETA / waived) — nothing to charge.
         if (invoice.amount <= 0) {
@@ -276,7 +321,7 @@ export class BillingChargeCron {
             voidedStripeInvoiceId: result.stripeInvoiceId ?? invoice.externalReference,
           })
           await this.invoicesCol.updateOne(
-            { _id: invoice._id },
+            { _id: invoice._id, status: { $in: CHARGEABLE_STATUSES } },
             {
               $set: {
                 status: 'held',
@@ -298,7 +343,7 @@ export class BillingChargeCron {
             message: issue.message,
           })
           await this.invoicesCol.updateOne(
-            { _id: invoice._id },
+            { _id: invoice._id, status: { $in: CHARGEABLE_STATUSES } },
             {
               $set: {
                 // Keep any Stripe invoice id a partial attempt produced (TER-622),
@@ -375,7 +420,7 @@ export class BillingChargeCron {
       // provider gate (assertAccountNotBlocked), and paying the invoice lifts the
       // block without a re-upgrade.
       await this.invoicesCol.updateOne(
-        { _id: invoice._id },
+        { _id: invoice._id, status: { $in: CHARGEABLE_STATUSES } },
         {
           $set: {
             status: 'uncollectible',
@@ -400,7 +445,7 @@ export class BillingChargeCron {
       RETRY_BACKOFF_HOURS[Math.min(attempt - 1, RETRY_BACKOFF_HOURS.length - 1)]
     const nextAttemptAt = new Date(now.getTime() + backoffHours * HOUR_MS)
     await this.invoicesCol.updateOne(
-      { _id: invoice._id },
+      { _id: invoice._id, status: { $in: CHARGEABLE_STATUSES } },
       {
         $set: {
           status: 'overdue',

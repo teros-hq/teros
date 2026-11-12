@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -138,7 +141,6 @@
         "readOnlyHint": false,
         "version": "1.0.0",
         "stability": "stable",
-        "irreversible": true,
         "destructiveHint": true,
         "openWorldHint": true,
         "idempotentHint": false
@@ -300,7 +302,6 @@
         "readOnlyHint": false,
         "version": "1.0.0",
         "stability": "stable",
-        "irreversible": true,
         "destructiveHint": true,
         "openWorldHint": true,
         "idempotentHint": true
@@ -872,7 +873,6 @@
         "readOnlyHint": false,
         "version": "1.0.0",
         "stability": "stable",
-        "irreversible": true,
         "destructiveHint": true,
         "openWorldHint": true,
         "idempotentHint": false
@@ -897,7 +897,6 @@
         "readOnlyHint": false,
         "version": "1.0.0",
         "stability": "stable",
-        "irreversible": true,
         "destructiveHint": true,
         "openWorldHint": true,
         "idempotentHint": false

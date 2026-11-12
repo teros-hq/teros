@@ -1,19 +1,25 @@
 /**
- * AppCard Component
+ * AppCard — one installed app of the OS prototype's "Mis apps" grid (`.myapp`):
+ * a lifted Card with the brand Tile, the app name, a secondary line (account /
+ * category / error) and a status Badge at the right.
  *
- * Reusable card component for displaying installed apps.
- * Used in AppsWindow and WorkspaceWindow.
+ *   Lista · green dot      ready
+ *   Sin conectar · amber   needs_user_auth
+ *   Requiere configuración needs_system_setup
+ *   Sesión caducada        expired
+ *   Error · red            error (+ the message in the sub line)
+ *   category (muted)       not_required / unknown
+ *
+ * Used by AppsWindow (inside a `Grid`, `layout="fill"`) and WorkspaceWindow
+ * (inside a wrapping XStack, the default `layout="wrap"`).
  */
 
-import { ChevronRight, Package } from "@tamagui/lucide-icons"
-import type React from "react"
 import { useTranslation } from "react-i18next"
-import { Image, TouchableOpacity, View } from "react-native"
-import { Text, XStack, YStack } from "tamagui"
+import { View } from "react-native"
 import type { AppAuthInfo } from "./apps"
 import { useColors } from "./mca/primitives/useColors"
 import { McaIcon } from "./mca/McaIcon"
-import { colors as semanticColors, indicators } from "./mca/primitives/colors"
+import { Badge, type BadgeTone, Card, IconBtn, T, Tile } from "./ui/ds"
 
 interface AppCardProps {
   appId: string
@@ -23,14 +29,17 @@ interface AppCardProps {
   category?: string
   authInfo?: AppAuthInfo | null
   loading?: boolean
-  onPress: () => void
+  onPress: (e?: any) => void
   onUninstall?: () => void
   showUninstall?: boolean
   mcaId?: string
+  /** `fill` stretches to the parent (Grid cell); `wrap` keeps the legacy flex-wrap sizing. */
+  layout?: "fill" | "wrap"
 }
 
 const categoryKeyMap: Record<string, string> = {
   google: "apps.categoryGoogle",
+  microsoft: "apps.categoryMicrosoft",
   system: "apps.categorySystem",
   productivity: "apps.categoryProductivity",
   communication: "apps.categoryCommunication",
@@ -42,11 +51,32 @@ const categoryKeyMap: Record<string, string> = {
   other: "apps.categoryOther",
 }
 
+/** Status → badge tone + label. Exported so the Apps window can count/filter by the same rule. */
+export function appStatusMeta(
+  authInfo: AppAuthInfo | null | undefined,
+  loading: boolean | undefined,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): { tone: BadgeTone; label: string; kind: "ready" | "attention" | "idle" | "loading" } {
+  if (loading || !authInfo) return { tone: "muted", label: t("apps.verifying"), kind: "loading" }
+  switch (authInfo.status) {
+    case "ready":
+      return { tone: "g", label: t("apps.ready"), kind: "ready" }
+    case "needs_user_auth":
+      return { tone: "a", label: t("apps.requiresConnection"), kind: "attention" }
+    case "needs_system_setup":
+      return { tone: "a", label: t("apps.requiresSetup"), kind: "attention" }
+    case "expired":
+      return { tone: "a", label: t("apps.sessionExpired"), kind: "attention" }
+    case "error":
+      return { tone: "r", label: t("apps.error"), kind: "attention" }
+    default:
+      return { tone: "muted", label: t("apps.idle", { defaultValue: "Idle" }), kind: "idle" }
+  }
+}
+
 export function AppCard({
-  appId,
   name,
   icon,
-  color,
   category,
   authInfo,
   loading,
@@ -54,113 +84,68 @@ export function AppCard({
   onUninstall,
   showUninstall = false,
   mcaId,
+  layout = "wrap",
 }: AppCardProps) {
   const { t } = useTranslation()
   const c = useColors()
 
-  const getCategoryLabel = () => {
+  const categoryLabel = (() => {
     const key = categoryKeyMap[category || ""]
     return key ? t(key) : category || t("apps.app")
-  }
+  })()
 
-  const getStatusText = () => {
-    if (!authInfo) return { color: c.text3, text: t("apps.verifying") }
-    switch (authInfo.status) {
-      case "ready":
-        return { color: semanticColors.green, text: t("apps.ready") }
-      case "needs_system_setup":
-        return { color: semanticColors.amber, text: t("apps.requiresSetup") }
-      case "needs_user_auth":
-        return { color: semanticColors.amber, text: t("apps.requiresConnection") }
-      case "expired":
-        return { color: semanticColors.amber, text: t("apps.sessionExpired") }
-      case "error":
-        return { color: semanticColors.red, text: t("apps.error") }
-      case "not_required":
-        return { color: c.text2, text: getCategoryLabel() }
-      default:
-        return { color: c.text2, text: getCategoryLabel() }
-    }
-  }
-
-  const status = getStatusText()
-
-  // Show category for ready/not_required, show status for others
-  const needsAttention =
-    authInfo?.status === "needs_system_setup" ||
-    authInfo?.status === "needs_user_auth" ||
-    authInfo?.status === "expired" ||
-    authInfo?.status === "error"
-
-  // Health dot — a coloured indicator for apps that actually carry an auth
-  // status. Apps with `not_required` (no credentials) get no dot: a green/grey
-  // dot there would imply a health signal that doesn't exist for them. The dot
-  // colour mirrors the status text, so both read the same at a glance.
-  const showHealthDot = !loading && !!authInfo && authInfo.status !== "not_required"
+  const status = appStatusMeta(authInfo, loading, t)
+  const isError = !loading && authInfo?.status === "error"
+  // Secondary line: the error message when broken, the connected account when
+  // we know it, the category otherwise.
+  const sub = isError
+    ? authInfo?.error || authInfo?.message || categoryLabel
+    : authInfo?.oauth?.email || categoryLabel
 
   return (
-    <TouchableOpacity
+    <Card
+      hov
+      pad
       onPress={onPress}
-      activeOpacity={0.7}
-      style={{
-        flexBasis: "30%",
-        flexGrow: 1,
-        minWidth: 250,
-        backgroundColor: c.bgCard,
-        borderRadius: 12,
-        padding: 14,
-        borderWidth: 1,
-        borderColor: needsAttention ? indicators.risk.border : c.border,
-      }}
+      style={
+        layout === "fill" ? { width: "100%" } : { flexBasis: "30%", flexGrow: 1, minWidth: 250 }
+      }
     >
-      <XStack gap="$3" alignItems="center">
-        {/* Icon */}
-        <View
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            backgroundColor: color || c.bgInner,
-            justifyContent: "center",
-            alignItems: "center",
-            overflow: "hidden",
-          }}
-        >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+        <Tile>
           <McaIcon
             icon={icon}
             mcaId={mcaId}
             size={24}
-            color={c.text}
+            color={c.accent}
             backgroundColor="transparent"
+            borderRadius={0}
           />
-        </View>
-
-        {/* Content */}
-        <YStack flex={1}>
-          <Text fontSize={14} fontWeight="500" color={c.text} numberOfLines={1}>
+        </Tile>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <T step="base" ellipsis>
             {name}
-          </Text>
-          <XStack alignItems="center" gap={6}>
-            {showHealthDot && (
-              <View
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  backgroundColor: status.color,
-                  flexShrink: 0,
-                }}
-              />
-            )}
-            <Text fontSize={11} color={loading ? c.text3 : status.color} numberOfLines={1}>
-              {loading ? t("apps.verifying") : status.text}
-            </Text>
-          </XStack>
-        </YStack>
-
-        {/* Arrow */}
-        <ChevronRight size={16} color={c.text3} />
-      </XStack>
-    </TouchableOpacity>
+          </T>
+          <T step="sm" tone={isError ? "danger" : "text3"} ellipsis style={{ marginTop: 2 }}>
+            {sub}
+          </T>
+        </View>
+        <Badge tone={status.tone} pill dot={status.tone !== "muted"} sm>
+          {status.label}
+        </Badge>
+        {showUninstall && onUninstall ? (
+          <IconBtn
+            icon="trash"
+            plain
+            sm
+            danger
+            onPress={(e: any) => {
+              e?.stopPropagation?.()
+              onUninstall()
+            }}
+          />
+        ) : null}
+      </View>
+    </Card>
   )
 }

@@ -81,7 +81,7 @@ describe('-health-check', () => {
       issues?: unknown[];
     };
     expect(result.status).toBe('ready');
-    expect(result.version).toBe('1.0.0');
+    expect(result.version).toBe('1.1.0');
     expect(typeof result.uptime).toBe('number');
     expect(result.issues).toBeUndefined();
   });

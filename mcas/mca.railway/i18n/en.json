@@ -97,11 +97,13 @@
     },
     "railway-list-deployments": {
       "name": "railway-list-deployments",
-      "description": "List recent deployments for a service.",
+      "description": "List recent deployments for a service. Optionally filter by status (e.g. SUCCESS, FAILED, CRASHED, BUILDING, DEPLOYING).",
       "params": {
         "projectId": "The Railway project ID",
         "serviceId": "The Railway service ID",
-        "environmentId": "The Railway environment ID"
+        "environmentId": "The Railway environment ID",
+        "status": "Optional list of statuses to include (e.g. [\"SUCCESS\", \"FAILED\"]). If omitted, returns all.",
+        "limit": "Maximum number of deployments to return (default: 10, max: 100)"
       }
     },
     "railway-get-deployment": {
@@ -184,10 +186,5 @@
     }
   },
   "name": "Railway",
-  "description": "Deploy projects to Railway directly from Teros workspaces. Supports automatic deployments, environment management, and database provisioning.",
-  "changelog": [
-    {
-      "notes": "Initial release — create and deploy projects, manage services, environments, variables, domains and volumes, and watch deployment logs"
-    }
-  ]
+  "description": "Deploy projects to Railway directly from Teros workspaces. Supports automatic deployments, environment management, and database provisioning. Accepts both workspace-scoped tokens (full account access) and project-scoped tokens (restricted to a single project — some list operations will return empty by design)."
 }

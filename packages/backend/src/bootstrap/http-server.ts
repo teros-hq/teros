@@ -11,12 +11,16 @@ import { basename, dirname, extname, join, resolve, sep } from 'path'
 import { fileURLToPath } from 'url'
 import type { Db } from 'mongodb'
 import { config } from '../config'
-import { applyDownloadSafetyHeaders } from '../lib/content-safety'
-import { extractClientIp, isIpAllowed, resolveAllowedOrigin, timingSafeStringEqual } from '../lib/http-security'
+import { applyDownloadSafetyHeaders, withTextCharset } from '../lib/content-safety'
+import { parseResizeOptions, isResizableImage, resizeImage } from '../lib/image-resize'
+import { buildHstsHeader, extractClientIp, isIpAllowed, isOriginAllowed, resolveAllowedOrigin, shouldSetHsts, timingSafeStringEqual, isMetricsRequestAllowed } from '../lib/http-security'
 import { enforceHttpRateLimit, type RateLimiter } from '../services/rate-limiter'
+import { checkApiKeyScope, costsAccessLogger } from '../services/costs-auth'
 import { buildHealthReport } from './health'
+import { getDevAutologin, isDevAutologinRequestAllowed } from '../auth/dev-autologin'
 import { EventHandler, type ScheduledEvent } from '../handlers/event-handler'
 import { AppWebhookHandler } from '../handlers/app-webhook-handler'
+import { FlowWebhookHandler } from '../handlers/flow-webhook-handler'
 import { GitHubWebhookHandler } from '../handlers/github-webhook-handler'
 import type { LatitudeWebhookHandler } from '../handlers/latitude-webhook-handler'
 import { HttpAuthHandler } from '../handlers/http-auth-handler'
@@ -40,6 +44,9 @@ const __dirname = dirname(__filename)
 // ---------------------------------------------------------------------------
 
 export const MIME_TYPES: Record<string, string> = {
+  // Fonts (the OAuth return page's Saans / Prody)
+  '.otf': 'font/otf',
+  '.woff2': 'font/woff2',
   // Images
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -113,20 +120,36 @@ export function resolveWithinDir(baseDir: string, requested: string): string | n
 export interface HttpHandlers {
   adminRoutes: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
   boardRoutes: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
+  automateRoutes: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
   mcaCallbackRoutes: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
   providerOAuthRoutes: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
   g2Routes: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
+  /** Even Terminal /api/* routes — SSE + REST contract for Even G2 Terminal Mode */
+  terminalRoutes?: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
   /**
    * Prometheus /metrics endpoint. Optional: if not provided, /metrics responds 404.
    * Constructed by createMetricsRoute(deps) in routes/metrics-routes.ts.
    */
   metricsRoute?: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
+  /**
+   * Costs API (/api/costs/*) — read-only inference-cost aggregations for the
+   * external panel (task_4b1fe21d28b84452). Bearer-token auth; disabled (404)
+   * when no token is configured. Constructed by createCostsRoutes in
+   * routes/costs-routes.ts.
+   */
+  costsRoutes?: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
+  /**
+   * Tasks MCP endpoint (POST /mcp/tasks) — the Claude Code runner's tool
+   * bridge (CCR-REQ-4). Bearer tasks:run token inside the handler.
+   */
+  mcpTasksRoutes?: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
   authHandler: HttpAuthHandler
   mcaAuthHandler: HttpMcaAuthHandler
   githubWebhookHandler: GitHubWebhookHandler
   /** F4·C1 — Latitude signal webhook. Absent when LATITUDE_WEBHOOK_SECRET is unset. */
   latitudeWebhookHandler?: LatitudeWebhookHandler
   appWebhookHandler: AppWebhookHandler
+  flowWebhookHandler: FlowWebhookHandler
   /** Stripe webhook (FASE 4). Optional: absent when Stripe is not configured. */
   stripeWebhookHandler?: import('../handlers/stripe-webhook-handler').StripeWebhookHandler
   uploadHandler: HttpUploadHandler
@@ -137,10 +160,62 @@ export interface HttpHandlers {
   mcaEventSubscriptionService: MCAEventSubscriptionService
   sessionManager: SessionManager
   mcaManager: McaManager | null
+  /** Agent Apps routes (station → host push announcements). Optional: absent when Agent Apps is disabled. */
+  agentAppsRoutes?: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
+  /** Agent Apps storage routes (standalone — always available, no bridge needed). */
+  agentAppsStorageRoutes?: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>
   /** Mongo-backed rate limiter. Optional: absent disables HTTP rate limiting. */
   rateLimiter?: RateLimiter
   db: Db
 }
+
+// ---------------------------------------------------------------------------
+// Anti-CSRF constants (Req 3.1.5)
+// ---------------------------------------------------------------------------
+
+/** HTTP methods that change server state and must be CSRF-protected. */
+const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH'])
+
+/**
+ * Route prefixes exempt from Origin/Referer validation. These endpoints use
+ * non-browser auth (HMAC signatures, internal tokens, OAuth `state` params, or
+ * Bearer-token hardware API) and are not vulnerable to CSRF:
+ *   - /webhooks/*          — signature-verified machine webhooks
+ *   - /mca/callback/       — internal MCA token auth
+ *   - /api/event            — MCA internal token
+ *   - /api/mca-event        — MCA internal token
+ *   - /api/feedback/submit  — MCA feedback token
+ *   - /auth/, /api/auth/    — OAuth GET redirects (state-param CSRF protection)
+ *   - /g2                   — Bearer-token hardware API (G2 glasses)
+ *   - /terminal             — Bearer-token Even Terminal API (G2 Terminal Mode)
+ *   - /api/events           — SSE stream (Bearer token, not browser)
+ *   - /api/prompt           — Even Terminal prompt (Bearer token)
+ *   - /api/permission-response — Even Terminal permission (Bearer token)
+ *   - /api/question-response — Even Terminal question (Bearer token)
+ *   - /api/interrupt        — Even Terminal interrupt (Bearer token)
+ *   - /admin/               — Bearer-token admin API (ADMIN_API_KEY, not browser cookies)
+ */
+const CSRF_EXEMPT_PREFIXES = [
+  '/webhooks/',
+  '/api/v1/webhooks/', // Automate public webhooks — unauthenticated by design, the URL token is the secret
+  '/mca/callback/',
+  '/api/mca-event',
+  '/api/feedback/submit',
+  '/auth/',
+  '/api/auth/',
+  '/g2',
+  '/mcp/', // Tasks MCP endpoint — Bearer tasks:run token, no session cookie
+  '/terminal',
+  '/api/events',
+  '/api/prompt',
+  '/api/permission-response',
+  '/api/question-response',
+  '/api/interrupt',
+  '/api/codex/',
+  '/api/media/',
+  '/api/agent-apps/',
+  '/admin/',
+]
 
 // ---------------------------------------------------------------------------
 // createHttpHandler
@@ -153,15 +228,20 @@ export function createHttpHandler(handlers: HttpHandlers) {
   const {
     adminRoutes,
     boardRoutes,
+    automateRoutes,
     mcaCallbackRoutes,
     providerOAuthRoutes,
     g2Routes,
+    terminalRoutes,
     metricsRoute,
+    costsRoutes,
+    mcpTasksRoutes,
     authHandler,
     mcaAuthHandler,
     githubWebhookHandler,
     latitudeWebhookHandler,
     appWebhookHandler,
+    flowWebhookHandler,
     stripeWebhookHandler,
     uploadHandler,
     mediaHandler,
@@ -171,6 +251,8 @@ export function createHttpHandler(handlers: HttpHandlers) {
     mcaEventSubscriptionService,
     sessionManager,
     mcaManager,
+    agentAppsRoutes,
+    agentAppsStorageRoutes,
     rateLimiter,
     db,
   } = handlers
@@ -191,19 +273,81 @@ export function createHttpHandler(handlers: HttpHandlers) {
 
     // CORS — reflect only allowlisted origins for the API/WS (never a bare '*').
     // Disallowed origins get no ACAO header, so the browser blocks the response.
+    //
+    // Vary: Origin is set UNCONDITIONALLY — also for requests WITHOUT an Origin
+    // header (e.g. no-cors <img> loads of /static/mcas/... icons). Those
+    // responses are publicly cacheable (Cache-Control: public, max-age=86400),
+    // and the same URL is fetched two ways: no-cors <img> (no Origin → no ACAO)
+    // and CORS fetch() (with Origin → ACAO reflected). Without `Vary: Origin`
+    // on BOTH variants, a shared cache cannot tell them apart and may serve the
+    // no-ACAO variant to a later CORS fetch — the browser then rejects it as
+    // "No 'Access-Control-Allow-Origin' header" and every MCA icon falls back
+    // to '?' (prod incident 2026-10-01). With Vary, each Origin keys its own
+    // cache entry and the variants never cross.
+    res.setHeader('Vary', 'Origin')
     const allowedOrigin = resolveAllowedOrigin(req.headers.origin, config.security.corsAllowedOrigins)
     if (allowedOrigin) {
       res.setHeader('Access-Control-Allow-Origin', allowedOrigin)
-      if (allowedOrigin !== '*') res.setHeader('Vary', 'Origin')
+      if (allowedOrigin !== '*') {
+        // Needed for fetch with credentials: 'include' (session cookie, Req 6.6.1).
+        // Browsers reject credentialed responses with ACAO '*', hence the guard.
+        res.setHeader('Access-Control-Allow-Credentials', 'true')
+      }
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+
+    // HSTS — Strict-Transport-Security (Req 4.1.1). Tells browsers to always use
+    // HTTPS for the site, preventing SSL-stripping and protocol-downgrade attacks.
+    // Only set when the original client connection was HTTPS (gated by
+    // X-Forwarded-Proto when behind a reverse proxy). Browsers ignore HSTS over
+    // plain HTTP (RFC 6797 §8.1), so in local dev (trustProxy=false) we skip it.
+    if (config.security.hsts.enabled && shouldSetHsts(req, config.security.trustProxy)) {
+      res.setHeader(
+        'Strict-Transport-Security',
+        buildHstsHeader(
+          config.security.hsts.maxAgeSeconds,
+          config.security.hsts.includeSubDomains,
+          config.security.hsts.preload,
+        ),
+      )
+    }
 
     // Handle preflight (never rate-limited)
     if (method === 'OPTIONS') {
       res.writeHead(204)
       res.end()
       return
+    }
+
+    // ─── Anti-CSRF: Origin/Referer validation for state-changing methods ───────
+    // Req 3.1.5 — defense-in-depth against Cross-Site Request Forgery.
+    //
+    // Browsers send the `Origin` header on all cross-origin and same-origin
+    // POST/PUT/DELETE/PATCH requests. We validate it (or the `Referer` fallback)
+    // against the same CORS allowlist used above. A forged request from a
+    // third-party site will carry the attacker's origin, which won't match.
+    //
+    // Exempt routes (CSRF_EXEMPT_PREFIXES) use their own non-browser auth and
+    // are not vulnerable to CSRF — see the comment at the constant definition.
+    if (
+      STATE_CHANGING_METHODS.has(method) &&
+      !CSRF_EXEMPT_PREFIXES.some((prefix) => url.startsWith(prefix))
+    ) {
+      const origin = req.headers['origin']
+      const referer = req.headers['referer']
+      if (!isOriginAllowed(
+        Array.isArray(origin) ? origin[0] : origin,
+        Array.isArray(referer) ? referer[0] : referer,
+        config.security.corsAllowedOrigins,
+      )) {
+        res.writeHead(403, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Cross-origin request blocked',
+        }))
+        return
+      }
     }
 
     // Rate limiting — Mongo-backed, coordinated across instances. Excludes
@@ -229,6 +373,35 @@ export function createHttpHandler(handlers: HttpHandlers) {
       }
     }
 
+    // ─── Costs API key scope guard (task_6de67c22b163387a) ────────────────────
+    // The static X-API-Key authorizes EXACTLY the /api/costs/* read-only
+    // surface. A request presenting the header against ANY other path is a
+    // scope violation — reject it here, BEFORE any routing, with a generic
+    // 403 that reveals nothing about what exists. Placed AFTER the rate
+    // limiter so an attacker spraying the header on random paths is
+    // throttled per-IP before reaching this guard (and its audit writes).
+    // This runs even when the costs surface is disabled (no key
+    // configured): the header still means "I am the costs key holder", and
+    // it must never buy anything outside costs. Validity of the presented
+    // key is irrelevant here — the guard is about WHERE the credential may
+    // be used, not whether it is correct.
+    const apiKeyScope = checkApiKeyScope(req, url)
+    if (apiKeyScope.violation) {
+      costsAccessLogger.log({
+        timestamp: new Date(),
+        endpoint: apiKeyScope.path,
+        env: 'edge',
+        ip: extractClientIp(req, config.security.trustProxy),
+        userAgent: req.headers['user-agent'] as string | undefined,
+        outcome: 'scope_forbidden',
+        status: 403,
+        keyFingerprint: apiKeyScope.keyFingerprint,
+      })
+      res.writeHead(403, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'FORBIDDEN', message: 'Forbidden' }))
+      return
+    }
+
     // GitHub App webhook (signature-verified — independent of session auth).
     if (url.startsWith('/webhooks/github')) {
       if (await githubWebhookHandler.handleRoute(req, res, url)) return
@@ -246,6 +419,11 @@ export function createHttpHandler(handlers: HttpHandlers) {
 
     // Generic per-app webhooks (any MCA with webhook support)
     if (url.startsWith('/webhooks/apps/')) {
+    // Flow webhook triggers (Phase 4) — POST /webhooks/flow/:token
+    if (url.startsWith('/webhooks/flow/')) {
+      if (await flowWebhookHandler.handleRoute(req, res, url)) return
+    }
+
       if (await appWebhookHandler.handleRoute(req, res, url)) return
     }
 
@@ -253,6 +431,19 @@ export function createHttpHandler(handlers: HttpHandlers) {
     if (url.startsWith('/auth/') || url.startsWith('/api/auth/')) {
       if (await mcaAuthHandler.handleRoute(req, res, url)) return
       if (await authHandler.handleRoute(req, res, url)) return
+    }
+
+    // Dev auto-login capability probe (local dev only). When the feature is off
+    // — always in production — or the request isn't a direct local one, this
+    // falls through to the normal 404, so prod has no such route at all.
+    if (url === '/api/dev-autologin' && method === 'GET' && isDevAutologinRequestAllowed(req)) {
+      const devState = getDevAutologin()
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+      res.end(JSON.stringify({
+        devAutologin: true,
+        user: devState.enabled ? devState.userEmail : null,
+      }))
+      return
     }
 
     // Redirect root to health check
@@ -266,7 +457,15 @@ export function createHttpHandler(handlers: HttpHandlers) {
     // internal IPs as defense-in-depth — the reverse proxy is the first line.
     if (url === '/metrics' && metricsRoute) {
       const clientIp = extractClientIp(req, config.security.trustProxy)
-      if (!isIpAllowed(clientIp, config.security.metricsAllowedIps)) {
+      const allowed = isMetricsRequestAllowed({
+        clientIp,
+        allowlist: config.security.metricsAllowedIps,
+        trustProxy: config.security.trustProxy,
+        production: process.env.NODE_ENV === 'production',
+        authorization: req.headers.authorization,
+        token: config.security.metricsToken,
+      })
+      if (!allowed) {
         res.writeHead(403, { 'Content-Type': 'text/plain' })
         res.end('Forbidden')
         return
@@ -276,7 +475,7 @@ export function createHttpHandler(handlers: HttpHandlers) {
 
     // Health check — probes critical deps so a broken deploy fails the gate (TER-418)
     if (url === '/health') {
-      const { statusCode, body } = await buildHealthReport({ db, sessionManager, mcaManager })
+      const { statusCode, body } = await buildHealthReport({ db, sessionManager, mcaManager, release: process.env.TEROS_RELEASE || null })
       res.writeHead(statusCode, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(body))
       return
@@ -297,15 +496,28 @@ export function createHttpHandler(handlers: HttpHandlers) {
       if (await fileHandler.handleRoute(req, res, url)) return
     }
 
-    // Share API (create/delete shares + public share viewer)
-    if (url.startsWith('/api/share') || url.startsWith('/share/')) {
+    // Public share viewer — GET /share/:shareId only (the public link itself;
+    // share management moved to the WS `share` domain, no /api/share REST)
+    if (url.startsWith('/share/')) {
       if (await shareHandler.handleRoute(req, res, url)) return
     }
 
-    // Event API (for scheduler — direct channel injection)
-    if (url === '/api/event' && method === 'POST') {
-      await handleEventRoute(req, res, eventHandler)
-      return
+    // Public object storage — serves object files by objectId (no auth).
+    // Registered before /api/agent-apps/ so it takes priority for /objects/*.
+    // HEAD passes through too — the router answers it (200 + Content-Length,
+    // empty body). The edge used to filter `method === 'GET'` here, so HEAD
+    // fell through to the plain 404 below and `curl -I` "proved" intact
+    // objects destroyed (incident 2026-11-01: 29MB video).
+    if (url.startsWith('/objects/') && (method === 'GET' || method === 'HEAD')) {
+      if (agentAppsStorageRoutes && await agentAppsStorageRoutes(req, res, url)) return
+    }
+
+    // Agent Apps routes (station → host push announcements)
+    if (url.startsWith('/api/agent-apps/')) {
+      // Storage routes are always available (no bridge needed)
+      if (agentAppsStorageRoutes && await agentAppsStorageRoutes(req, res, url)) return
+      // Bridge-dependent routes (announce, stations, callback)
+      if (agentAppsRoutes && await agentAppsRoutes(req, res, url)) return
     }
 
     // MCA Event API — topic-based dispatch via MCAEventSubscriptionService
@@ -325,9 +537,47 @@ export function createHttpHandler(handlers: HttpHandlers) {
       if (await g2Routes(req, res, url)) return
     }
 
+    // Tasks MCP endpoint — the Claude Code runner's tools (Bearer tasks:run token).
+    if (mcpTasksRoutes && url.startsWith('/mcp/')) {
+      if (await mcpTasksRoutes(req, res, url)) return
+    }
+
+    // Terminal routes (Even Terminal /api/* SSE + REST contract for G2 Terminal Mode).
+    // Only match the specific Even Terminal paths to avoid intercepting other /api/* routes.
+    if (terminalRoutes && (
+      url === '/health'
+      || url === '/terminal'
+      || url.startsWith('/terminal/')
+      || url.startsWith('/api/events')
+      || url.startsWith('/api/sessions')
+      || url.startsWith('/api/prompt')
+      || url.startsWith('/api/permission-response')
+      || url.startsWith('/api/question-response')
+      || url.startsWith('/api/interrupt')
+      || url.startsWith('/api/status')
+      || url.startsWith('/api/messages')
+      || url.startsWith('/api/info')
+      || url.startsWith('/api/update-check')
+      || url.startsWith('/api/metrics')
+      || url.startsWith('/api/codex/')
+    )) {
+      if (await terminalRoutes(req, res, url)) return
+    }
+
     // Board dependency routes
     if (url.startsWith('/api/tasks/')) {
       if (await boardRoutes(req, res, url)) return
+    }
+
+    // Costs API — read-only inference-cost aggregations for the external panel.
+    // Bearer-token auth inside the handler; 404 when disabled (no token).
+    if (url.startsWith('/api/costs/') && costsRoutes) {
+      if (await costsRoutes(req, res, url)) return
+    }
+
+    // Automate webhook ingestion routes (public, token-authenticated)
+    if (url.startsWith('/api/v1/webhooks/')) {
+      if (await automateRoutes(req, res, url)) return
     }
 
     // Admin routes
@@ -372,68 +622,6 @@ export function createHttpHandler(handlers: HttpHandlers) {
 // Route helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Handle /api/event route
- */
-async function handleEventRoute(
-  req: IncomingMessage,
-  res: ServerResponse,
-  eventHandler: EventHandler,
-): Promise<void> {
-  try {
-    // SECURITY: Validate MCA internal token for service-to-service authentication
-    const authHeader = req.headers['authorization']
-    const mcaSecret = secrets.getSystem<{ internalToken: string }>('mca')
-
-    if (
-      !authHeader ||
-      !mcaSecret ||
-      !timingSafeStringEqual(authHeader, `Bearer ${mcaSecret.internalToken}`)
-    ) {
-      res.writeHead(401, { 'Content-Type': 'application/json' })
-      res.end(
-        JSON.stringify({
-          success: false,
-          error: 'Unauthorized: Invalid or missing MCA internal token',
-        }),
-      )
-      console.warn('⚠️  Unauthorized attempt to /api/event - invalid or missing token')
-      return
-    }
-
-    const chunks: Buffer[] = []
-    for await (const chunk of req) {
-      chunks.push(chunk)
-    }
-    const body = Buffer.concat(chunks).toString()
-    const event: ScheduledEvent = JSON.parse(body)
-
-    if (!event.channelId || !event.message || !event.eventType) {
-      res.writeHead(400, { 'Content-Type': 'application/json' })
-      res.end(
-        JSON.stringify({
-          success: false,
-          error: 'Missing required fields: channelId, message, eventType',
-        }),
-      )
-      return
-    }
-
-    const result = await eventHandler.handleScheduledEvent(event)
-
-    res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(result))
-  } catch (error) {
-    console.error('❌ Error handling /api/event:', error)
-    res.writeHead(500, { 'Content-Type': 'application/json' })
-    res.end(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : 'Internal server error',
-      }),
-    )
-  }
-}
 
 /**
  * Handle /api/mca-event route — topic-based MCA event dispatch
@@ -552,12 +740,44 @@ async function handleStaticFile(
   res: ServerResponse,
   url: string,
 ): Promise<void> {
-  const filePath = resolveStaticFilePath(url)
+  // Strip query string for path resolution, keep it for resize params
+  const queryIdx = url.indexOf('?')
+  const pathOnly = queryIdx >= 0 ? url.slice(0, queryIdx) : url
+  const queryString = queryIdx >= 0 ? url.slice(queryIdx) : ''
+
+  const filePath = resolveStaticFilePath(pathOnly)
   if (!filePath) {
     res.writeHead(404)
     res.end('Not Found')
     return
   }
+
+  // Parse URL for resize params
+  const parsedUrl = new URL(pathOnly + queryString, 'http://localhost')
+  const resizeOptions = parseResizeOptions(parsedUrl)
+
+  // If resize params and file is a resizable image, use Sharp
+  if (resizeOptions && isResizableImage(filePath)) {
+    try {
+      const result = await resizeImage(filePath, resizeOptions)
+      const headers = applyDownloadSafetyHeaders(
+        {
+          'Content-Type': result.contentType,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'X-Cache': result.cached ? 'HIT' : 'MISS',
+        },
+        result.contentType,
+        basename(filePath),
+      )
+      res.writeHead(200, headers)
+      res.end(result.data)
+      return
+    } catch (error) {
+      console.error('[static] Image resize failed:', error)
+      // Fall through to serve original on resize failure
+    }
+  }
+
   const ext = extname(filePath).toLowerCase()
   const mimeType = MIME_TYPES[ext] || 'application/octet-stream'
 
@@ -566,11 +786,12 @@ async function handleStaticFile(
     // Force-attachment + nosniff for browser-executable types (Stored XSS, C-5).
     // Shared with the media handler via applyDownloadSafetyHeaders so the two
     // serving paths can't drift.
+    // ACAO is set by the main request handler via resolveAllowedOrigin() —
+    // do not override it with a wildcard here.
     const headers = applyDownloadSafetyHeaders(
       {
         'Content-Type': mimeType,
         'Cache-Control': 'public, max-age=86400',
-        'Access-Control-Allow-Origin': '*',
       },
       mimeType,
       basename(filePath),
@@ -631,11 +852,11 @@ export async function handleUploadedFile(
     // upload type — so this third serving path must force-attach browser-executable
     // types too, or it re-opens the same Stored XSS the media/static handlers close.
     // Audio types aren't in FORCE_ATTACHMENT_TYPES, so voice notes stay inline.
+    // ACAO is set by the main request handler via resolveAllowedOrigin().
     const headers = applyDownloadSafetyHeaders(
       {
         'Content-Type': mimeType,
         'Cache-Control': 'public, max-age=86400',
-        'Access-Control-Allow-Origin': '*',
       },
       mimeType,
       basename(filename),
@@ -673,10 +894,15 @@ async function handlePublicFile(
 
   try {
     const data = await readFile(filePath)
+    // ACAO is set by the main request handler via resolveAllowedOrigin().
+    // text/* gets an explicit charset=utf-8 (RFC 9110 has no text/* default —
+    // without it browsers guess windows-1252 and UTF-8 content mojibakes).
+    // NOTE: no applyDownloadSafetyHeaders here on purpose — this path serves
+    // platform-owned assets (e.g. pcm-processor.js), not user uploads, and
+    // force-attaching application/javascript would break AudioWorklet loading.
     res.writeHead(200, {
-      'Content-Type': mimeType,
+      'Content-Type': withTextCharset(mimeType),
       'Cache-Control': 'public, max-age=86400',
-      'Access-Control-Allow-Origin': '*',
     })
     res.end(data)
   } catch {

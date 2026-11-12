@@ -86,6 +86,12 @@ export interface LLMUsageInfo {
   cacheCreationInputTokens?: number
   cacheReadInputTokens?: number
   reasoningTokens?: number
+  /**
+   * True when the provider returned no `usage` in its streaming response and the
+   * token counts were estimated locally (BPE tokenizer on the prompt + output
+   * text). When false or absent, the counts are the provider's real figures.
+   */
+  usageEstimated?: boolean
 }
 
 /**
@@ -186,6 +192,14 @@ export interface StreamingCallbacks {
 /**
  * Options for streaming messages
  */
+/**
+ * Latency lane of a request (TLANE): `interactive` when a person is waiting on
+ * it, `background` when nobody is watching. Providers that route by lane (the
+ * Teros provider) pick the route from it; every other adapter ignores it.
+ * @spec TLANE-REQ-1
+ */
+export type LlmLane = 'interactive' | 'background'
+
 export interface StreamMessageOptions {
   /** Message history in the previous implementation format */
   messages: MessageWithParts[]
@@ -195,6 +209,15 @@ export interface StreamMessageOptions {
 
   /** System prompt override (optional) */
   systemPrompt?: string
+
+  /**
+   * Trailing per-request portion of `systemPrompt` (optional). INVARIANT: when set,
+   * `systemPrompt.endsWith(systemPromptVolatile)` must hold. Cache-aware adapters
+   * (Anthropic, Anthropic-OAuth, OpenRouter) slice this off and emit it as a
+   * separate, NON-cached system block so only the stable prefix is cached; other
+   * adapters ignore it and send the full `systemPrompt` verbatim (TER-618).
+   */
+  systemPromptVolatile?: string
 
   /** Model configuration (optional) */
   model?: string
@@ -214,11 +237,32 @@ export interface StreamMessageOptions {
    */
   cacheBreakpointIndex?: number
 
+  /** Latency lane of this request (TLANE-REQ-1). Ignored by adapters that do not route by lane. */
+  lane?: LlmLane
+
   /** Context metadata for usage tracking (optional) */
   userId?: string
   workspaceId?: string
   agentId?: string
   channelId?: string
+}
+
+/**
+ * Split a system prompt into a cacheable stable prefix and a non-cached volatile
+ * suffix, for cache-aware adapters. Degrades safely: if the invariant
+ * `systemPrompt.endsWith(volatile)` does not hold (or no volatile is given), the
+ * whole prompt is returned as `stable` with no `volatile`, reproducing the
+ * single-cached-block behavior. `stable` may be empty when the prompt is entirely
+ * volatile — callers should skip an empty cached block.
+ */
+export function splitSystemPromptForCache(
+  systemPrompt: string,
+  volatile: string | undefined,
+): { stable: string; volatile?: string } {
+  if (volatile && systemPrompt.endsWith(volatile)) {
+    return { stable: systemPrompt.slice(0, systemPrompt.length - volatile.length), volatile }
+  }
+  return { stable: systemPrompt }
 }
 
 /**

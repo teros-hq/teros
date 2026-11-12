@@ -10,7 +10,7 @@
  * - GET /health - Health check
  * - POST /shutdown - Graceful shutdown
  *
- *
+ * @see docs/RFC-001-mca-protocol.md
  */
 
 import type {
@@ -22,10 +22,11 @@ import type {
   McaToolResultResponse,
   McaToolsListResponse,
 } from '@teros/shared';
-import { generateMessageId, MCA_PROTOCOL_VERSION, McaErrorCode } from '@teros/shared';
+import { generateMessageId, MCA_PROTOCOL_VERSION, McaErrorCode, verifyRequest } from '@teros/shared';
 import type { Server as HttpServer } from 'http';
 import { createServer, type IncomingMessage, type ServerResponse } from 'http';
 import { McaBackendClient } from './backend-client';
+import type { VolumeStorage, ShareAccess, VolumeEntry, VolumeStat, ShareResult, DocumentStorage, ObjectStorage } from './types';
 
 // ============================================================================
 // TYPES
@@ -101,8 +102,19 @@ export interface ToolContext {
   agentDelete: (agentId: string) => Promise<any>;
   agentAppsList: (agentId: string) => Promise<{ apps: any[] }>;
   agentProvidersGet: (agentId: string) => Promise<any>;
-  agentProvidersSet: (agentId: string, providerIds: string[]) => Promise<any>;
-  agentPreferredProviderSet: (agentId: string, providerId: string | null) => Promise<any>;
+  /** Legacy — providerIds is ignored by the backend (pin-only set, 2026-10-21). */
+  agentProvidersSet: (
+    agentId: string,
+    providerIds: string[],
+    options?: { selectedProviderId?: string | null; selectedModelId?: string | null; reason?: string },
+  ) => Promise<any>;
+  agentModelSet: (
+    agentId: string,
+    providerId: string,
+    modelId: string,
+    options?: { reason?: string; allowReserved?: boolean },
+  ) => Promise<any>;
+  agentModelReset: (agentId: string, options?: { reason?: string }) => Promise<any>;
 
   // ==========================================================================
   // RESOURCES: PROVIDERS
@@ -130,7 +142,6 @@ export interface ToolContext {
   // RESOURCES: APPS
   // ==========================================================================
 
-  appList: () => Promise<{ apps: any[] }>;
   appGet: (appId: string) => Promise<any>;
   appInstall: (mcaId: string, name?: string, workspaceId?: string) => Promise<any>;
   appUninstall: (appId: string) => Promise<any>;
@@ -143,6 +154,24 @@ export interface ToolContext {
   ) => Promise<any>;
   appShowAuth: (appId: string) => Promise<any>;
   appCheckAuth: (appId: string) => Promise<any>;
+  /** Agent secret tools (docs/specs/20261031_agent-secret-tools.md). */
+  appSetSecret: (
+    appId: string,
+    key: string,
+    value: string,
+    options?: { scope?: 'user' | 'app'; alsoRedact?: string[]; agentId?: string },
+  ) => Promise<any>;
+  appGetSecret: (
+    appId: string,
+    key: string,
+    options?: { scope?: 'user' | 'app' },
+  ) => Promise<any>;
+  /** Agent secret tools: copy complete app auth across instances (tn_aGVdSrVwIJi9mfvc). Workspace IDs are required — cross-workspace tools always name their workspaces (tn_hj1s2cs1t93g91xq, infra sharded by workspaceId). */
+  appCopyAuth: (
+    appId: string,
+    sourceAppId: string,
+    options: { sourceWorkspaceId: string; targetWorkspaceId: string; agentId?: string },
+  ) => Promise<any>;
   workspaceAppList: (workspaceId: string) => Promise<{ apps: any[] }>;
   workspaceAgentList: (workspaceId: string) => Promise<{ agents: any[] }>;
 
@@ -208,6 +237,36 @@ export interface ToolContext {
    * List all data keys for the current scope
    */
   listData: () => Promise<{ keys: Array<{ key: string; updatedAt: string }> }>;
+
+  // ==========================================================================
+  // VOLUME STORAGE
+  // ==========================================================================
+
+  /**
+   * Volume storage — unified file-system API for reading/writing files
+   * on the workspace volume. All paths are absolute within the volume
+   * (e.g. `/workspace/file.txt`).
+   */
+  volume: VolumeStorage;
+
+  // ==========================================================================
+  // SHARE
+  // ==========================================================================
+
+  /**
+   * Share access — create and revoke public URLs for files on the
+   * workspace volume.
+   */
+  share: ShareAccess;
+
+  // ==========================================================================
+  // AGENT APPS: DOCUMENT STORAGE & OBJECT STORAGE
+  // ==========================================================================
+
+  /** Document storage — MongoDB-backed key-document store scoped per installation */
+  storage: DocumentStorage;
+  /** Object storage — filesystem-backed binary store scoped per installation */
+  objects: ObjectStorage;
 }
 
 /**
@@ -228,6 +287,8 @@ export interface ToolAnnotations {
   irreversible?: boolean;
   /** Teros policy — tool NEVER runs without human confirmation; user 'allow' config is ignored. */
   alwaysAsk?: boolean;
+  /** Teros policy hint — mutating tool whose write is reversible/private/non-notifying; seeds 'allow' at install time. */
+  safeWriteHint?: boolean;
   /** MCP spec hint — tool only reads, never mutates state. Clients MAY auto-approve. */
   readOnlyHint?: boolean;
   /** MCP spec hint — tool may modify or delete state irreversibly. Clients SHOULD confirm. */
@@ -236,6 +297,21 @@ export interface ToolAnnotations {
   idempotentHint?: boolean;
   /** MCP spec hint — tool reaches outside the local environment (network, external services). */
   openWorldHint?: boolean;
+  /**
+   * Catalog presentation (TER-538), author-curated. `summary` is a short
+   * human sentence and `group` a domain label (e.g. 'Pages') shown in the
+   * catalog detail. Optional — the sync falls back to a heuristic when absent.
+   * These never reach the LLM (the model reads `description`).
+   */
+  summary?: string;
+  group?: string;
+  /**
+   * Plain-text template for the approval card's intent line, with `{param}`
+   * placeholders filled from the call's own arguments — e.g.
+   * `'Delete the file at {path}'`. Rendered as text, never as markup, and
+   * declined when a placeholder names an absent or non-primitive argument.
+   */
+  intentTemplate?: string;
 }
 
 export interface RegisteredTool {
@@ -294,6 +370,22 @@ export interface McaHttpServerConfig {
 export type HealthCheckFn = () =>
   | Promise<{ status: 'ready' | 'not_ready' | 'degraded'; message?: string }>
   | { status: 'ready' | 'not_ready' | 'degraded'; message?: string };
+
+/**
+ * Callback the transport calls after a tool succeeds.
+ * If it returns a `RenderedOutput`, the transport includes it in the
+ * `tool_result` response's `rendered` field.
+ *
+ * Set by `McaServer` via `setRendererDispatch()` when UI resources
+ * are registered. The callback receives the tool name, the raw tool
+ * result, and the tool context so it can invoke the bound resource
+ * handler and render the output.
+ */
+export type RendererDispatchFn = (
+  toolName: string,
+  toolResult: unknown,
+  context: ToolContext,
+) => Promise<{ format: 'text' | 'markdown' | 'html'; content: string; resource: string; resourceType: string } | undefined>;
 
 /**
  * Returns the `structuredContent` property if the value is a non-null
@@ -368,10 +460,11 @@ function buildResourceMethods(
     agentDelete: (agentId) => requireClient().agentDelete(agentId),
     agentAppsList: (agentId) => requireClient().agentAppsList(agentId),
     agentProvidersGet: (agentId) => requireClient().agentProvidersGet(agentId),
-    agentProvidersSet: (agentId, providerIds) =>
-      requireClient().agentProvidersSet(agentId, providerIds),
-    agentPreferredProviderSet: (agentId, providerId) =>
-      requireClient().agentPreferredProviderSet(agentId, providerId),
+    agentProvidersSet: (agentId, providerIds, options) =>
+      requireClient().agentProvidersSet(agentId, providerIds, options),
+    agentModelSet: (agentId, providerId, modelId, options) =>
+      requireClient().agentModelSet(agentId, providerId, modelId, options),
+    agentModelReset: (agentId, options) => requireClient().agentModelReset(agentId, options),
 
     // Providers
     providerList: () => requireClient().providerList(),
@@ -390,7 +483,6 @@ function buildResourceMethods(
       requireClient().workspaceMemberUpdate(workspaceId, userId, role),
 
     // Apps
-    appList: () => requireClient().appList(),
     appGet: (appId) => requireClient().appGet(appId),
     appInstall: (mcaId, name, workspaceId) => requireClient().appInstall(mcaId, name, workspaceId),
     appUninstall: (appId) => requireClient().appUninstall(appId),
@@ -400,6 +492,11 @@ function buildResourceMethods(
     appPermissionsSet: (appId, changes) => requireClient().appPermissionsSet(appId, changes),
     appShowAuth: (appId) => requireClient().appShowAuth(appId),
     appCheckAuth: (appId) => requireClient().appCheckAuth(appId),
+    appSetSecret: (appId, key, value, options) =>
+      requireClient().appSetSecret(appId, key, value, options),
+    appGetSecret: (appId, key, options) => requireClient().appGetSecret(appId, key, options),
+    appCopyAuth: (appId, sourceAppId, options) =>
+      requireClient().appCopyAuth(appId, sourceAppId, options),
     workspaceAppList: (workspaceId) => requireClient().workspaceAppList(workspaceId),
     workspaceAgentList: (workspaceId) => requireClient().workspaceAgentList(workspaceId),
 
@@ -427,6 +524,71 @@ function buildResourceMethods(
     setData: (key, value) => requireClient().setData(key, value, scope),
     deleteData: (key) => requireClient().deleteData(key, scope),
     listData: () => requireClient().listData(scope),
+
+    // Volume Storage — unified file-system API via file_volume_* callbacks
+    volume: {
+      list: async (path: string): Promise<VolumeEntry[]> => {
+        const res = await requireClient().volumeList(path, execution.workspaceId || execution.userId);
+        return res.entries;
+      },
+      read: async (path: string): Promise<string | null> => {
+        const res = await requireClient().volumeRead(path, execution.workspaceId || execution.userId);
+        return res.data;
+      },
+      write: async (path: string, data: string): Promise<void> => {
+        await requireClient().volumeWrite(path, data, execution.workspaceId || execution.userId);
+      },
+      delete: async (path: string, options?: { recursive?: boolean }): Promise<void> => {
+        await requireClient().volumeDelete(path, execution.workspaceId || execution.userId, options?.recursive);
+      },
+      stat: async (path: string): Promise<VolumeStat | null> => {
+        const res = await requireClient().volumeStat(path, execution.workspaceId || execution.userId);
+        return res.stat;
+      },
+      mkdir: async (path: string): Promise<void> => {
+        await requireClient().volumeMkdir(path, execution.workspaceId || execution.userId);
+      },
+      getTempPath: (filename: string): string => {
+        const sessionId = execution.userId || 'unknown';
+        return `/tmp/${sessionId}/${filename}`;
+      },
+    },
+
+    // Share — create and revoke public URLs via file_share/file_revoke callbacks
+    share: {
+      share: async (path: string, options?: { mutable?: boolean; expiresIn?: number }): Promise<ShareResult> => {
+        return requireClient().fileShare(path, execution.workspaceId || execution.userId, options);
+      },
+      revoke: async (url: string): Promise<void> => {
+        await requireClient().fileRevoke(url);
+      },
+    },
+
+    // Document Storage — MongoDB-backed document store via /agent-apps/storage/* endpoints
+    storage: {
+      put: (collection: string, documentId: string, document: Record<string, unknown>) =>
+        requireClient().storagePut(collection, documentId, document),
+      get: (collection: string, documentId: string) =>
+        requireClient().storageGet(collection, documentId),
+      query: (collection: string, filter?: Record<string, unknown>, limit?: number) =>
+        requireClient().storageQuery(collection, filter, limit),
+      update: (collection: string, documentId: string, patch: Record<string, unknown>) =>
+        requireClient().storageUpdate(collection, documentId, patch),
+      delete: (collection: string, documentId: string) =>
+        requireClient().storageDelete(collection, documentId),
+    },
+
+    // Object Storage — filesystem-backed blob store via /agent-apps/objects/* endpoints
+    objects: {
+      put: (data: Buffer, contentType: string, metadata?: Record<string, string>) =>
+        requireClient().objectPut(data, contentType, metadata),
+      get: (objectId: string) =>
+        requireClient().objectGet(objectId),
+      delete: (objectId: string) =>
+        requireClient().objectDelete(objectId),
+      list: () =>
+        requireClient().objectList(),
+    },
   };
 }
 
@@ -439,6 +601,7 @@ export class McaHttpServer {
   private server: HttpServer | null = null;
   private tools = new Map<string, RegisteredTool>();
   private healthCheckFn: HealthCheckFn | null = null;
+  private rendererDispatchFn: RendererDispatchFn | null = null;
   private startTime = Date.now();
   private mcaId: string;
   private mcaName: string;
@@ -526,6 +689,18 @@ export class McaHttpServer {
   }
 
   /**
+   * Set the renderer dispatch callback.
+   *
+   * Called by `McaServer` when UI resources are registered. After a tool
+   * handler succeeds, the transport calls this callback with the tool
+   * name and result. If it returns a `RenderedOutput`, the transport
+   * includes it in the `tool_result` response.
+   */
+  setRendererDispatch(fn: RendererDispatchFn): void {
+    this.rendererDispatchFn = fn;
+  }
+
+  /**
    * Start the HTTP server
    */
   async start(): Promise<void> {
@@ -579,8 +754,8 @@ export class McaHttpServer {
     const url = req.url || '/';
     const method = req.method || 'GET';
 
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // CORS headers — MCA HTTP server is server-to-server (backend → MCA container),
+    // never browser-facing. No ACAO needed; methods/headers suffice for preflight.
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -687,6 +862,91 @@ export class McaHttpServer {
     const args = body.arguments || {};
     const context = body.context;
 
+    // ── Request signature verification (incident-2026-08-14, Layer B) ──────
+    //
+    // Every tool-call request from the backend must carry an HMAC-SHA256
+    // signature over (userId, workspaceId, appId, toolCallId) using the
+    // per-container callback token as the secret. This prevents a request
+    // destined for container A from being executed on container B — even if
+    // the backend misroutes it, the signature won't match.
+    //
+    // The secret is `MCA_CALLBACK_TOKEN`, injected by the backend as an env
+    // var when the container starts. It is never transmitted in the request
+    // body — both sides derive it independently.
+    //
+    // Enforcement is controlled by `MCA_REQUIRE_SIGNATURE` (default: true).
+    // During rollout, setting it to 'false' allows unsigned requests through
+    // (logged as warnings) so existing containers can be upgraded without
+    // breaking. Once all containers run the new SDK, set to 'true' (or
+    // remove the env var) to enforce.
+    const requireSignature = process.env.MCA_REQUIRE_SIGNATURE !== 'false';
+    const callbackToken = process.env.MCA_CALLBACK_TOKEN;
+
+    if (requireSignature) {
+      if (!context?.signature || !context?.toolCallId) {
+        console.error(
+          `[McaHttpServer:${this.mcaId}] Rejected tool call: missing signature or toolCallId ` +
+            `(tool=${toolName}, userId=${context?.userId ?? 'none'}, ` +
+            `workspaceId=${context?.workspaceId ?? 'none'}, appId=${context?.appId ?? 'none'})`,
+        );
+        this.sendError(
+          res,
+          403,
+          'UNAUTHORIZED',
+          'Request missing signature or toolCallId. Authentication required.',
+          requestId,
+        );
+        return;
+      }
+
+      if (!callbackToken) {
+        console.error(
+          `[McaHttpServer:${this.mcaId}] Rejected tool call: MCA_CALLBACK_TOKEN not set on container — ` +
+            'cannot verify signature. This container is misconfigured.',
+        );
+        this.sendError(
+          res,
+          500,
+          McaErrorCode.INTERNAL_ERROR,
+          'Container authentication secret not configured. Contact support.',
+          requestId,
+        );
+        return;
+      }
+
+      const isValid = verifyRequest(
+        {
+          userId: context.userId,
+          workspaceId: context.workspaceId || '',
+          appId: context.appId,
+          toolCallId: context.toolCallId,
+        },
+        context.signature,
+        callbackToken,
+      );
+
+      if (!isValid) {
+        console.error(
+          `[McaHttpServer:${this.mcaId}] Rejected tool call: invalid signature ` +
+            `(tool=${toolName}, userId=${context.userId}, ` +
+            `workspaceId=${context.workspaceId ?? 'none'}, appId=${context.appId})`,
+        );
+        this.sendError(
+          res,
+          403,
+          'UNAUTHORIZED',
+          'Request signature verification failed. This request is not authorized for this container.',
+          requestId,
+        );
+        return;
+      }
+    } else if (context?.signature) {
+      // Signature present but enforcement disabled — log for observability
+      console.warn(
+        `[McaHttpServer:${this.mcaId}] Signature present but enforcement disabled (MCA_REQUIRE_SIGNATURE=false)`,
+      );
+    }
+
     // Find tool
     const tool = this.tools.get(toolName);
     if (!tool) {
@@ -741,6 +1001,18 @@ export class McaHttpServer {
         ...buildResourceMethods(backendClient, context, 'Cannot access resources'),
       };
 
+      // MUW-F3: Per-execution credential override for personal apps.
+      //
+      // When the backend passes `credentials` in the execution context
+      // (personal apps with per-user OAuth), override `getUserSecrets()` to
+      // return those credentials directly — no WS roundtrip, no global state.
+      // This eliminates the race where concurrent users on the same MCA
+      // process could see each other's tokens via the global WS push.
+      if (context.credentials) {
+        const injectedCredentials = context.credentials;
+        toolContext.getUserSecrets = async () => injectedCredentials;
+      }
+
       const result = await tool.handler(args, toolContext);
       const duration = Date.now() - startTime;
 
@@ -754,6 +1026,28 @@ export class McaHttpServer {
       // Extract attachments from handler result if it declares them
       const attachments = extractAttachments(result);
 
+      // ── Renderer dispatch ──────────────────────────────────────────────
+      //
+      // After the tool succeeds, if a renderer dispatch callback is
+      // registered (set by McaServer when UI resources exist), call it
+      // with the tool name and result. If a bound UI resource exists,
+      // the callback invokes its handler, renders the UiResourceData, and
+      // returns a RenderedOutput that we include in the response.
+      //
+      // Rendering is best-effort: errors are caught inside the callback
+      // and never affect the tool result. If the callback returns
+      // undefined (no bound resources or all handlers failed), the
+      // `rendered` field is simply omitted.
+      let rendered: { format: 'text' | 'markdown' | 'html'; content: string; resource: string; resourceType: string } | undefined;
+      if (this.rendererDispatchFn) {
+        try {
+          rendered = await this.rendererDispatchFn(toolName, result, toolContext);
+        } catch {
+          // Renderer dispatch itself threw — log and continue without rendered output
+          rendered = undefined;
+        }
+      }
+
       const response: McaToolResultResponse = {
         id: requestId,
         type: 'tool_result',
@@ -763,6 +1057,7 @@ export class McaHttpServer {
         result,
         ...(structuredContent !== undefined ? { structuredContent } : {}),
         ...(attachments !== undefined ? { attachments } : {}),
+        ...(rendered !== undefined ? { rendered } : {}),
         duration,
       };
 

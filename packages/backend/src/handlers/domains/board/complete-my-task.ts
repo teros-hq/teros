@@ -4,6 +4,15 @@
  * Resolves the Review column by slug — the runner never handles columnIds.
  * Clears the running flag after moving.
  * Triggers autoplay scheduling (slot freed).
+ *
+ * Workflow hook: if the task has a workflowExecutionId, calls the ActionBridge
+ * to advance the workflow engine. If the engine rejects the output (gate
+ * validation fails), the bridge moves the task back to in_progress/blocked.
+ *
+ * Output data: the runner agent may pass `outputData` when completing a task.
+ * If provided, it is persisted to `output.data` on the task document
+ * BEFORE the ActionBridge fires, so the workflow engine receives the agent's
+ * output for gate validation.
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
@@ -16,10 +25,13 @@ import type { PubSubService } from '../../../services/pubsub-service'
 import type { AutoplayService } from '../../../services/autoplay-service'
 import type { ChannelManager } from '../../../services/channel-manager'
 import type { EventHandler } from '../../event-handler'
+import type { ActionBridgeManager } from '../../../services/workflow-action-bridge'
 
 interface CompleteMyTaskData {
   taskId: string
   agentId: string
+  /** Optional output data produced by the agent (the deliverable). */
+  outputData?: unknown
 }
 
 export function createCompleteMyTaskHandler(
@@ -30,10 +42,11 @@ export function createCompleteMyTaskHandler(
   boardSubscriptionService?: BoardSubscriptionService,
   channelManager?: ChannelManager,
   eventHandler?: EventHandler,
+  actionBridgeManager?: ActionBridgeManager,
 ) {
   return async function completeMyTask(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as CompleteMyTaskData
-    const { taskId, agentId } = data
+    const { taskId, agentId, outputData } = data
 
     if (!taskId || !agentId) {
       throw new HandlerError('MISSING_FIELDS', 'taskId and agentId are required')
@@ -77,9 +90,23 @@ export function createCompleteMyTaskHandler(
     // cooperative stop signal is resolved. Chain updates and return the
     // latest state (each helper returns null when it's a no-op, so fall
     // back through the chain).
-    const afterRunning = await boardService.setRunning(taskId, false)
+    const afterRunning = await boardService.setRunning(taskId, false, agentId)
     const afterStopClear = await boardService.clearStopRequest(taskId)
-    const updatedTask = afterStopClear ?? afterRunning ?? moved
+    let updatedTask = afterStopClear ?? afterRunning ?? moved
+
+    // ──────────────────────────────────────────────────────────────
+    // Persist agent-provided output data to output.data BEFORE
+    // the ActionBridge fires. This ensures the workflow engine receives
+    // the agent's deliverable for gate validation.
+    // ──────────────────────────────────────────────────────────────
+    if (outputData !== undefined && outputData !== null) {
+      const withOutput = await boardService.updateTask(taskId, agentId, {
+        outputData,
+      })
+      if (withOutput) {
+        updatedTask = withOutput
+      }
+    }
 
     pubSubService.broadcastToTopic(`board:${updatedTask.boardId}`, { type: 'board_task_updated', task: updatedTask })
 
@@ -95,6 +122,7 @@ export function createCompleteMyTaskHandler(
         toColumnId: reviewColumn.columnId,
         toColumnName: reviewColumn.name,
         columnId: reviewColumn.columnId,
+        actorAgentId: agentId,
       }
       boardSubscriptionService.notifySubscribers(updatedTask.boardId, {
         eventType: 'board.task_moved',
@@ -129,6 +157,38 @@ export function createCompleteMyTaskHandler(
         })
       } catch (err) {
         console.error('[complete-my-task] Failed to emit channel_finished event:', err)
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Workflow hook: if this task was created by a workflow execution,
+    // notify the ActionBridge to advance the workflow engine.
+    // The bridge reads outputData from the event — which now
+    // includes the agent-provided outputData persisted above.
+    // ──────────────────────────────────────────────────────────────
+    if (actionBridgeManager && updatedTask.workflowExecutionId) {
+      try {
+        const result = await actionBridgeManager.onTaskCompleted(project.projectId, {
+          taskId: updatedTask.taskId,
+          status: 'review',
+          workflowExecutionId: updatedTask.workflowExecutionId,
+          workflowNodeId: updatedTask.workflowNodeId,
+          outputData: updatedTask.output?.data,
+        })
+
+        if (result.rejected) {
+          // The bridge moved the task back to in_progress/blocked.
+          // Re-fetch the task to get the updated state.
+          const rejectedTask = await boardService.getTask(taskId)
+          if (rejectedTask) {
+            updatedTask = rejectedTask
+          }
+          console.log(`[complete-my-task] Workflow rejected task ${taskId} — moved back for revision`)
+        }
+      } catch (err) {
+        // Workflow hook failure must not break the completion flow.
+        // The task is already in Review; the workflow will need manual intervention.
+        console.error('[complete-my-task] Workflow advancement failed:', err)
       }
     }
 

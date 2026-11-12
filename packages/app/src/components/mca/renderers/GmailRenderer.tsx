@@ -18,9 +18,10 @@ import { Image, Text, XStack, YStack } from 'tamagui';
 import { colors as semantic, Empty, type McaStatusType, ToolCallCard, useColors } from '../primitives';
 import type { ToolCallRendererProps } from '../types';
 import { withPermissionSupport } from '../withPermissionSupport';
+import { backendUrl } from '../../../config/runtime';
 
 // Gmail icon from manifest
-const GMAIL_ICON = 'https://www.gstatic.com/images/branding/product/1x/gmail_2020q4_48dp.png';
+const GMAIL_ICON = `${backendUrl()}/static/mcas/mca.google.gmail/icon.svg`;
 
 // ============================================================================
 // Colors — Renderer UX Guide v2 §5 (theme-adaptive).
@@ -45,7 +46,7 @@ function useGmailColors() {
     badgeBlue: c.badges.info,
     badgeYellow: c.badges.warn,
     badgeRed: c.badges.err,
-    badgePurple: { text: '#c4b5fd', bg: 'rgba(139,92,246,0.1)' },
+    badgePurple: c.badges.info,
 
     // Email unread dot — system info indigo (theme-agnostic)
     unread: semantic.indigo,
@@ -55,7 +56,7 @@ function useGmailColors() {
     secondary: c.text2,
     muted: c.text3,
     bright: c.text,
-    white: '#fafafa',
+    white: c.text,
 
     // Backgrounds (theme-adaptive)
     bgInner: c.bgInner,
@@ -110,8 +111,13 @@ function parseOutput<T>(output?: string): T | null {
  * Extract sender name from email address
  * "John Doe <john@example.com>" -> "John Doe"
  * "john@example.com" -> "john"
+ *
+ * `from` can be undefined when the backend message lacks a From header
+ * (headers.find(...)?.value) — degrade gracefully instead of crashing the
+ * whole bubble render (TypeError: reading 'match' of undefined).
  */
-function extractSenderName(from: string): string {
+function extractSenderName(from: string | undefined | null): string {
+  if (!from) return '(unknown)';
   const match = from.match(/^([^<]+)</);
   if (match) return match[1].trim();
   const atIndex = from.indexOf('@');

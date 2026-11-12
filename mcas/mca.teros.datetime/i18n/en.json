@@ -2,75 +2,82 @@
   "tools": {
     "get-current": {
       "name": "get-current",
-      "description": "Get current date and time in specified timezone",
+      "description": "Get current date and time in specified timezone. Returns a rich JSON with ISO, Unix timestamps, human-readable, weekday, etc. Optionally format with a custom format string.",
       "params": {
         "timezone": "Timezone (e.g., 'Europe/Madrid', 'America/New_York'). Defaults to local",
-        "format": "Output format (e.g., 'yyyy-MM-dd HH:mm:ss'). Defaults to ISO"
+        "format": "Optional output format. Accepts Luxon tokens ('yyyy-MM-dd HH:mm:ss') or Moment.js tokens ('YYYY-MM-DD HH:mm:ss'). If omitted, returns rich JSON."
       }
     },
     "format": {
       "name": "format",
-      "description": "Format a date/time string",
+      "description": "Format a date/time string. Accepts ISO 8601, Unix timestamps (seconds or ms), and common formats. Supports both Luxon and Moment.js format tokens.",
       "params": {
-        "datetime": "Date/time string to format",
-        "format": "Output format (e.g., 'yyyy-MM-dd', 'HH:mm:ss', 'MMMM d, yyyy')",
-        "inputFormat": "Input format if datetime is not ISO (optional)"
+        "datetime": "Date/time to format. Accepts: ISO 8601, Unix timestamp (seconds or ms, as string or number), RFC 2822, SQL, or common formats.",
+        "format": "Output format. Luxon tokens ('yyyy-MM-dd', 'HH:mm:ss', 'cccc, d LLLL yyyy') or Moment.js tokens ('YYYY-MM-DD', 'dddd, D MMMM YYYY').",
+        "inputFormat": "Explicit input format (Luxon tokens) if auto-detection fails (optional)",
+        "timezone": "Target timezone for output (e.g., 'Europe/Madrid'). Defaults to keeping the input's timezone."
       }
     },
     "parse": {
       "name": "parse",
-      "description": "Parse a date/time string",
+      "description": "Parse a date/time string into structured data. Accepts ISO 8601, Unix timestamps (seconds or ms), RFC 2822, SQL, and common formats. Returns rich JSON with all representations.",
       "params": {
-        "datetime": "Date/time string to parse",
-        "format": "Expected format (e.g., 'yyyy-MM-dd HH:mm:ss'). Optional if ISO"
+        "datetime": "Date/time to parse. Accepts: ISO 8601, Unix timestamp (seconds or ms), RFC 2822, SQL, or common formats.",
+        "format": "Explicit input format (Luxon tokens) if auto-detection fails (optional)",
+        "timezone": "Target timezone for output (e.g., 'Europe/Madrid'). Defaults to keeping the input's timezone."
       }
     },
     "convert-timezone": {
       "name": "convert-timezone",
-      "description": "Convert time between timezones",
+      "description": "Convert a date/time between timezones. Accepts ISO 8601, Unix timestamps, and common formats. Returns rich JSON for both source and target.",
       "params": {
-        "datetime": "Date/time string",
-        "fromTimezone": "Source timezone (e.g., 'Europe/Madrid')",
+        "datetime": "Date/time to convert. Accepts: ISO 8601, Unix timestamp (seconds or ms), RFC 2822, SQL, or common formats.",
+        "fromTimezone": "Source timezone (e.g., 'Europe/Madrid'). If input is a Unix timestamp, this is ignored (always UTC).",
         "toTimezone": "Target timezone (e.g., 'America/New_York')"
       }
     },
     "add": {
       "name": "add",
-      "description": "Add duration to a date/time",
+      "description": "Add duration to a date/time. Accepts ISO 8601, Unix timestamps, and common formats.",
       "params": {
-        "datetime": "Base date/time string",
-        "duration": "Duration to add (e.g., {days: 5, hours: 2})"
+        "datetime": "Base date/time. Accepts: ISO 8601, Unix timestamp (seconds or ms), RFC 2822, SQL, or common formats.",
+        "duration": "Duration to add (e.g., {days: 5, hours: 2})",
+        "timezone": "Timezone for output (e.g., 'Europe/Madrid'). Defaults to keeping the input's timezone."
       }
     },
     "subtract": {
       "name": "subtract",
-      "description": "Subtract duration from a date/time",
+      "description": "Subtract duration from a date/time. Accepts ISO 8601, Unix timestamps, and common formats.",
       "params": {
-        "datetime": "Base date/time string",
-        "duration": "Duration to subtract (e.g., {days: 5, hours: 2})"
+        "datetime": "Base date/time. Accepts: ISO 8601, Unix timestamp (seconds or ms), RFC 2822, SQL, or common formats.",
+        "duration": "Duration to subtract (e.g., {days: 5, hours: 2})",
+        "timezone": "Timezone for output (e.g., 'Europe/Madrid'). Defaults to keeping the input's timezone."
       }
     },
     "diff": {
       "name": "diff",
-      "description": "Calculate difference between two dates",
+      "description": "Calculate difference between two dates. Accepts ISO 8601, Unix timestamps, and common formats.",
       "params": {
-        "start": "Start date/time",
-        "end": "End date/time",
+        "start": "Start date/time. Accepts: ISO 8601, Unix timestamp, RFC 2822, SQL, or common formats.",
+        "end": "End date/time. Accepts: ISO 8601, Unix timestamp, RFC 2822, SQL, or common formats.",
         "unit": "Unit for the result (default: milliseconds)"
       }
     },
     "is-valid": {
       "name": "is-valid",
-      "description": "Validate a date/time string",
+      "description": "Validate a date/time string. Accepts ISO 8601, Unix timestamps, RFC 2822, SQL, and common formats. Returns whether it parses and what it parses to.",
       "params": {
         "datetime": "Date/time string to validate",
-        "format": "Expected format (optional if ISO)"
+        "format": "Explicit input format (Luxon tokens) to test against (optional)"
       }
     }
   },
   "name": "DateTime",
   "description": "Date and time utilities with timezone support. Provides clock, calendar, and time conversion tools.",
   "changelog": [
+    {
+      "notes": "Fix: rewrite on @teros/mca-sdk McaServer — the old StdioServerTransport implementation never opened the HTTP port the manifest declared, so containers died at the health check. All 8 tools now annotated readOnlyHint (they are pure functions)."
+    },
     {
       "notes": "Initial release — format, parse and validate dates, convert between timezones, and add, subtract or compare times"
     }

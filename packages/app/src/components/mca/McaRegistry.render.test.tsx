@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TamaguiProvider, Text } from 'tamagui'
 import config from '../../../tamagui.config'
 import { McaRegistry } from './McaRegistry'
-import { MCA_STRINGS } from './primitives/strings'
 import { PermissionContext, type PermissionContextValue, type ToolCallRendererProps } from './types'
+import i18n from '../../i18n'
+
+const tr = (key: string, opts?: Record<string, unknown>) => i18n.t(key, opts) as string
 
 // A renderer composing NEITHER ToolCallCard NOR ControlsBar — the exact shape of
 // the TER-369 bug (renderers built from low-level primitives). The registry must
@@ -53,16 +55,22 @@ describe('McaRegistry — ControlsBar invariant on pending_permission (TER-369)'
       toolNames: ['naked-tool'],
       ToolCallRenderer: NakedRenderer,
     })
-    const { getByText, getByLabelText } = renderFromRegistry('mca.test.naked')
+    const { getByText, getByLabelText, getByTestId } = renderFromRegistry('mca.test.naked')
     expect(getByText(/naked:/)).toBeTruthy() // the bare renderer rendered
     // ...and the registry's central wrap surfaced the approval UI regardless:
-    expect(getByLabelText(MCA_STRINGS.permission.allow)).toBeTruthy()
-    expect(getByLabelText(MCA_STRINGS.permission.deny)).toBeTruthy()
+    expect(getByLabelText(tr("mca.permission.allow"))).toBeTruthy()
+    expect(getByLabelText(tr("mca.permission.deny"))).toBeTruthy()
+    // The audit view is part of the invariant, not a nicety: the detail is now
+    // normally rendered INSIDE a ToolCallCard, and this renderer mounts none.
+    // Without the HOC's claim/fallback path a naked renderer would ask the user
+    // to approve with no statement of what is being approved.
+    expect(getByTestId('permission-detail')).toBeTruthy()
+    expect(getByTestId('permission-detail-fallback')).toBeTruthy()
   })
 
   it('the default renderer (no custom registered) also shows the ControlsBar on pending', () => {
     const { getByLabelText } = renderFromRegistry('mca.unregistered.none')
-    expect(getByLabelText(MCA_STRINGS.permission.allow)).toBeTruthy()
+    expect(getByLabelText(tr("mca.permission.allow"))).toBeTruthy()
   })
 
   it('does NOT show the ControlsBar when status is not pending_permission', () => {
@@ -76,6 +84,6 @@ describe('McaRegistry — ControlsBar invariant on pending_permission (TER-369)'
       status: 'completed',
       permissionRequestId: undefined,
     })
-    expect(queryByLabelText(MCA_STRINGS.permission.allow)).toBeNull()
+    expect(queryByLabelText(tr("mca.permission.allow"))).toBeNull()
   })
 })

@@ -16,6 +16,7 @@ import {
   colors as globalColors,
   parseOutput,
   ErrorBlock,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
@@ -29,7 +30,8 @@ import {
 } from './shared';
 
 function StatusChip({ status }: { status: string | null }) {
-  const accent = (status && JOB_STATUS_ACCENTS[status]) ?? globalColors.muted;
+  const c = useColors();
+  const accent = (status && JOB_STATUS_ACCENTS[status]) ?? c.text3;
   const text = (status && JOB_STATUS_LABELS[status]) ?? (status ?? '—').toUpperCase();
   return <IconChip text={text} accent={accent} />;
 }
@@ -84,6 +86,7 @@ export function GetImportJobRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<unknown>(output) : null;
   const job = narrowObject<CanvaJob<{ designId: string | null }>>(parsed);
   const designId = job?.result?.designId ?? null;
@@ -99,8 +102,8 @@ export function GetImportJobRenderer({
         <ResourceCard
           leading={
             <IconTile
-              accent={JOB_STATUS_ACCENTS[job.status ?? ''] ?? globalColors.muted}
-              icon={<Upload size={16} color={JOB_STATUS_ACCENTS[job.status ?? ''] ?? globalColors.muted} />}
+              accent={JOB_STATUS_ACCENTS[job.status ?? ''] ?? c.text3}
+              icon={<Upload size={16} color={JOB_STATUS_ACCENTS[job.status ?? ''] ?? c.text3} />}
               size={28}
             />
           }

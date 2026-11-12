@@ -88,6 +88,7 @@ export function createGetBillingAuditHandler(userService: UserService, db: Db) {
       .toArray()
 
     // ── Live consumption recompute (same check as the reconciliation cron) ────
+    // Same billed metric as the tracker (decision #29: userWorkMs, union fallback).
     const periodStart = sub.currentPeriodStart ?? new Date(0)
     const cutoff = sub.lastBilledHourBucket ?? null
     let expectedHours = 0
@@ -101,7 +102,7 @@ export function createGetBillingAuditHandler(userService: UserService, db: Db) {
               hourBucket: { $gt: periodStart, $lte: cutoff },
             },
           },
-          { $group: { _id: null, totalMs: { $sum: '$userActiveMs' } } },
+          { $group: { _id: null, totalMs: { $sum: { $ifNull: ['$userWorkMs', '$userActiveMs'] } } } },
         ])
         .toArray()) as Array<{ totalMs: number }>
       expectedHours = (agg[0]?.totalMs ?? 0) / HOUR_MS

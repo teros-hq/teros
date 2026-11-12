@@ -30,11 +30,13 @@ function issuesOf(result: {
 // ===========================================================================
 
 describe("manifests reales", () => {
+  // mca.teros.scheduler retired 2026-10-31 (c550f85bd) — Automate is the
+  // only engine now; mca.teros.email exercises the systemSecretsAny groups.
   it.each([
     "mca.teros.bash",
     "mca.linear",
     "mca.notion",
-    "mca.teros.scheduler",
+    "mca.teros.automate",
   ])("%s parsea con MCAManifestRefinedSchema", (mcaId) => {
     const result = MCAManifestRefinedSchema.safeParse(loadManifest(mcaId))
     if (!result.success) {
@@ -81,13 +83,13 @@ describe("MCAAuthSchema — api-key", () => {
 })
 
 describe("MCAAuthSchema — github-app userOAuth", () => {
-  // Base válido: el superRefine SOLO corre si el base schema parsea
-  // (provider/appSlug/setupUrl/permissions + 3 system secrets base + INSTALLATION_ID).
+  // Base válido (legacy server-to-server, userOAuth=false): el superRefine
+  // SOLO corre si el base schema parsea (provider/appSlug/permissions + 3
+  // system secrets base + INSTALLATION_ID — required in legacy mode).
   const base = {
     type: "github-app",
     provider: "github",
     appSlug: "teros-app",
-    setupUrl: "https://github.com/apps/teros-app/installations/new",
     permissions: { contents: "read" },
     systemSecrets: ["GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET"],
     userSecrets: ["INSTALLATION_ID"],
@@ -97,7 +99,7 @@ describe("MCAAuthSchema — github-app userOAuth", () => {
     userOAuth: true,
     tokenUrl: "https://github.com/login/oauth/access_token",
     systemSecrets: [...base.systemSecrets, "GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET"],
-    userSecrets: [...base.userSecrets, "USER_ACCESS_TOKEN"],
+    userSecrets: ["USER_ACCESS_TOKEN", "USER_REFRESH_TOKEN", "USER_TOKEN_EXPIRES_AT", "USER_LOGIN"],
   }
 
   it("completo pasa", () => {
@@ -130,6 +132,18 @@ describe("MCAAuthSchema — github-app userOAuth", () => {
 
   it("userOAuth false NO exige tokenUrl ni CLIENT_ID/SECRET/ACCESS_TOKEN", () => {
     expect(MCAAuthSchema.safeParse({ ...base, userOAuth: false }).success).toBe(true)
+  })
+
+  it("userOAuth false (legacy server-to-server) SÍ exige INSTALLATION_ID", () => {
+    const result = MCAAuthSchema.safeParse({ ...base, userSecrets: ["USER_ACCESS_TOKEN"] })
+    expect(result.success).toBe(false)
+    expect(issuesOf(result).map((i) => i.path[0])).toContain("userSecrets")
+  })
+
+  it("userOAuth true NO exige INSTALLATION_ID (task_16d9e3d1ee40658d)", () => {
+    // user-to-server: el MCA ni declara ni lee INSTALLATION_ID.
+    expect(MCAAuthSchema.safeParse(completo).success).toBe(true)
+    expect(completo.userSecrets).not.toContain("INSTALLATION_ID")
   })
 })
 
@@ -175,5 +189,165 @@ describe("MCAManifestRefinedSchema", () => {
     const result = MCAManifestRefinedSchema.safeParse(manifest)
     expect(result.success).toBe(false)
     expect(issuesOf(result).some((i) => i.path.join(".") === "runtime.containerMode")).toBe(true)
+  })
+})
+
+describe("MCAAuthSchema — alternative secret groups (systemSecretsAny)", () => {
+  const emailAuth = {
+    type: "api-key",
+    systemSecrets: [
+      "STALWART_BASE_URL",
+      "STALWART_ADMIN_TOKEN",
+      "STALWART_MASTER_SECRET",
+    ],
+    systemSecretsAny: [
+      ["STALWART_BASE_URL", "STALWART_ADMIN_TOKEN"],
+    ],
+    userSecretsOptional: false,
+    userSecretsRequired: ["MAIL_ACCOUNT"],
+    userSecrets: ["MAIL_ACCOUNT", "MAIL_PASSWORD", "MAIL_FROM_NAME"],
+  }
+
+  it("mca.teros.email shape (groups + complementary user secrets) parsea", () => {
+    const result = MCAAuthSchema.safeParse(emailAuth)
+    if (!result.success) {
+      throw new Error(`email shape FALLA: ${JSON.stringify(issuesOf(result), null, 2)}`)
+    }
+    expect(result.success).toBe(true)
+  })
+
+  it("grupo con secret NO declarado en systemSecrets → issue", () => {
+    const result = MCAAuthSchema.safeParse({
+      ...emailAuth,
+      systemSecretsAny: [["STALWART_BASE_URL", "NOT_DECLARED"]],
+    })
+    expect(result.success).toBe(false)
+    expect(issuesOf(result).map((i) => i.path[0])).toContain("systemSecretsAny")
+  })
+
+  it("systemSecretsAny en oauth2 → issue (api-key only)", () => {
+    const result = MCAAuthSchema.safeParse({
+      type: "oauth2",
+      authorizeUrl: "https://example.com",
+      tokenUrl: "https://example.com",
+      scopes: ["read"],
+      systemSecrets: ["CLIENT_ID", "CLIENT_SECRET"],
+      userSecrets: ["ACCESS_TOKEN"],
+      systemSecretsAny: [["CLIENT_ID"]],
+    })
+    expect(result.success).toBe(false)
+    expect(issuesOf(result).map((i) => i.message)).toContain(
+      "systemSecretsAny is only valid for api-key auth (found type 'oauth2')",
+    )
+  })
+
+  it("userSecretsRequired con secret NO declarado en userSecrets → issue", () => {
+    const result = MCAAuthSchema.safeParse({ ...emailAuth, userSecretsRequired: ["MAIL_ACCOUNT", "OTHER"] })
+    expect(result.success).toBe(false)
+    expect(issuesOf(result).map((i) => i.path[0])).toContain("userSecretsRequired")
+  })
+
+  it("userSecretsRequired en oauth2 → issue (api-key only)", () => {
+    const result = MCAAuthSchema.safeParse({
+      type: "oauth2",
+      authorizeUrl: "https://example.com",
+      tokenUrl: "https://example.com",
+      scopes: ["read"],
+      systemSecrets: ["CLIENT_ID", "CLIENT_SECRET"],
+      userSecrets: ["ACCESS_TOKEN"],
+      userSecretsRequired: ["ACCESS_TOKEN"],
+    })
+    expect(result.success).toBe(false)
+    expect(issuesOf(result).map((i) => i.message)).toContain(
+      "userSecretsRequired is only valid for api-key auth (found type 'oauth2')",
+    )
+  })
+
+  it("manifest real de mca.teros.email parsea el refined schema completo", () => {
+    const result = MCAManifestRefinedSchema.safeParse(loadManifest("mca.teros.email"))
+    if (!result.success) {
+      throw new Error(`mca.teros.email FALLA: ${JSON.stringify(issuesOf(result), null, 2)}`)
+    }
+    expect(result.success).toBe(true)
+  })
+})
+
+describe("MCAAuthSchema — alternative secret groups (systemSecretsAny)", () => {
+  const emailAuth = {
+    type: "api-key",
+    systemSecrets: [
+      "STALWART_BASE_URL",
+      "STALWART_ADMIN_TOKEN",
+      "STALWART_MASTER_SECRET",
+    ],
+    systemSecretsAny: [
+      ["STALWART_BASE_URL", "STALWART_ADMIN_TOKEN"],
+    ],
+    userSecretsOptional: false,
+    userSecretsRequired: ["MAIL_ACCOUNT"],
+    userSecrets: ["MAIL_ACCOUNT", "MAIL_PASSWORD", "MAIL_FROM_NAME"],
+  }
+
+  it("mca.teros.email shape (groups + complementary user secrets) parsea", () => {
+    const result = MCAAuthSchema.safeParse(emailAuth)
+    if (!result.success) {
+      throw new Error(`email shape FALLA: ${JSON.stringify(issuesOf(result), null, 2)}`)
+    }
+    expect(result.success).toBe(true)
+  })
+
+  it("grupo con secret NO declarado en systemSecrets → issue", () => {
+    const result = MCAAuthSchema.safeParse({
+      ...emailAuth,
+      systemSecretsAny: [["STALWART_BASE_URL", "NOT_DECLARED"]],
+    })
+    expect(result.success).toBe(false)
+    expect(issuesOf(result).map((i) => i.path[0])).toContain("systemSecretsAny")
+  })
+
+  it("systemSecretsAny en oauth2 → issue (api-key only)", () => {
+    const result = MCAAuthSchema.safeParse({
+      type: "oauth2",
+      authorizeUrl: "https://example.com",
+      tokenUrl: "https://example.com",
+      scopes: ["read"],
+      systemSecrets: ["CLIENT_ID", "CLIENT_SECRET"],
+      userSecrets: ["ACCESS_TOKEN"],
+      systemSecretsAny: [["CLIENT_ID"]],
+    })
+    expect(result.success).toBe(false)
+    expect(issuesOf(result).map((i) => i.message)).toContain(
+      "systemSecretsAny is only valid for api-key auth (found type 'oauth2')",
+    )
+  })
+
+  it("userSecretsRequired con secret NO declarado en userSecrets → issue", () => {
+    const result = MCAAuthSchema.safeParse({ ...emailAuth, userSecretsRequired: ["MAIL_ACCOUNT", "OTHER"] })
+    expect(result.success).toBe(false)
+    expect(issuesOf(result).map((i) => i.path[0])).toContain("userSecretsRequired")
+  })
+
+  it("userSecretsRequired en oauth2 → issue (api-key only)", () => {
+    const result = MCAAuthSchema.safeParse({
+      type: "oauth2",
+      authorizeUrl: "https://example.com",
+      tokenUrl: "https://example.com",
+      scopes: ["read"],
+      systemSecrets: ["CLIENT_ID", "CLIENT_SECRET"],
+      userSecrets: ["ACCESS_TOKEN"],
+      userSecretsRequired: ["ACCESS_TOKEN"],
+    })
+    expect(result.success).toBe(false)
+    expect(issuesOf(result).map((i) => i.message)).toContain(
+      "userSecretsRequired is only valid for api-key auth (found type 'oauth2')",
+    )
+  })
+
+  it("manifest real de mca.teros.email parsea el refined schema completo", () => {
+    const result = MCAManifestRefinedSchema.safeParse(loadManifest("mca.teros.email"))
+    if (!result.success) {
+      throw new Error(`mca.teros.email FALLA: ${JSON.stringify(issuesOf(result), null, 2)}`)
+    }
+    expect(result.success).toBe(true)
   })
 })

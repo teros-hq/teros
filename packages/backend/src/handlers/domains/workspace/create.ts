@@ -1,12 +1,14 @@
 /**
  * workspace.create — Create a new workspace for the current user
+ *
+ * Thin handler: validation + delegation to WorkspaceService.createWorkspace,
+ * which enforces the billing gate and provisions system apps.
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { WorkspaceService } from '../../../services/workspace-service'
 import type { PubSubService } from '../../../services/pubsub-service'
-import { BillingGateService } from '../../../services/billing-gate.js'
 import type { Db } from 'mongodb'
 
 interface CreateWorkspaceData {
@@ -26,12 +28,9 @@ export function createCreateWorkspaceHandler(
       throw new HandlerError('MISSING_NAME', 'name is required')
     }
 
-    // Billing gate: enforce workspace creation limits
-    if (db) {
-      const billingGate = new BillingGateService(db)
-      await billingGate.assertWorkspaceAllowed(ctx.userId, db)
-    }
-
+    // Billing gate is enforced inside workspaceService.createWorkspace —
+    // no need to duplicate it here. UpgradeRequiredError propagates to the
+    // WS error handler which formats it for the client.
     const workspace = await workspaceService.createWorkspace(ctx.userId, {
       name: data.name,
       description: data.description,
@@ -49,12 +48,10 @@ export function createCreateWorkspaceHandler(
       createdAt: workspace.createdAt,
     }
 
-    if (pubSubService) {
-      pubSubService.broadcastToUser(ctx.userId, {
-        type: 'workspace.created',
-        workspace: workspacePayload,
-      })
-    }
+    // NOTE: the `workspace.created` broadcast to the owner's sessions happens
+    // inside WorkspaceService.createWorkspace (single entry point for all
+    // creation paths: this handler, the legacy WS command, the MCA tool).
+    // No need to re-broadcast here — the frontend upsert is idempotent anyway.
 
     return { workspace: workspacePayload }
   }

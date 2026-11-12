@@ -174,3 +174,42 @@ describe('reorderMessageBefore', () => {
     expect(get().channelMessages.ch1).toBe(before)
   })
 })
+
+// ============================================================================
+// setSuggestedPromptsSuppressed (v1.4.4 — chips visibility gate)
+// ============================================================================
+
+describe('setSuggestedPromptsSuppressed', () => {
+  it('suppresses and un-suppresses the flag on an existing channel, leaving suggestedPrompts untouched', () => {
+    useChatStore.setState({
+      channels: { ch1: { channelId: 'ch1', suggestedPrompts: ['a', 'b'] } as never },
+    })
+    get().setSuggestedPromptsSuppressed('ch1', true)
+    expect(get().channels.ch1!.suggestedPromptsSuppressed).toBe(true)
+    expect(get().channels.ch1!.suggestedPrompts).toEqual(['a', 'b']) // persisted set intact
+
+    get().setSuggestedPromptsSuppressed('ch1', false)
+    expect(get().channels.ch1!.suggestedPromptsSuppressed).toBe(false)
+    expect(get().channels.ch1!.suggestedPrompts).toEqual(['a', 'b'])
+  })
+
+  it('is a no-op (same reference) when the flag already matches', () => {
+    useChatStore.setState({
+      channels: { ch1: { channelId: 'ch1', suggestedPromptsSuppressed: true } as never },
+    })
+    const before = get().channels
+    get().setSuggestedPromptsSuppressed('ch1', true)
+    expect(get().channels).toBe(before)
+  })
+
+  it('clearing on an unknown channel does not create a stub', () => {
+    get().setSuggestedPromptsSuppressed('ghost', false)
+    expect(get().channels.ghost).toBeUndefined()
+  })
+
+  it('suppressing on an unknown channel creates the stub so the flag survives', () => {
+    get().setSuggestedPromptsSuppressed('ghost', true)
+    expect(get().channels.ghost).toBeDefined()
+    expect(get().channels.ghost!.suggestedPromptsSuppressed).toBe(true)
+  })
+})

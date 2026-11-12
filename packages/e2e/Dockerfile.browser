@@ -8,7 +8,7 @@
 #   docker compose -f docker-compose.test.yml exec e2e yarn cucumber:ui
 #   docker compose -f docker-compose.test.yml exec e2e yarn cucumber:all
 
-FROM mcr.microsoft.com/playwright:v1.59.1-jammy
+FROM mcr.microsoft.com/playwright:v1.59.1-jammy@sha256:45b20531f82127c1d50feaf11cd90d0e1410e04af70014b3492eb3e2cbe20ec1
 
 WORKDIR /app
 
@@ -17,7 +17,9 @@ RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt
 
 # Layer caching + slim (TER-548): copiar SOLO los manifests → install (+ cache clean del
 # ~4.9GB de descargas, fuera de la imagen) → código. COPY --parents (1.7-labs) preserva dirs.
-COPY --parents package.json yarn.lock packages/*/package.json mcas/*/package.json ./
+# mcas/*/*.tgz: deps vendorizadas `file:./x.tgz` (p.ej. @teros/ocr en file-processor) — sin ellas
+# `yarn install --frozen-lockfile` falla con "Tarball is not in network".
+COPY --parents package.json yarn.lock packages/*/package.json mcas/*/package.json mcas/*/*.tgz ./
 
 # --ignore-engines: the Playwright base image ships Node 20.9.0 but some
 # React Native packages in the monorepo require >= 20.19.4. This container

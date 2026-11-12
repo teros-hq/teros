@@ -52,6 +52,8 @@ interface Rollup {
   groupKey: { userId: string }
   hourBucket: Date
   userActiveMs: number
+  /** Present only on schemaVersion 2 buckets (decision #29). */
+  userWorkMs?: number
 }
 
 function roll(userId: string, h: number, hours = 1): Rollup {
@@ -100,7 +102,11 @@ function makeDb(subs: Sub[], rollups: Rollup[], invoices: any[] = []) {
             return {
               async toArray() {
                 if ('totalMs' in group) {
-                  return [{ totalMs: rows.reduce((a, r) => a + r.userActiveMs, 0) }]
+                  // Faithful to the cron's $sum:{$ifNull:['$userWorkMs','$userActiveMs']}
+                  // — same billed metric as the tracker (decision #29).
+                  return [
+                    { totalMs: rows.reduce((a, r) => a + (r.userWorkMs ?? r.userActiveMs), 0) },
+                  ]
                 }
                 // oldest ($min hourBucket)
                 if (rows.length === 0) return [{ oldest: null }]
@@ -262,6 +268,42 @@ describe('BillingReconciliationCron — drift detection (FASE 2c)', () => {
     ]
     const cron = new BillingReconciliationCron(
       makeDb([sub({ agentHoursUsed: 5, lastBilledHourBucket: hb(10) })], rollups),
+      stubLogger,
+      null,
+    )
+
+    const result = await cron.runOnce({ now: NOW })
+
+    expect(result.driftIncidents).toBe(0)
+  })
+
+  it('WS1: no drift on v2 parallel-work buckets — reconciler sums the same metric the tracker bills (decision #29)', async () => {
+    // One hour with 3 agents in parallel the whole time: union 1h, work 3h.
+    // The tracker billed 3h (userWorkMs). The reconciler MUST re-sum
+    // userWorkMs too — summing userActiveMs here would see expected 1h vs
+    // actual 3h and flag a false 2h drift on every parallel-work hour.
+    const rollups: Rollup[] = [
+      { groupKey: { userId: 'A' }, hourBucket: hb(1), userActiveMs: HOUR_MS, userWorkMs: 3 * HOUR_MS },
+    ]
+    const cron = new BillingReconciliationCron(
+      makeDb([sub({ agentHoursUsed: 3, lastBilledHourBucket: hb(1) })], rollups),
+      stubLogger,
+      null,
+    )
+
+    const result = await cron.runOnce({ now: NOW })
+
+    // MUST BITE: reverting the cron to $sum:'$userActiveMs' turns this red.
+    expect(result.driftIncidents).toBe(0)
+    expect(result.maxDriftHours).toBe(0)
+  })
+
+  it('WS1: v1 buckets (no userWorkMs) still reconcile via the union fallback', async () => {
+    // Pre-#29 bucket: only userActiveMs. Tracker billed 1h via the fallback;
+    // the reconciler's $ifNull must land on the same value.
+    const rollups = [roll('A', 1)] // v1 — no userWorkMs
+    const cron = new BillingReconciliationCron(
+      makeDb([sub({ agentHoursUsed: 1, lastBilledHourBucket: hb(1) })], rollups),
       stubLogger,
       null,
     )

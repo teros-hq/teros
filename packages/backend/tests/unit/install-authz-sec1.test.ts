@@ -68,13 +68,13 @@ describe("createWorkspaceApp availability gate (B-4)", () => {
   it("rejects a DISABLED MCA and never inserts the app", async () => {
     const svc = makeService({
       getMcaFromCatalog: mock(async () => ({
-        mcaId: "mca.teros.docker-env",
+        mcaId: "mca.test.admin-only",
         availability: { enabled: false },
       })),
     })
 
     await expect(
-      svc.createWorkspaceApp(WORKSPACE, "mca.teros.docker-env", "", USER_PLAIN, {}),
+      svc.createWorkspaceApp(WORKSPACE, "mca.test.admin-only", "", USER_PLAIN, {}),
     ).rejects.toThrow(/not available/)
 
     expect(svc._insertOne).not.toHaveBeenCalled()
@@ -83,14 +83,14 @@ describe("createWorkspaceApp availability gate (B-4)", () => {
   it("rejects an ADMIN-only MCA for a plain user and never inserts the app", async () => {
     const svc = makeService({
       getMcaFromCatalog: mock(async () => ({
-        mcaId: "mca.teros.admin.bash",
+        mcaId: "mca.test.admin-only",
         availability: { role: "admin" },
       })),
       getUserRole: mock(async () => ({ role: "user" })),
     })
 
     await expect(
-      svc.createWorkspaceApp(WORKSPACE, "mca.teros.admin.bash", "", USER_PLAIN, {}),
+      svc.createWorkspaceApp(WORKSPACE, "mca.test.admin-only", "", USER_PLAIN, {}),
     ).rejects.toThrow(/requires admin role/)
 
     expect(svc._insertOne).not.toHaveBeenCalled()
@@ -113,13 +113,13 @@ describe("createWorkspaceApp availability gate (B-4)", () => {
   it("allows an admin-only MCA for an admin user", async () => {
     const svc = makeService({
       getMcaFromCatalog: mock(async () => ({
-        mcaId: "mca.teros.admin.bash",
+        mcaId: "mca.test.admin-only",
         availability: { role: "admin" },
       })),
       getUserRole: mock(async () => ({ role: "admin" })),
     })
 
-    await svc.createWorkspaceApp(WORKSPACE, "mca.teros.admin.bash", "", "user_admin", {})
+    await svc.createWorkspaceApp(WORKSPACE, "mca.test.admin-only", "", "user_admin", {})
 
     expect(svc._insertOne).toHaveBeenCalledTimes(1)
   })
@@ -164,7 +164,7 @@ function makeAccessService(
     canAccess = true,
   } = opts
   const svc: any = Object.create(McaService.prototype)
-  svc.getApp = mock(async () => ({ appId: APP, ownerId: appWorkspaceId, ownerType }))
+  svc.getApp = mock(async () => ({ appId: APP, ownerId: appWorkspaceId, ownerType, scope: "shared", installedBy: workspaceOwnerId }))
   svc.workspaceService = { canAccess: mock(async () => canAccess) }
   svc.db = {
     collection: mock((name: string) => {

@@ -6,58 +6,60 @@
  * - Local workspace images are also shown as placeholders in v1.
  *
  * Displays the alt text and the blocked URL so the user knows what was there.
+ * Look: a dashed violet-tinted box (the design system's `i` tint).
  */
 
-import React from 'react';
-import { Platform } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
-import { useColors } from '../../../components/mca/primitives/useColors';
-import { colors as semanticColors } from '../../../components/mca/primitives/colors';
+import React from "react"
+import { Platform, View } from "react-native"
+import { useColors } from "../../../components/mca/primitives/useColors"
+import { FONT_MONO, FONT_SERIF } from "../../../components/mca/primitives/fonts"
+import { Ph, T } from "../../../components/ui/ds"
 
 interface ImagePlaceholderProps {
   /** Alt text from the Markdown image syntax */
-  alt?: string;
+  alt?: string
   /** The src URL that was blocked */
-  url?: string;
+  url?: string
   /** True when the image is a local workspace path (not external) */
-  local?: boolean;
+  local?: boolean
 }
 
 export function ImagePlaceholder({ alt, url, local = false }: ImagePlaceholderProps) {
-  const c = useColors();
-  const label = local ? 'Local image (not loaded in v1)' : 'External image blocked';
-  const icon = '🖼️';
+  const c = useColors()
+  const label = local ? "Local image (not loaded in v1)" : "External image blocked"
 
-  if (Platform.OS === 'web') {
+  if (Platform.OS === "web") {
     return (
       <div
         style={{
-          display: 'inline-flex',
-          flexDirection: 'column',
-          alignItems: 'flex-start',
+          display: "inline-flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
           gap: 4,
-          padding: '8px 12px',
-          margin: '4px 0',
-          border: `1.5px dashed ${semanticColors.indigo}66`,
-          borderRadius: 8,
-          backgroundColor: semanticColors.indigoGlow,
-          maxWidth: '100%',
+          padding: "10px 14px",
+          margin: "4px 0",
+          border: `1px dashed ${c.tint.i.bd}`,
+          borderRadius: 12,
+          backgroundColor: c.tint.i.bg,
+          maxWidth: "100%",
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 16 }}>{icon}</span>
-          <span
-            style={{
-              fontSize: 12,
-              color: semanticColors.indigoLight,
-              fontWeight: 500,
-            }}
-          >
-            {label}
-          </span>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            color: c.tint.i.tx,
+            fontSize: 12,
+          }}
+        >
+          <Ph name="image" size={14} color={c.tint.i.tx} />
+          <span>{label}</span>
         </div>
         {alt && (
-          <span style={{ fontSize: 12, color: c.text2, fontStyle: 'italic' }}>
+          <span
+            style={{ fontSize: 13, color: c.text2, fontFamily: `'${FONT_SERIF}', Georgia, serif` }}
+          >
             {alt}
           </span>
         )}
@@ -66,45 +68,47 @@ export function ImagePlaceholder({ alt, url, local = false }: ImagePlaceholderPr
             style={{
               fontSize: 11,
               color: c.text3,
-              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-              wordBreak: 'break-all',
+              fontFamily: `'${FONT_MONO}', 'JetBrains Mono', 'Fira Code', monospace`,
+              wordBreak: "break-all",
             }}
           >
             {url}
           </span>
         )}
       </div>
-    );
+    )
   }
 
   // Native fallback
   return (
-    <YStack
-      borderWidth={1.5}
-      borderStyle="dashed"
-      borderColor={`${semanticColors.indigo}66`}
-      borderRadius={8}
-      backgroundColor={semanticColors.indigoGlow}
-      padding={10}
-      marginVertical={4}
-      gap={4}
+    <View
+      style={{
+        borderWidth: 1,
+        borderStyle: "dashed",
+        borderColor: c.tint.i.bd,
+        borderRadius: 12,
+        backgroundColor: c.tint.i.bg,
+        padding: 12,
+        marginVertical: 4,
+        gap: 4,
+      }}
     >
-      <XStack alignItems="center" gap={6}>
-        <Text fontSize={16}>{icon}</Text>
-        <Text fontSize={12} color={semanticColors.indigoLight} fontWeight="500">
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Ph name="image" size={14} color={c.tint.i.tx} />
+        <T step="12" color={c.tint.i.tx}>
           {label}
-        </Text>
-      </XStack>
+        </T>
+      </View>
       {alt ? (
-        <Text fontSize={12} color={c.text2} fontStyle="italic">
+        <T step="bserif" tone="text2">
           {alt}
-        </Text>
+        </T>
       ) : null}
       {url ? (
-        <Text fontSize={11} color={c.text3} fontFamily="$mono">
+        <T step="code" tone="text3">
           {url}
-        </Text>
+        </T>
       ) : null}
-    </YStack>
-  );
+    </View>
+  )
 }

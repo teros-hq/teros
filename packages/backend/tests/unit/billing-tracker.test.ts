@@ -18,6 +18,9 @@
 import { describe, expect, it } from 'bun:test'
 import { AgentHoursTracker } from '../../src/services/agent-hours-tracker'
 
+/** Every rolled-up hour counts as final here (the billable horizon has its own tests). */
+const billAllHours = async () => new Date(8_640_000_000_000_000)
+
 const stubLogger = {
   info: () => {},
   warn: () => {},
@@ -48,6 +51,8 @@ interface Rollup {
   groupKey: { userId: string }
   hourBucket: Date
   userActiveMs: number
+  /** Present only on schemaVersion 2 buckets (decision #29). */
+  userWorkMs?: number
 }
 
 /** One rollup of exactly one active hour for a user at hour bucket h. */
@@ -116,7 +121,9 @@ function makeDb(subs: Sub[], rollups: Rollup[]) {
             return {
               async toArray() {
                 if (rows.length === 0) return []
-                const totalMs = rows.reduce((a, r) => a + r.userActiveMs, 0)
+                // Faithful to the tracker's $sum:{$ifNull:['$userWorkMs','$userActiveMs']}
+                // — v2 buckets bill work, v1 buckets fall back to the union.
+                const totalMs = rows.reduce((a, r) => a + (r.userWorkMs ?? r.userActiveMs), 0)
                 const maxHourBucket = rows.reduce(
                   (m, r) => (r.hourBucket > m ? r.hourBucket : m),
                   rows[0].hourBucket,
@@ -145,7 +152,7 @@ describe('AgentHoursTracker — per-user cursor (anti double-count)', () => {
       ...Array.from({ length: 10 }, (_, i) => roll('A', i + 1)), // hours 1..10
       ...Array.from({ length: 10 }, (_, i) => roll('B', i + 1)), // hours 1..10
     ]
-    const tracker = new AgentHoursTracker(makeDb([subA, subB], rollups), stubLogger, null)
+    const tracker = new AgentHoursTracker(makeDb([subA, subB], rollups), stubLogger, null, undefined, undefined, billAllHours)
 
     await tracker.runOnce()
 
@@ -163,7 +170,7 @@ describe('AgentHoursTracker — per-user cursor (anti double-count)', () => {
     const subB: Sub = { userId: 'B', status: 'active', agentHoursUsed: 0 }
     const rollups: Rollup[] = [roll('A', 1), roll('A', 2), roll('B', 1), roll('B', 2), roll('B', 3), roll('B', 4), roll('B', 5)]
     const db = makeDb([subA, subB], rollups)
-    const tracker = new AgentHoursTracker(db, stubLogger, null)
+    const tracker = new AgentHoursTracker(db, stubLogger, null, undefined, undefined, billAllHours)
 
     await tracker.runOnce() // A -> 2h (cursor h2), B -> 5h (cursor h5)
     expect(subA.agentHoursUsed).toBe(2)
@@ -182,7 +189,7 @@ describe('AgentHoursTracker — per-user cursor (anti double-count)', () => {
   it('is idempotent: a repeated tick with no new rollups changes nothing', async () => {
     const subA: Sub = { userId: 'A', status: 'active', agentHoursUsed: 0 }
     const rollups = [roll('A', 1), roll('A', 2), roll('A', 3)]
-    const tracker = new AgentHoursTracker(makeDb([subA], rollups), stubLogger, null)
+    const tracker = new AgentHoursTracker(makeDb([subA], rollups), stubLogger, null, undefined, undefined, billAllHours)
 
     await tracker.runOnce()
     expect(subA.agentHoursUsed).toBe(3)
@@ -198,7 +205,7 @@ describe('AgentHoursTracker — per-user cursor (anti double-count)', () => {
     // not $inc onto it (those hours would be lost or land on the wrong period).
     const resetting: Sub = { userId: 'R', status: 'active', agentHoursUsed: 0, resetting: true }
     const rollups = [roll('R', 1), roll('R', 2)]
-    const tracker = new AgentHoursTracker(makeDb([resetting], rollups), stubLogger, null)
+    const tracker = new AgentHoursTracker(makeDb([resetting], rollups), stubLogger, null, undefined, undefined, billAllHours)
 
     const result = await tracker.runOnce()
 
@@ -210,10 +217,76 @@ describe('AgentHoursTracker — per-user cursor (anti double-count)', () => {
   it('skips paused/cancelled subs entirely', async () => {
     const paused: Sub = { userId: 'P', status: 'paused', agentHoursUsed: 0 }
     const rollups = [roll('P', 1), roll('P', 2)]
-    const tracker = new AgentHoursTracker(makeDb([paused], rollups), stubLogger, null)
+    const tracker = new AgentHoursTracker(makeDb([paused], rollups), stubLogger, null, undefined, undefined, billAllHours)
 
     const result = await tracker.runOnce()
     expect(paused.agentHoursUsed).toBe(0)
     expect(result.usersBilled).toBe(0)
+  })
+})
+
+// ============================================================================
+// WS1 / Decision #29 — the tracker bills userWorkMs (sum) with v1 fallback
+// ============================================================================
+
+describe('AgentHoursTracker — billed metric = userWorkMs ?? userActiveMs (decision #29)', () => {
+  it('bills userWorkMs on v2 buckets (parallel agents burn quota faster)', async () => {
+    // One hour where the user ran 2 agents in parallel the whole time:
+    // union (userActiveMs) = 1h, work (userWorkMs) = 2h. The quota must burn 2h.
+    const sub: Sub = { userId: 'A', status: 'active', agentHoursUsed: 0 }
+    const rollups: Rollup[] = [
+      { groupKey: { userId: 'A' }, hourBucket: hb(1), userActiveMs: HOUR_MS, userWorkMs: 2 * HOUR_MS },
+    ]
+    const tracker = new AgentHoursTracker(makeDb([sub], rollups), stubLogger, null, undefined, undefined, billAllHours)
+
+    await tracker.runOnce()
+
+    // MUST BITE: billing $userActiveMs here would yield 1 instead of 2.
+    expect(sub.agentHoursUsed).toBe(2)
+  })
+
+  it('falls back to userActiveMs on v1 buckets (no userWorkMs — historical data)', async () => {
+    // Pre-#29 bucket: only userActiveMs exists. It must still bill 1h.
+    const sub: Sub = { userId: 'A', status: 'active', agentHoursUsed: 0 }
+    const rollups: Rollup[] = [
+      { groupKey: { userId: 'A' }, hourBucket: hb(1), userActiveMs: HOUR_MS }, // v1
+    ]
+    const tracker = new AgentHoursTracker(makeDb([sub], rollups), stubLogger, null, undefined, undefined, billAllHours)
+
+    await tracker.runOnce()
+
+    expect(sub.agentHoursUsed).toBe(1)
+  })
+
+  it('mixed periods: v1 hours bill at union speed, v2 hours at work speed', async () => {
+    // h1 is v1 (1h union, no work field); h2 is v2 (1h union, 3h work — three
+    // parallel agents). Total billed = 1 + 3 = 4h.
+    const sub: Sub = { userId: 'A', status: 'active', agentHoursUsed: 0 }
+    const rollups: Rollup[] = [
+      { groupKey: { userId: 'A' }, hourBucket: hb(1), userActiveMs: HOUR_MS },
+      { groupKey: { userId: 'A' }, hourBucket: hb(2), userActiveMs: HOUR_MS, userWorkMs: 3 * HOUR_MS },
+    ]
+    const tracker = new AgentHoursTracker(makeDb([sub], rollups), stubLogger, null, undefined, undefined, billAllHours)
+
+    await tracker.runOnce()
+
+    expect(sub.agentHoursUsed).toBe(4)
+  })
+
+  it('is idempotent with v2 buckets: a re-run does not double-count work', async () => {
+    const sub: Sub = { userId: 'A', status: 'active', agentHoursUsed: 0 }
+    const rollups: Rollup[] = [
+      { groupKey: { userId: 'A' }, hourBucket: hb(1), userActiveMs: HOUR_MS, userWorkMs: 2 * HOUR_MS },
+      { groupKey: { userId: 'A' }, hourBucket: hb(2), userActiveMs: HOUR_MS, userWorkMs: 2 * HOUR_MS },
+    ]
+    const tracker = new AgentHoursTracker(makeDb([sub], rollups), stubLogger, null, undefined, undefined, billAllHours)
+
+    await tracker.runOnce()
+    expect(sub.agentHoursUsed).toBe(4)
+    const cursorAfterFirst = sub.lastBilledHourBucket
+
+    await tracker.runOnce() // no new rollups
+    expect(sub.agentHoursUsed).toBe(4)
+    expect(sub.lastBilledHourBucket).toEqual(cursorAfterFirst!)
   })
 })

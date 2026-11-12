@@ -13,6 +13,11 @@ interface UpdateWorkspaceData {
   description?: string
   context?: string
   appearance?: { color?: string; icon?: string }
+  /**
+   * Workspace settings (merged whole-object by the service). Currently holds
+   * `defaultBranch` and `zdrOnly` (Zero Data Retention model filter).
+   */
+  settings?: { defaultBranch?: string; zdrOnly?: boolean }
 }
 
 export function createUpdateWorkspaceHandler(
@@ -33,6 +38,7 @@ export function createUpdateWorkspaceHandler(
         description: data.description,
         context: data.context,
         appearance: data.appearance,
+        settings: data.settings,
       })
     } catch (error: any) {
       if (error.message?.includes('Permission denied')) {
@@ -56,6 +62,7 @@ export function createUpdateWorkspaceHandler(
       description: workspace.description,
       context: workspace.context,
       appearance: workspace.appearance,
+      settings: workspace.settings,
     }
 
     if (pubSubService) {

@@ -13,7 +13,7 @@
  * ```
  */
 
-import { SessionLockManager } from '@teros/core';
+import { RandomIdGenerator, SessionLockManager } from '@teros/core';
 import type { Db } from 'mongodb';
 // Auth
 import { AuthManager } from '../auth/auth-manager';
@@ -30,6 +30,7 @@ import { WebSocketHandler } from '../handlers/websocket-handler';
 import { SecretsManager } from '../secrets/secrets-manager';
 // Services
 import { AutoplayService } from '../services/autoplay-service';
+import { BoardEventService } from '../services/board-event-service';
 import { BoardService } from '../services/board-service';
 import { BoardSubscriptionService } from '../services/board-subscription-service';
 import { ChannelManager } from '../services/channel-manager';
@@ -43,7 +44,6 @@ import { ProviderService } from '../services/provider-service';
 import { PubSubService } from '../services/pubsub-service';
 import { PtyManager } from '../services/pty-manager';
 import { ResumeService } from '../services/resume-service';
-import { SchedulerService } from '../services/scheduler-service';
 import { SessionManager } from '../services/session-manager';
 import { ShareService } from '../services/share-service';
 import { SkillService } from '../services/skill-service';
@@ -152,7 +152,9 @@ export function registerDependencies(container: Container, options: BootstrapOpt
 
   container.register(Tokens.DesktopStateService, (c) => new DesktopStateService(c.get(Tokens.Db)));
 
-  container.register(Tokens.BoardService, (c) => new BoardService(c.get(Tokens.Db)));
+  container.register(Tokens.BoardEventService, (c) => new BoardEventService(c.get(Tokens.Db)));
+
+  container.register(Tokens.BoardService, (c) => new BoardService(c.get(Tokens.Db), undefined as any, c.get(Tokens.BoardEventService)));
 
   container.register(
     Tokens.BoardSubscriptionService,
@@ -202,7 +204,7 @@ export function registerDependencies(container: Container, options: BootstrapOpt
 
   container.register(
     Tokens.ChannelManager,
-    (c) => new ChannelManager(c.get(Tokens.Db), c.get(Tokens.ProviderService)),
+    (c) => new ChannelManager(c.get(Tokens.Db), c.get(Tokens.ProviderService), new RandomIdGenerator()),
   );
 
   container.register(
@@ -230,11 +232,6 @@ export function registerDependencies(container: Container, options: BootstrapOpt
       c.get(Tokens.SessionManager),
       c.get(Tokens.ChannelManager),
     ),
-  );
-
-  container.register(
-    Tokens.SchedulerService,
-    (c) => new SchedulerService(c.get(Tokens.Db), c.get(Tokens.EventHandler)),
   );
 
   container.register(

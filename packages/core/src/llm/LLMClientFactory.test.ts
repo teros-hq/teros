@@ -133,6 +133,13 @@ describe('LLMClientFactory.create — correct adapter per provider', () => {
     });
     expect(together).toBeInstanceOf(OpenAICompatibleLLMAdapter);
   });
+  it("helmcode → OpenAICompatibleLLMAdapter", async () => {
+    const client = await LLMClientFactory.create({
+      provider: "helmcode",
+      helmcode: { apiKey: KEY, model: "qwen3.6" },
+    });
+    expect(client).toBeInstanceOf(OpenAICompatibleLLMAdapter);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,6 +160,7 @@ describe('LLMClientFactory.create — fails loud on missing model', () => {
     { provider: 'cloudflare', payload: { cloudflare: { apiKey: KEY, accountId: 'a' } }, needle: 'Cloudflare model is required' },
     { provider: 'fireworks', payload: { fireworks: { apiKey: KEY } }, needle: 'Fireworks model is required' },
     { provider: 'together', payload: { together: { apiKey: KEY } }, needle: 'Together model is required' },
+    { provider: 'helmcode', payload: { helmcode: { apiKey: KEY } }, needle: 'Helmcode model is required' },
   ];
 
   for (const c of cases) {
@@ -179,6 +187,7 @@ describe('LLMClientFactory.create — fails loud on missing API key', () => {
     { provider: 'cloudflare', payload: { cloudflare: { accountId: 'a', model: 'm' } }, needle: 'No Cloudflare API key available' },
     { provider: 'fireworks', payload: { fireworks: { model: 'm' } }, needle: 'No Fireworks AI API key available' },
     { provider: 'together', payload: { together: { model: 'm' } }, needle: 'No Together AI API key available' },
+    { provider: 'helmcode', payload: { helmcode: { model: 'm' } }, needle: 'No Helmcode API key available' },
     { provider: 'ollama-cloud', payload: { 'ollama-cloud': { model: 'm' } }, needle: 'Ollama Cloud API key is required' },
   ];
 

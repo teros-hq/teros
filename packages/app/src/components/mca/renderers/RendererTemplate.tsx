@@ -6,6 +6,11 @@
  * documents the canonical patterns by example:
  *
  *   - Uses `ToolCallCard` as the container (guide §1).
+ *   - Header descriptions follow the Description standard (guide §2):
+ *     `useToolDescription('mca.tools.<mca>.<tool>', status, { …names })`
+ *     with copy in i18n — one string per phase, names never ids. The
+ *     literal descriptions below are placeholders to keep this file
+ *     self-contained; real renderers must not ship them.
  *   - Maps each tool to one of the 5 layout patterns §6 A-E.
  *   - Reads `irreversible` from props (manifest static) and `risk` from
  *     `permission-heuristics.ts` (per-call, only for polymorphic tools).
@@ -40,7 +45,6 @@ import {
   ResourceCard,
   SuccessBlock,
   ToolCallCard,
-  tenseByStatus,
   getShortToolName,
 } from '../primitives';
 import type { ToolCallRendererProps } from '../types';
@@ -65,18 +69,8 @@ function ListItemsRenderer(props: ToolCallRendererProps) {
   const items = typeof parsed === 'object' && parsed?.items ? parsed.items : [];
   const count = items.length;
 
-  // Description with correct tense (guide §2 slot 3).
-  // `tenseByStatus(status, forms)` builds the right tense:
-  //   pending             → "Will list 3 items"
-  //   running             → "Listing items…"
-  //   completed           → "Listed 3 items"
-  //   failed              → "Failed to list items"
-  //   pending_permission  → "Wants to list items"
-  const description = tenseByStatus(status, {
-    future: 'list items',
-    present: 'Listing items',
-    past: `Listed ${count} items`,
-  });
+  // Static description (guide §2 slot 3).
+  const description = `Listed ${count} items`;
 
   const badge =
     status === 'completed' ? (
@@ -117,11 +111,7 @@ function GetItemRenderer(props: ToolCallRendererProps) {
   const parsed = output ? parseOutput<{ name: string; createdAt: string; size: number }>(output) : null;
   const item = typeof parsed === 'object' ? parsed : null;
 
-  const description = tenseByStatus(status, {
-    future: 'retrieve item',
-    present: 'Retrieving item',
-    past: 'Retrieved item',
-  });
+  const description = 'Retrieved item';
 
   return (
     <ToolCallCard status={status} description={description} iconUri={appIcon}>

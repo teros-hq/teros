@@ -3,14 +3,20 @@
  */
 
 import type { WsHandlerContext } from "@teros/shared"
+import { isProviderTypeAllowedInEdition } from "@teros/shared"
 import type { ProviderService } from "../../../services/provider-service"
 
 export function createListProvidersHandler(providerService: ProviderService) {
   return async function listProviders(ctx: WsHandlerContext) {
     const providers = await providerService.listUserProviders(ctx.userId)
 
-    // Strip encrypted data before sending to client
-    const sanitized = providers.map((p) => ({
+    // Strip encrypted data before sending to client.
+    // Edition gate (TER-EDITION): local-Ollama records are not listed in cloud
+    // (they are unusable there — the runtime resolver refuses them), so they
+    // must not surface in the provider windows either. Self-hosted: unchanged.
+    const sanitized = providers
+      .filter((p) => isProviderTypeAllowedInEdition(p.providerType))
+      .map((p) => ({
       providerId: p.providerId,
       providerType: p.providerType,
       displayName: p.displayName,

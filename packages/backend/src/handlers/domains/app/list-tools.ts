@@ -21,6 +21,8 @@ async function userHasAppAccess(
 ): Promise<boolean> {
   const app = await mcaService.getApp(appId)
   if (!app) return false
+  // MUW-REQ-13: another member's private app does not exist for the caller
+  if (!mcaService.isAppVisibleTo(app, userId)) return false
   if (app.ownerId === userId) return true
   if (app.ownerType === 'workspace' && workspaceService) {
     return workspaceService.canAccess(app.ownerId, userId)

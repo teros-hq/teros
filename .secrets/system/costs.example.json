@@ -1,0 +1,3 @@
+{
+  "apiKey": "GENERATE: openssl rand -hex 32"
+}

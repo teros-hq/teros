@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -265,7 +268,7 @@
     },
     {
       "name": "create-collection-scene",
-      "description": "Create a new scene directly inside a specific Excalidraw collection.",
+      "description": "Create a new scene directly inside a specific Excalidraw collection. Equivalent to create-scene but scoped to the collection.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -318,7 +321,7 @@
     },
     {
       "name": "delete-collection",
-      "description": "Soft-delete an Excalidraw collection by moving it to trash. Scenes inside are not deleted.",
+      "description": "Soft-delete an Excalidraw collection by moving it to trash. Scenes inside the collection are not deleted.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -409,7 +412,7 @@
     },
     {
       "name": "update-user",
-      "description": "Update a workspace user in Excalidraw Plus (e.g. change their role or name).",
+      "description": "Update a workspace user in Excalidraw Plus (e.g. change their role).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -436,7 +439,7 @@
     },
     {
       "name": "remove-user",
-      "description": "Remove a user from the Excalidraw Plus workspace, revoking their access.",
+      "description": "Remove a user from the Excalidraw Plus workspace. This revokes their access.",
       "inputSchema": {
         "type": "object",
         "properties": {

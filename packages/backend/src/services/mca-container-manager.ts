@@ -30,6 +30,13 @@ export function envPositiveInt(name: string): number | undefined {
 export class McaContainerManager {
   private containers = new Map<string, ContainerInfo>();
   private callbackTokens = new Map<string, string>();
+  /**
+   * mcaId per registered callback-token key. For containers the key is already
+   * present in `containers` (getInfo resolves the mcaId); for stdio MCAs —
+   * which register a token via registerCallbackToken but have no ContainerInfo —
+   * this map is the only place their identity lives.
+   */
+  private callbackTokenMcaIds = new Map<string, string>();
   private cleanupInterval?: NodeJS.Timeout;
   private backend: IContainerBackend;
 
@@ -176,8 +183,60 @@ export class McaContainerManager {
     return false;
   }
 
+  /**
+   * Register a callback token for a key WITHOUT starting a container — used by
+   * the stdio spawn path (buildExecutionConfig), which runs the MCA as a child
+   * process instead of going through an IContainerBackend.
+   *
+   * The token lifecycle is tied to the child process, not the backend process:
+   * a backend restart kills the children too, and the next spawn re-registers a
+   * fresh token — so the in-memory Map never goes stale relative to a live
+   * caller. This is the fix for the 2026-09-20..24 401 storm
+   * (stdio MCAs had NO token at all, so every ctx.volume callback was
+   * rejected by authenticateCallback — mca.teros.admin.filesystem was the
+   * canonical case before its retirement on 2026-10-19).
+   */
+  registerCallbackToken(containerKey: string, token: string, mcaId: string): void {
+    this.callbackTokens.set(containerKey, token);
+    this.callbackTokenMcaIds.set(containerKey, mcaId);
+  }
+
+  /**
+   * Drop a registered callback token (stdio kill path). Container keys keep
+   * their token in stop(); stdio MCAs must drop it here because the child
+   * process holding the token dies with it.
+   */
+  unregisterCallbackToken(containerKey: string): void {
+    this.callbackTokens.delete(containerKey);
+    this.callbackTokenMcaIds.delete(containerKey);
+  }
+
+  /**
+   * mcaId for a registered token key. Resolves for BOTH containers (via the
+   * containers map) and stdio MCAs (via the registration map). Used by
+   * authenticateCallback to derive trusted identity from the verified key.
+   */
+  getCallbackTokenMcaId(containerKey: string): string | undefined {
+    return (
+      this.containers.get(containerKey)?.mcaId ??
+      this.callbackTokenMcaIds.get(containerKey)
+    );
+  }
+
   getInfo(containerKey: string): ContainerInfo | undefined {
     return this.containers.get(containerKey);
+  }
+
+  /**
+   * Get the per-container callback token (used as HMAC secret for
+   * backend→container request signing — incident-2026-08-14, Layer B).
+   *
+   * The token is generated when the container starts and is also injected
+   * into the container via `MCA_CALLBACK_TOKEN`. Both sides use it to
+   * sign/verify the `(userId, workspaceId, appId, toolCallId)` tuple.
+   */
+  getCallbackToken(containerKey: string): string | undefined {
+    return this.callbackTokens.get(containerKey);
   }
 
   isRunning(containerKey: string): boolean {

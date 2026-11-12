@@ -21,17 +21,17 @@ describe('HubSpot formatters', () => {
       const contact = {
         id: '123',
         properties: {
-          email: { value: 'test@example.com' },
-          firstname: { value: 'John' },
-          lastname: { value: 'Doe' },
-          phone: { value: '+1234567890' },
-          company: { value: 'Acme' },
-          jobtitle: { value: 'Engineer' },
-          website: { value: 'https://example.com' },
-          lifecyclestage: { value: 'customer' },
-          hs_lead_status: { value: 'OPEN' },
-          createdate: { value: '1672531200000' },
-          lastmodifieddate: { value: '1672617600000' },
+          email: 'test@example.com',
+          firstname: 'John',
+          lastname: 'Doe',
+          phone: '+1234567890',
+          company: 'Acme',
+          jobtitle: 'Engineer',
+          website: 'https://example.com',
+          lifecyclestage: 'customer',
+          hs_lead_status: 'OPEN',
+          createdate: '2023-01-01T00:00:00.000Z',
+          lastmodifieddate: '2023-01-02T00:00:00.000Z',
         },
       };
       const result = formatContact(contact);
@@ -57,13 +57,13 @@ describe('HubSpot formatters', () => {
       const company = {
         id: '789',
         properties: {
-          name: { value: 'Acme Inc' },
-          domain: { value: 'acme.com' },
-          industry: { value: 'Software' },
-          numberofemployees: { value: '100' },
-          annualrevenue: { value: '1000000' },
-          createdate: { value: '1672531200000' },
-          hs_lastmodifieddate: { value: '1672617600000' },
+          name: 'Acme Inc',
+          domain: 'acme.com',
+          industry: 'Software',
+          numberofemployees: '100',
+          annualrevenue: '1000000',
+          createdate: '2023-01-01T00:00:00.000Z',
+          hs_lastmodifieddate: '2023-01-02T00:00:00.000Z',
         },
       };
       const result = formatCompany(company);
@@ -79,12 +79,12 @@ describe('HubSpot formatters', () => {
       const deal = {
         id: '101',
         properties: {
-          dealname: { value: 'Big Deal' },
-          amount: { value: '50000' },
-          dealstage: { value: 'closedwon' },
-          pipeline: { value: 'default' },
-          createdate: { value: '1672531200000' },
-          hs_lastmodifieddate: { value: '1672617600000' },
+          dealname: 'Big Deal',
+          amount: '50000',
+          dealstage: 'closedwon',
+          pipeline: 'default',
+          createdate: '2023-01-01T00:00:00.000Z',
+          hs_lastmodifieddate: '2023-01-02T00:00:00.000Z',
         },
       };
       const result = formatDeal(deal);
@@ -99,10 +99,10 @@ describe('HubSpot formatters', () => {
       const ticket = {
         id: '202',
         properties: {
-          subject: { value: 'Support request' },
-          content: { value: 'Need help with login' },
-          hs_ticket_priority: { value: 'HIGH' },
-          createdate: { value: '1672531200000' },
+          subject: 'Support request',
+          content: 'Need help with login',
+          hs_ticket_priority: 'HIGH',
+          createdate: '2023-01-01T00:00:00.000Z',
         },
       };
       const result = formatTicket(ticket);
@@ -116,10 +116,10 @@ describe('HubSpot formatters', () => {
       const engagement = {
         id: '303',
         properties: {
-          hs_email_subject: { value: 'Welcome email' },
-          hs_email_text: { value: 'Hello there' },
-          hs_email_status: { value: 'SENT' },
-          hs_createdate: { value: '1672531200000' },
+          hs_email_subject: 'Welcome email',
+          hs_email_text: 'Hello there',
+          hs_email_status: 'SENT',
+          hs_createdate: '2023-01-01T00:00:00.000Z',
         },
       };
       const result = formatEngagement(engagement);
@@ -263,16 +263,28 @@ describe('HubSpot builders', () => {
   });
 
   describe('buildAssociations', () => {
-    it('builds associations payload', () => {
-      const result = buildAssociations('companies', ['789', '101']);
+    it('builds associations payload with the verified pair typeId (contacts→companies = 1)', () => {
+      const result = buildAssociations('contacts', 'companies', ['789', '101']);
       expect(result.associations).toHaveLength(2);
       expect(result.associations[0].to.id).toBe('789');
       expect(result.associations[0].types[0].associationCategory).toBe('HUBSPOT_DEFINED');
+      expect(result.associations[0].types[0].associationTypeId).toBe(1);
+    });
+
+    it('uses the engagement pair typeId (tasks→deals = 216), never the old typeId-1 fallback', () => {
+      const result = buildAssociations('tasks', 'deals', ['deal-1']);
+      expect(result.associations[0].types[0].associationTypeId).toBe(216);
     });
 
     it('uses custom association type when provided', () => {
-      const result = buildAssociations('contacts', ['123'], 'contact_to_company');
+      const result = buildAssociations('contacts', 'companies', ['123'], 'contact_to_company');
       expect(result.associations[0].types[0].associationTypeId).toBe('contact_to_company');
+    });
+
+    it('throws for unknown pairs instead of guessing a typeId', () => {
+      expect(() => buildAssociations('tasks', 'courses', ['1'])).toThrow(
+        /No verified HUBSPOT_DEFINED association type/,
+      );
     });
   });
 });

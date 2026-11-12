@@ -19,7 +19,8 @@ import {
   FallbackBody,
   colors as globalColors,
   ToolCallCard,
-} from "../primitives"
+  useColors,
+} from "../primitives";
 import type { ToolCallRendererProps } from "../types"
 import { withPermissionSupport } from "../withPermissionSupport"
 import {
@@ -77,6 +78,7 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
 // ============================================================================
 
 function FallbackRenderer({ toolName, input, status, output, error }: ToolCallRendererProps) {
+  const c = useColors();
   const shortName = getShortToolName(toolName)
 
   const badge = __DEV__ ? (
@@ -90,7 +92,7 @@ function FallbackRenderer({ toolName, input, status, output, error }: ToolCallRe
   return (
     <ToolCallCard
       status={toolStatusForPrimitive(status)}
-      verb={getToolLabel(toolName)}
+      description={getToolLabel(toolName)}
       iconUri={FIGMA_ICON}
       badge={badge}
       animateExpand
@@ -108,7 +110,7 @@ function FallbackRenderer({ toolName, input, status, output, error }: ToolCallRe
           <Text color={globalColors.badgeError.text} fontSize={10} fontWeight="600">
             [dev] Missing sub-renderer for "{shortName}"
           </Text>
-          <Text color={globalColors.secondary} fontSize={9}>
+          <Text color={c.text2} fontSize={9}>
             Register it in the RENDERERS map in FigmaRenderer.tsx.
           </Text>
         </YStack>

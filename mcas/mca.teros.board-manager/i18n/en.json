@@ -27,7 +27,7 @@
     },
     "get-task": {
       "name": "get-task",
-      "description": "Get task detail + sub-tasks. Returns: { task: { taskId, title, description, columnName, columnSlug, priority, tags, assigneeName, running, stopRequested, dependencies, progressNotes, projectName, parentTaskTitle? }, subTasks: [...], agents }.",
+      "description": "Get task detail + sub-tasks. Returns: { task: { taskId, title, description, columnName, columnSlug, priority, tags, assigneeName, running, stopRequested, dependencies, progressNotes, projectName, parentTaskTitle?, workflowInputData?, workflowOutputData?, workflowExecutionId?, workflowNodeId?, workflowInputGate?, workflowOutputGate? }, subTasks: [...], agents }. Workflow extension fields are present only when the task was created by the workflow engine.",
       "params": {
         "taskId": "Task ID",
         "fields": "Custom subset of fields for task + subTasks",
@@ -72,12 +72,12 @@
     },
     "create-task": {
       "name": "create-task",
-      "description": "Create a task on a project board. Defaults to Backlog column. Returns: { task: { taskId, title, columnId, priority, tags, assignedAgentId } }. Use batch-create-tasks to create many atomically.",
+      "description": "Create a task on a project board. Defaults to Backlog column. Returns: { task: { taskId, title, columnId, priority, tags, assignedAgentId } }. Use batch-create-tasks to create many atomically. `instructions` is required — it gives the assigned agent the context and steps needed to work autonomously.",
       "params": {
         "projectId": "Project ID",
         "title": "Task title",
-        "description": "Short plain-text description (max ~1000 chars)",
-        "instructions": "Full task instructions (markdown — detailed specs, context, steps)",
+        "description": "Short one-line summary of what the task is about (max ~1000 chars)",
+        "instructions": "Detailed task instructions in markdown — context, specific steps, acceptance criteria, relevant paths, examples, and constraints. This is what the assigned agent receives as their briefing, so providing clear instructions is highly valuable for autonomous execution.",
         "priority": "Priority (default: medium)",
         "tags": "Tags for categorization",
         "assignedAgentId": "Agent to assign",
@@ -88,7 +88,7 @@
     },
     "batch-create-tasks": {
       "name": "batch-create-tasks",
-      "description": "Create multiple tasks atomically (all succeed or all fail). Max 100 per call. Returns: { projectId, tasks: [{ taskId, title, columnId, priority, tags }], count }. Use create-task for a single task.",
+      "description": "Create multiple tasks atomically (all succeed or all fail). Max 100 per call. Returns: { projectId, tasks: [{ taskId, title, columnId, priority, tags }], count }. Use create-task for a single task. `instructions` is required for each task — it gives the assigned agent the context and steps needed to work autonomously.",
       "params": {
         "projectId": "Project ID",
         "tasks": "Array of task objects (max 100)",
@@ -101,8 +101,8 @@
       "params": {
         "taskId": "Task ID",
         "title": "New title",
-        "description": "New short description (plain text, max ~1000 chars)",
-        "instructions": "New instructions (markdown — detailed specs, context, steps)",
+        "description": "New short one-line summary of what the task is about (max ~1000 chars)",
+        "instructions": "New detailed task instructions in markdown — context, specific steps, acceptance criteria, relevant paths, examples, and constraints. This is what the assigned agent receives as their briefing, so providing clear instructions is highly valuable for autonomous execution.",
         "priority": "New priority",
         "tags": "New tags (replaces existing)",
         "includeRaw": "Return full task document"
@@ -153,7 +153,8 @@
         "taskId": "Task ID",
         "columnId": "Target column ID",
         "position": "Position within the column (optional, defaults to end)",
-        "includeRaw": "Return full task document"
+        "includeRaw": "Return full task document",
+        "reviewAction": "Set true ONLY when this move is the terminal action of a review (verdict) while reacting to a task_moved→Review event. Enables the single-flight claim so concurrent sessions of yours move the task at most once. Leave unset for normal task management moves."
       }
     },
     "assign-task": {
@@ -190,7 +191,8 @@
       "params": {
         "taskId": "Task ID",
         "text": "Progress note text",
-        "includeRaw": "Return full task document"
+        "includeRaw": "Return full task document",
+        "reviewAction": "Set true ONLY when this note is a review verdict posted while reacting to a task_moved→Review event. Enables the single-flight claim so concurrent sessions of yours post at most one review note. Leave unset for normal progress reporting."
       }
     },
     "delete-task": {
@@ -256,7 +258,7 @@
     },
     "subscribe-to-board": {
       "name": "subscribe-to-board",
-      "description": "Subscribe the current conversation to real-time board events. Events (task moves, status changes, progress notes, dependency changes, autoplay toggles) are delivered to the conversation as they happen. Use filter to narrow events. Returns: { subscription: { subscriptionId, boardId, filter, createdAt } }. Use unsubscribe-from-board to stop.",
+      "description": "Subscribe the current conversation to real-time board events. Events (task moves, archives, assignments, progress notes, dependency changes, autoplay toggles) are delivered to the conversation as they happen. Use filter to narrow events. Returns: { subscription: { subscriptionId, boardId, filter, createdAt } }. Use unsubscribe-from-board to stop.",
       "params": {
         "boardId": "Board ID to subscribe to",
         "filter": "Optional filter to narrow delivered events",
@@ -282,7 +284,7 @@
     },
     "get-board-status": {
       "name": "get-board-status",
-      "description": "Operational status of a board: per-agent workload + summary. Returns: { boardId, boardName, agents: [{ agentName, slots, playEnabled, tasksInProgress, tasksInReview, tasksBlocked, tasksToDo }], summary: { total, byColumn, blockedTasks } }. Use to identify bottlenecks.",
+      "description": "Operational status of a board: per-agent workload + summary. Returns: { boardId, boardName, agents: [{ agentName, slots, playEnabled, activeSlots, activeTasks: [{ taskId, title, projectName }], tasksInProgress, tasksInReview, tasksBlocked, tasksToDo }], summary: { total, byColumn, blockedTasks } }. activeTasks lists the running tasks for each agent with activeSlots > 0. Use to identify bottlenecks.",
       "params": {
         "boardId": "Board ID",
         "fields": "Custom subset for per-agent rows",
@@ -301,10 +303,10 @@
       "name": "subscribe-to-events",
       "description": "Subscribe the current conversation to MCA events on a topic. Events matching the topic are delivered to the conversation as they happen. Use rules to narrow events. Returns: { subscription: { id, topic, channelId, rules, mode, createdAt } }. Use unsubscribe-from-events to stop.",
       "params": {
-        "topic": "Event topic to subscribe to (e.g. \"mca.teros.scheduler.reminder\")",
+        "topic": "Event topic to subscribe to (e.g. \"telegram.message.received\")",
         "channelId": "Channel ID to receive events in (defaults to current conversation)",
         "rules": "Optional filter rules to narrow delivered events",
-        "mode": "Delivery mode: notify = silent notification, wake = trigger agent response turn. Default: notify",
+        "mode": "Delivery mode: notify = silent notification, wake = trigger agent response turn (the agent gets a response turn). Default: wake",
         "includeRaw": "Return full subscription document"
       }
     },

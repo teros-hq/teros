@@ -1,0 +1,10 @@
+# SSH client defaults for every workspace container (/etc/ssh/ssh_config.d/teros.conf).
+#
+# The shells in here are driven by coding agents without a TTY: a host-key
+# question hangs the command forever. `accept-new` records an unknown host's
+# key on first contact and still refuses a CHANGED key (the attack the prompt
+# protects against). GitHub's keys are pre-seeded system-wide so even the
+# first contact is silent.
+Host *
+    StrictHostKeyChecking accept-new
+    GlobalKnownHostsFile /etc/ssh/ssh_known_hosts

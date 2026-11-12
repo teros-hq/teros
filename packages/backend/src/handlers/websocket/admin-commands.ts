@@ -51,8 +51,14 @@ export function createAdminCommands(deps: AdminCommandsDeps) {
       // Get additional stats for each user
       const enrichedUsers = await Promise.all(
         users.map(async (user) => {
-          // Count user's apps
-          const appsCount = await db.collection('apps').countDocuments({ ownerId: user.userId });
+          // Count user's apps — apps.ownerId is a workspaceId, so count the
+          // apps of the workspaces the user owns (MOD-1)
+          const ownedWorkspaceIds = await db
+            .collection('workspaces')
+            .distinct('workspaceId', { ownerId: user.userId });
+          const appsCount = await db
+            .collection('apps')
+            .countDocuments({ ownerId: { $in: ownedWorkspaceIds } });
 
           // Count user's sessions (conversations)
           const sessionsCount = await db

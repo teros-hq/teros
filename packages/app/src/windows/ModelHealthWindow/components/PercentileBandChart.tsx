@@ -16,10 +16,12 @@
 
 import { seriesColor } from "@teros/shared"
 import React from "react"
+import { View } from "react-native"
 import { Circle, Line, Rect, Svg, Text as SvgText } from "react-native-svg"
-import { Text, XStack, YStack } from "tamagui"
 import type { ModelHealthSummary } from "../../../services/AdminApi"
+import { FONT_MONO, FONT_SANS } from "../../../components/mca/primitives/fonts"
 import { useColors } from "../../../components/mca/primitives/useColors"
+import { T } from "../../../components/ui/ds/Text"
 import { formatMs, modelLabel } from "../format"
 import { useChartWidth } from "./useChartWidth"
 
@@ -48,11 +50,14 @@ export function PercentileBandChart({
 
   if (series.length === 0) {
     return (
-      <YStack width="100%" height={120} ai="center" jc="center" onLayout={onLayout}>
-        <Text color={c.text2} fontSize={13}>
+      <View
+        style={{ width: "100%", height: 120, alignItems: "center", justifyContent: "center" }}
+        onLayout={onLayout}
+      >
+        <T step="sm" tone="text3">
           No {metric === "latency" ? "latency" : "TTFT"} samples in range
-        </Text>
-      </YStack>
+        </T>
+      </View>
     )
   }
 
@@ -81,7 +86,15 @@ export function PercentileBandChart({
       }),
       React.createElement(
         SvgText as any,
-        { key: `xlab-${i}`, x, y: PAD.top - 10, fill: c.text3, fontSize: 10, textAnchor: i === 0 ? "start" : i === ticks.length - 1 ? "end" : "middle" },
+        {
+          key: `xlab-${i}`,
+          x,
+          y: PAD.top - 10,
+          fill: c.text3,
+          fontSize: 10,
+          fontFamily: FONT_MONO,
+          textAnchor: i === 0 ? "start" : i === ticks.length - 1 ? "end" : "middle",
+        },
         formatMs(t),
       ),
     )
@@ -101,38 +114,46 @@ export function PercentileBandChart({
       // Row label (model + upstream), right-aligned into the gutter.
       React.createElement(
         SvgText as any,
-        { key: `ylab-${row}`, x: PAD.left - 12, y: yc + 4, fill: c.text, fontSize: 12, textAnchor: "end" },
+        {
+          key: `ylab-${row}`,
+          x: PAD.left - 12,
+          y: yc + 4,
+          fill: c.text,
+          fontSize: 12,
+          fontFamily: FONT_SANS,
+          textAnchor: "end",
+        },
         modelLabel(s.model.actualProvider, s.model.modelId, 26),
       ),
       // Light spread p50→p99.
       React.createElement(Rect as any, {
         key: `spread-${row}`,
         x: x50,
-        y: yc - 5,
+        y: yc - 4,
         width: Math.max(2, x99 - x50),
-        height: 10,
-        rx: 5,
+        height: 8,
+        rx: 4,
         fill: color,
-        fillOpacity: 0.2,
+        fillOpacity: 0.18,
       }),
       // Solid p50→p95 (the SLO-relevant portion).
       React.createElement(Rect as any, {
         key: `solid-${row}`,
         x: x50,
-        y: yc - 5,
+        y: yc - 4,
         width: Math.max(2, x95 - x50),
-        height: 10,
-        rx: 5,
+        height: 8,
+        rx: 4,
         fill: color,
-        fillOpacity: 0.55,
+        fillOpacity: 0.6,
       }),
       // p95 marker (thick tick).
       React.createElement(Line as any, {
         key: `p95-${row}`,
         x1: x95,
-        y1: yc - 9,
+        y1: yc - 8,
         x2: x95,
-        y2: yc + 9,
+        y2: yc + 8,
         stroke: color,
         strokeWidth: 2.5,
       }),
@@ -142,14 +163,22 @@ export function PercentileBandChart({
         cx: x99,
         cy: yc,
         r: 4,
-        fill: "transparent",
+        fill: c.bgStep,
         stroke: color,
         strokeWidth: 1.5,
       }),
       // p95 value above the marker.
       React.createElement(
         SvgText as any,
-        { key: `p95v-${row}`, x: x95, y: yc - 12, fill: color, fontSize: 10, fontWeight: "600", textAnchor: "middle" },
+        {
+          key: `p95v-${row}`,
+          x: x95,
+          y: yc - 12,
+          fill: c.text2,
+          fontSize: 10,
+          fontFamily: FONT_MONO,
+          textAnchor: "middle",
+        },
         formatMs(p95),
       ),
     )
@@ -163,36 +192,54 @@ export function PercentileBandChart({
     .join("; ")
 
   return (
-    <YStack width="100%" gap={8} onLayout={onLayout}>
-      <YStack width="100%" height={height} overflow="hidden" aria-label={`${metric} percentiles — ${ariaLabel}`}>
+    <View style={{ width: "100%", gap: 8 }} onLayout={onLayout}>
+      <View
+        style={{ width: "100%", height, overflow: "hidden" }}
+        {...({ "aria-label": `${metric} percentiles — ${ariaLabel}` } as any)}
+      >
         {React.createElement(
           Svg as any,
           { width, height, viewBox: `0 0 ${width} ${height}`, "aria-hidden": true },
           ...svgChildren,
         )}
-      </YStack>
-      <XStack ai="center" gap={16} paddingLeft={PAD.left} flexWrap="wrap">
-        <LegendSwatch color={c.text2} opacity={0.2} label="p50→p99 spread" />
-        <LegendSwatch color={c.text} opacity={0.55} label="p50→p95" />
-        <XStack ai="center" gap={5}>
-          <YStack width={2.5} height={12} backgroundColor={c.text} />
-          <Text fontSize={11} color={c.text2}>
+      </View>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 16,
+          paddingLeft: PAD.left,
+          flexWrap: "wrap",
+        }}
+      >
+        <LegendSwatch color={c.accent} opacity={0.18} label="p50→p99 spread" />
+        <LegendSwatch color={c.accent} opacity={0.6} label="p50→p95" />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+          <View style={{ width: 2.5, height: 12, backgroundColor: c.accent }} />
+          <T step="12" tone="text2">
             p95 marker
-          </Text>
-        </XStack>
-      </XStack>
-    </YStack>
+          </T>
+        </View>
+      </View>
+    </View>
   )
 }
 
-function LegendSwatch({ color, opacity, label }: { color: string; opacity: number; label: string }) {
-  const c = useColors()
+function LegendSwatch({
+  color,
+  opacity,
+  label,
+}: {
+  color: string
+  opacity: number
+  label: string
+}) {
   return (
-    <XStack ai="center" gap={5}>
-      <YStack width={18} height={9} borderRadius={4} backgroundColor={color} opacity={opacity} />
-      <Text fontSize={11} color={c.text2}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+      <View style={{ width: 18, height: 8, borderRadius: 4, backgroundColor: color, opacity }} />
+      <T step="12" tone="text2">
         {label}
-      </Text>
-    </XStack>
+      </T>
+    </View>
   )
 }

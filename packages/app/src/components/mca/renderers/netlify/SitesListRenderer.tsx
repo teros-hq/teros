@@ -40,7 +40,7 @@ export function SitesListRenderer({
     );
 
   return (
-    <ToolCallCard status={status} verb="List sites" badge={badge} iconUri={appIcon}>
+    <ToolCallCard status={status} description="List sites" badge={badge} iconUri={appIcon}>
       {displayError ? (
         <ErrorBlock error={displayError} />
       ) : sites.length === 0 ? (

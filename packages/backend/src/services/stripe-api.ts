@@ -37,16 +37,42 @@ export interface StripePaymentMethodRef {
   id: string
 }
 
-/** Card details of a vaulted payment method, for display in the profile. */
+/** A SetupIntent read back after the frontend confirmed it (3DS return path). */
+export interface StripeSetupIntentDetails {
+  id: string
+  /** requires_payment_method | requires_confirmation | requires_action | processing | canceled | succeeded */
+  status: string
+  /** Vaulted payment method id once the intent succeeded. */
+  payment_method: string | null
+  /** Customer the intent was minted for (cus_…). */
+  customer: string | null
+}
+
+export interface CreateTaxIdParams {
+  /** Stripe tax id type, e.g. 'eu_vat', 'es_cif', 'gb_vat', 'us_ein'. */
+  type: string
+  value: string
+}
+
+/**
+ * Display details of a vaulted payment method, for the profile. Cards are the
+ * norm; Link (Stripe's wallet, a card underneath, chargeable off-session) and
+ * SEPA are mapped too so a vaulted method never reads as "no card on file"
+ * (found 2026-10-15: a Link method was stored and the profile said no card).
+ */
 export interface StripeCardDetails {
-  /** Card network: 'visa' | 'mastercard' | 'amex' | … (Stripe's lowercase brand). */
+  /** 'card' | 'link' | 'sepa_debit' — absent means 'card' (older callers). */
+  type?: string
+  /** Card network: 'visa' | 'mastercard' | 'amex' | … (Stripe's lowercase brand); 'link' / 'sepa' otherwise. */
   brand: string
-  /** Last 4 digits, e.g. "4242". */
+  /** Last 4 digits, e.g. "4242" (empty for Link). */
   last4: string
-  /** Expiry month 1-12. */
+  /** Expiry month 1-12 (0 when not a card). */
   expMonth: number
-  /** Expiry year, 4 digits. */
+  /** Expiry year, 4 digits (0 when not a card). */
   expYear: number
+  /** Link: the wallet's email. */
+  email?: string | null
 }
 
 export interface StripeInvoiceRef {
@@ -158,6 +184,16 @@ export interface StripeApi {
     params: CreateSetupIntentParams,
     opts?: StripeRequestOptions,
   ): Promise<StripeSetupIntentRef>
+
+  /** Read a SetupIntent back (status + vaulted payment method), for the redirect return path. */
+  retrieveSetupIntent(id: string): Promise<StripeSetupIntentDetails>
+
+  /** Attach a tax id (VAT / CIF / …) to a customer; drives Stripe Tax and the invoice header. */
+  createCustomerTaxId(
+    customerId: string,
+    params: CreateTaxIdParams,
+    opts?: StripeRequestOptions,
+  ): Promise<{ id: string }>
 
   attachPaymentMethod(
     paymentMethodId: string,

@@ -2,11 +2,11 @@
  * file-watcher domain — registers file watch/unwatch handlers with the router
  *
  * Actions:
- *   file.watch   → Start watching a file; subscribes client to `file:<path>` channel
- *   file.unwatch → Stop watching a file; unsubscribes client from `file:<path>` channel
+ *   file.watch   → Start watching a file; subscribes client to `file:<volume>:<path>` channel
+ *   file.unwatch → Stop watching a file; unsubscribes client from `file:<volume>:<path>` channel
  *
  * Real-time events (pushed via PubSubService):
- *   { type: 'event', event: 'file.changed', channel: 'file:<path>', data: { filePath, content } }
+ *   { type: 'event', event: 'file.changed', channel: 'file:<volume>:<path>', data: { filePath, content } }
  *
  * Lifecycle:
  *   - file.watch  → resolves hostPath via VolumeService, starts fs.watch

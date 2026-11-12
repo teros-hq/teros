@@ -25,10 +25,12 @@
  * - 'teros': Teros official provider via Fireworks AI (Zero Data Retention, OpenAI-compatible API, system secret)
  * - 'fireworks': Fireworks AI (Zero Data Retention, OpenAI-compatible API, user-owned)
  * - 'together': Together AI (OpenAI-compatible API for 200+ open-source models, user-owned)
+ * - 'helmcode': Helmcode (EU private inference, open-weight models, flat-rate, BYOK, OpenAI-compatible API)
 
  */
 
 import { type ModelDefinition } from './types';
+import { isProviderTypeAllowedInEdition } from '@teros/shared';
 
 import {
   MODELS_ANTHROPIC,
@@ -48,6 +50,7 @@ import {
   MODELS_CLOUDFLARE,
   MODELS_FIREWORKS,
   MODELS_TOGETHER,
+  MODELS_HELMCODE,
 } from './providers';
 
 // Re-export ModelDefinition so existing importers of definitions.ts keep working
@@ -55,6 +58,12 @@ export type { ModelDefinition };
 
 /**
  * All available LLM models — assembled from per-provider files in ./providers/
+ *
+ * NOTE: this array is intentionally UNFILTERED by edition. `sync-models.ts`
+ * treats it as the complete source of truth and DELETES database rows absent
+ * from it — edition-filtering here would make a cloud `sync-models` run wipe
+ * the local-ollama rows a self-hosted deployment needs. Edition gating lives
+ * in the accessors below (and in the provider handlers), never in this array.
  */
 export const MODEL_DEFINITIONS: ModelDefinition[] = [
   ...MODELS_ANTHROPIC,
@@ -74,6 +83,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
   ...MODELS_CLOUDFLARE,
   ...MODELS_FIREWORKS,
   ...MODELS_TOGETHER,
+  ...MODELS_HELMCODE,
 ];
 
 // ============================================================================
@@ -84,6 +94,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
  * Get models filtered by provider type
  */
 export function getModelsByProvider(providerType: string): ModelDefinition[] {
+  if (!isProviderTypeAllowedInEdition(providerType)) return [];
   return MODEL_DEFINITIONS.filter((m) => m.provider === providerType);
 }
 
@@ -91,12 +102,15 @@ export function getModelsByProvider(providerType: string): ModelDefinition[] {
  * Get only active models
  */
 export function getActiveModels(): ModelDefinition[] {
-  return MODEL_DEFINITIONS.filter((m) => m.status === 'active');
+  return MODEL_DEFINITIONS.filter(
+    (m) => m.status === 'active' && isProviderTypeAllowedInEdition(m.provider),
+  );
 }
 
 /**
  * Get active models for a specific provider
  */
 export function getActiveModelsByProvider(providerType: string): ModelDefinition[] {
+  if (!isProviderTypeAllowedInEdition(providerType)) return [];
   return MODEL_DEFINITIONS.filter((m) => m.provider === providerType && m.status === 'active');
 }

@@ -1,14 +1,21 @@
 /**
  * Filesystem MCA — Custom Tool Call Renderer
  *
- * Coverage 100%: one dedicated sub-renderer per tool. Layout, status, icon and
- * default-expand semantics live in `./filesystem/shared.tsx` (`FilesystemToolShell`).
- * Sub-renderers compose global primitives only — no local components.
+ * Coverage 100%: one dedicated sub-renderer per tool, keyed by the REAL tool
+ * names of `mcas/mca.teros.filesystem/tools.json` (renamed ~26 sept 2026:
+ * read→read-file, write→create-file, glob→find-files, …). (Until 2026-10-19
+ * this one renderer also served the retired `mca.teros.admin.filesystem`,
+ * identical toolset.) Layout, status, icon and
+ * default-expand semantics live in `./filesystem/shared.tsx`
+ * (`FilesystemToolShell`). Sub-renderers compose global primitives only.
  *
  * Fallback exists as a dev-only signal of a missing dispatch entry.
+ *
+ * Output shapes below were verified against live MCA calls
+ * (2026-10-06) — see FilesystemRenderer.render.test.tsx for the coverage guard.
  */
 
-import {FileDiff as FileDiffIcon, FileSearch as FileSearchIcon, Fingerprint as FingerprintIcon, FolderPlus as FolderPlusIcon, ListTree as ListTreeIcon, Trash2 as TrashIcon} from '../primitives';
+import {FileDiff as FileDiffIcon, FileSearch as FileSearchIcon, Fingerprint as FingerprintIcon, FolderPlus as FolderPlusIcon, Trash2 as TrashIcon} from '../primitives';
 import type React from 'react';
 import { Image, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -37,7 +44,6 @@ import {
   CODE_BLOCK_MAX_HEIGHT,
   type FlatTreeRow,
   FilesystemToolShell,
-  KIND_COLORS,
   LIST_RENDER_CAP,
   PaginationFooter,
   asObject,
@@ -52,32 +58,27 @@ import {
   statusType,
   treeConnectors,
 } from './filesystem/shared';
-import type { ToolCallRendererProps, ToolStatus } from '../types';
+import type { ToolCallRendererProps } from '../types';
 import { withPermissionSupport } from '../withPermissionSupport';
 
 // ============================================================================
-// Tool prefix stripping
+// Tool name normalisation
 // ============================================================================
 
-const TOOL_PREFIXES = [
-  'filesystem_',
-  'mca_teros_filesystem_',
-  'mca_teros_admin_filesystem_',
-  'fs_',
-];
-
-function stripPrefix(toolName: string): string {
-  for (const prefix of TOOL_PREFIXES) {
-    if (toolName.startsWith(prefix)) return toolName.slice(prefix.length);
-  }
-  const underscoreIdx = toolName.lastIndexOf('_');
-  if (underscoreIdx !== -1) return toolName.slice(underscoreIdx + 1);
-  return toolName;
+/**
+ * Extract the short tool name from the full `toolName` ("<app>_<tool>").
+ * Tools arrive as e.g. `filesystem_read-file` — the LAST `_`-separated
+ * segment is the tool name, same derivation as `getShortToolName`
+ * (primitives/utils.ts). No prefix list needed: tool names never contain `_`.
+ */
+function shortToolName(fullToolName: string): string {
+  const idx = fullToolName.lastIndexOf('_');
+  return idx === -1 ? fullToolName : fullToolName.slice(idx + 1);
 }
 
 /**
  * Builds an enriched ErrorBlock from the runtime error string. Filesystem
- * handlers throw with messages of the form `"<short reason>: <detail>"` —
+ * handlers throw with messages of the form "<short reason>: <detail>" —
  * we split the first colon to surface a clean title + detail. Hints are
  * derived from common reasons (read-first guard, path traversal, etc.).
  */
@@ -95,13 +96,13 @@ function errorBody(error: string | undefined, contextHint?: string) {
   const hint =
     contextHint ??
     (/Refusing to overwrite/i.test(trimmed)
-      ? 'Call `read` on the file first, or use `edit` for surgical changes.'
+      ? 'Call `read-file` on the file first, or use `edit-file` for surgical changes.'
       : /Path outside allowed roots/i.test(trimmed)
         ? 'Check `list-roots` to see which directories the MCA can access.'
         : /not found|ENOENT/i.test(trimmed)
-          ? 'Verify the path. Use `glob` or `list` to find the right one.'
+          ? 'Verify the path. Use `find-files` or `list-files` to find the right one.'
           : /too large/i.test(trimmed)
-            ? 'Use `read` with `offset`/`limit` to paginate, or `read-media` for binaries.'
+            ? 'Use `read-file` with `offset`/`limit` to paginate, or `read-binary` for binaries.'
             : /shell|inject/i.test(trimmed)
               ? 'Pattern is treated as regex literal — no shell evaluation happens.'
               : undefined);
@@ -109,10 +110,10 @@ function errorBody(error: string | undefined, contextHint?: string) {
 }
 
 // ============================================================================
-// -health-check
+// health-check
 // ============================================================================
 
-function HealthCheckRenderer({ output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function HealthCheckRenderer({ output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const healthStatus = (data?.status as string) || 'unknown';
@@ -125,7 +126,7 @@ function HealthCheckRenderer({ output, status, duration, error, appIcon }: ToolC
 
   return (
     <FilesystemToolShell
-      toolName="-health-check"
+      toolName="health-check"
       status={status}
       appIcon={appIcon}
       badge={
@@ -185,7 +186,7 @@ function HealthCheckRenderer({ output, status, duration, error, appIcon }: ToolC
 // list-roots
 // ============================================================================
 
-function ListRootsRenderer({ output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function ListRootsRenderer({ output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const roots = Array.isArray(data?.roots) ? (data.roots as Array<Record<string, unknown>>) : [];
@@ -261,11 +262,10 @@ function ListRootsRenderer({ output, status, duration, error, appIcon }: ToolCal
 }
 
 // ============================================================================
-// read
+// read-file
 // ============================================================================
 
-function ReadRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
-  const c = useColors();
+function ReadFileRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const data = asObject(output);
   const filePath = (input?.filePath as string) || data?.file || '';
   const name = data?.name || baseName(filePath);
@@ -278,7 +278,7 @@ function ReadRenderer({ input, output, status, duration, error, appIcon }: ToolC
 
   return (
     <FilesystemToolShell
-      toolName="read"
+      toolName="read-file"
       status={status}
       appIcon={appIcon}
       description={`Read ${name}`}
@@ -298,7 +298,7 @@ function ReadRenderer({ input, output, status, duration, error, appIcon }: ToolC
           {typeof data.content === 'string' && data.content.length > 0 && (
             <CodeBlock code={data.content} filename={name} maxHeight={CODE_BLOCK_MAX_HEIGHT} />
           )}
-          {(data.totalLines === 0 || data.content === '') && emptyState('Empty file')}
+          {(!data.content || data.content === '') && data.totalLines === 0 && emptyState('Empty file')}
         </YStack>
       )}
     </FilesystemToolShell>
@@ -306,13 +306,16 @@ function ReadRenderer({ input, output, status, duration, error, appIcon }: ToolC
 }
 
 // ============================================================================
-// read-batch
+// read-files (batch)
 // ============================================================================
 
-function ReadBatchRenderer({ output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function ReadFilesRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const files = Array.isArray(data?.files) ? (data.files as Array<Record<string, any>>) : [];
+  // Before the output arrives the count comes from the requested paths.
+  const requestedPaths = Array.isArray(input?.paths) ? (input.paths as unknown[]).length : 0;
+  const fileCount = data?.requested ?? (files.length || requestedPaths);
   const visible = files.slice(0, LIST_RENDER_CAP);
   const truncated = files.length > LIST_RENDER_CAP;
 
@@ -326,10 +329,10 @@ function ReadBatchRenderer({ output, status, duration, error, appIcon }: ToolCal
 
   return (
     <FilesystemToolShell
-      toolName="read-batch"
+      toolName="read-files"
       status={status}
       appIcon={appIcon}
-      description={`Read ${data?.requested ?? files.length} files`}
+      description={`Read ${fileCount} ${fileCount === 1 ? 'file' : 'files'}`}
       badge={badge}
     >
       {errorBody(error)}
@@ -382,10 +385,10 @@ function ReadBatchRenderer({ output, status, duration, error, appIcon }: ToolCal
 }
 
 // ============================================================================
-// read-media
+// read-binary
 // ============================================================================
 
-function ReadMediaRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function ReadBinaryRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const path = (input?.filePath as string) || data?.file || '';
@@ -396,7 +399,7 @@ function ReadMediaRenderer({ input, output, status, duration, error, appIcon }: 
 
   return (
     <FilesystemToolShell
-      toolName="read-media"
+      toolName="read-binary"
       status={status}
       appIcon={appIcon}
       description={`Read media ${name || path}`}
@@ -468,10 +471,10 @@ function ReadMediaRenderer({ input, output, status, duration, error, appIcon }: 
 }
 
 // ============================================================================
-// write
+// create-file
 // ============================================================================
 
-function WriteRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function CreateFileRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const filePath = (input?.filePath as string) || data?.file || '';
@@ -487,7 +490,7 @@ function WriteRenderer({ input, output, status, duration, error, appIcon }: Tool
 
   return (
     <FilesystemToolShell
-      toolName="write"
+      toolName="create-file"
       status={status}
       appIcon={appIcon}
       description={`Write ${name}`}
@@ -523,10 +526,10 @@ function WriteRenderer({ input, output, status, duration, error, appIcon }: Tool
 }
 
 // ============================================================================
-// append
+// append-file
 // ============================================================================
 
-function AppendRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function AppendFileRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const filePath = (input?.filePath as string) || data?.file || '';
@@ -542,7 +545,7 @@ function AppendRenderer({ input, output, status, duration, error, appIcon }: Too
 
   return (
     <FilesystemToolShell
-      toolName="append"
+      toolName="append-file"
       status={status}
       appIcon={appIcon}
       description={`Append to ${name}`}
@@ -579,10 +582,10 @@ function AppendRenderer({ input, output, status, duration, error, appIcon }: Too
 }
 
 // ============================================================================
-// edit
+// edit-file
 // ============================================================================
 
-function EditRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function EditFileRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const filePath = (input?.filePath as string) || data?.file || '';
@@ -600,7 +603,7 @@ function EditRenderer({ input, output, status, duration, error, appIcon }: ToolC
 
   return (
     <FilesystemToolShell
-      toolName="edit"
+      toolName="edit-file"
       status={status}
       appIcon={appIcon}
       description={`Edit ${name}${dryRun ? ' (preview)' : ''}`}
@@ -613,9 +616,15 @@ function EditRenderer({ input, output, status, duration, error, appIcon }: ToolC
           leading={kindIconLeading({ name, kind: 'text' })}
           title={name}
           subtitle={data.file ?? filePath}
-          verb={dryRun ? undefined : 'updated'}
+          verb={dryRun ? undefined : replacements > 0 ? 'updated' : undefined}
         >
-          <DiffViewer diff={data.diff} maxHeight={CODE_BLOCK_MAX_HEIGHT} />
+          {replacements > 0 ? (
+            <DiffViewer diff={data.diff} maxHeight={CODE_BLOCK_MAX_HEIGHT} />
+          ) : (
+            <Text color={c.text3} fontSize={11} fontFamily="$mono">
+              No changes — the search string was not found in the file.
+            </Text>
+          )}
         </ResourceCard>
       )}
     </FilesystemToolShell>
@@ -623,11 +632,10 @@ function EditRenderer({ input, output, status, duration, error, appIcon }: ToolC
 }
 
 // ============================================================================
-// patch
+// patch-file
 // ============================================================================
 
-function PatchRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
-  const c = useColors();
+function PatchFileRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const data = asObject(output);
   const filePath = (input?.filePath as string) || data?.file || '';
   const name = data?.name || baseName(filePath);
@@ -648,7 +656,7 @@ function PatchRenderer({ input, output, status, duration, error, appIcon }: Tool
 
   return (
     <FilesystemToolShell
-      toolName="patch"
+      toolName="patch-file"
       status={status}
       appIcon={appIcon}
       description={`Patch ${name}${dryRun ? ' (preview)' : ''}`}
@@ -692,7 +700,7 @@ function PatchRenderer({ input, output, status, duration, error, appIcon }: Tool
 }
 
 // ============================================================================
-// list / tree / glob — shared row helper
+// list-files / tree-view / find-files — shared row helper
 // ============================================================================
 
 interface DirEntryLike {
@@ -740,10 +748,10 @@ function entryRowFor(entry: DirEntryLike, key: string): React.ReactNode {
 }
 
 // ============================================================================
-// list
+// list-files
 // ============================================================================
 
-function ListRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function ListFilesRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const path = (input?.path as string) || data?.path || '';
@@ -753,7 +761,7 @@ function ListRenderer({ input, output, status, duration, error, appIcon }: ToolC
 
   return (
     <FilesystemToolShell
-      toolName="list"
+      toolName="list-files"
       status={status}
       appIcon={appIcon}
       description={`List ${baseName(path) || '/'}`}
@@ -786,7 +794,7 @@ function ListRenderer({ input, output, status, duration, error, appIcon }: ToolC
 }
 
 // ============================================================================
-// tree
+// tree-view
 // ============================================================================
 
 interface TreeNodeLike {
@@ -831,7 +839,7 @@ function flattenTree(
   }
 }
 
-function TreeRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function TreeViewRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const path = (input?.path as string) || data?.root || '';
@@ -842,7 +850,7 @@ function TreeRenderer({ input, output, status, duration, error, appIcon }: ToolC
 
   return (
     <FilesystemToolShell
-      toolName="tree"
+      toolName="tree-view"
       status={status}
       appIcon={appIcon}
       description={`Tree ${baseName(path) || '/'}`}
@@ -918,10 +926,135 @@ function TreeRenderer({ input, output, status, duration, error, appIcon }: ToolC
 }
 
 // ============================================================================
-// glob
+// file-info
 // ============================================================================
 
-function GlobRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function FileInfoRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
+  const data = asObject(output);
+  const path = (input?.path as string) || data?.path || '';
+  const name = data?.name || baseName(path);
+  const exists = Boolean(data?.exists);
+
+  // file-info (2026-09 rename) returns {path,name,exists,type,size,sizeHuman,
+  // mtime,kind,mimeType} — no permissions/ctime/birthtime anymore.
+  const sections: SpecsheetSection[] = exists && data
+    ? [
+        {
+          title: 'Identity',
+          rows: [
+            { key: 'name', value: String(name || '—') },
+            { key: 'type', value: String(data.type ?? '—') },
+            ...(data.kind ? [{ key: 'kind', value: String(data.kind) }] : []),
+            ...(data.mimeType ? [{ key: 'mime', value: String(data.mimeType) }] : []),
+          ],
+        },
+        {
+          title: 'Physical',
+          rows: [
+            { key: 'size', value: String(data.sizeHuman ?? humanSize(data.size)) },
+          ],
+        },
+        {
+          title: 'Timeline',
+          rows: [
+            { key: 'modified', value: shortTime(data.mtime) || '—' },
+          ],
+        },
+      ]
+    : [];
+
+  return (
+    <FilesystemToolShell
+      toolName="file-info"
+      status={status}
+      appIcon={appIcon}
+      description={`Stat ${name || path}`}
+      badge={
+        status === 'completed' && data ? (
+          <Badge
+            text={exists ? (data.type as string) : 'missing'}
+            variant={exists ? 'info' : 'error'}
+          />
+        ) : null
+      }
+    >
+      {errorBody(error)}
+      {data && (
+        <YStack gap="$2">
+          <ResourceCard
+            leading={kindIconLeading({
+              name: name || path,
+              kind: data.kind,
+              type: data.type,
+            })}
+            title={name || path}
+            subtitle={path}
+          />
+          {exists ? (
+            <Specsheet sections={sections} />
+          ) : (
+            emptyState('Path does not exist', path)
+          )}
+        </YStack>
+      )}
+    </FilesystemToolShell>
+  );
+}
+
+// ============================================================================
+// hash-file
+// ============================================================================
+
+function HashFileRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
+  const c = useColors();
+  const data = asObject(output);
+  const path = (input?.filePath as string) || data?.file || '';
+  const name = data?.name || baseName(path);
+  const algorithm = String(data?.algorithm ?? input?.algorithm ?? 'sha256').toUpperCase();
+  const hashValue = String(data?.hash ?? '');
+
+  return (
+    <FilesystemToolShell
+      toolName="hash-file"
+      status={status}
+      appIcon={appIcon}
+      description={`Hash ${name || path}`}
+      badge={
+        status === 'completed' ? <Badge text={algorithm} variant="info" /> : null
+      }
+    >
+      {errorBody(error)}
+      {data && (
+        <YStack gap="$2">
+          <ResourceCard
+            leading={
+              <IconTile
+                icon={<FingerprintIcon size={16} color={c.text3} />}
+                size={28}
+                accent={c.text3}
+              />
+            }
+            title={name || path}
+            subtitle={path}
+          />
+          {hashValue && (
+            <CodeFingerprint
+              hash={hashValue}
+              algorithm={algorithm}
+              size={typeof data.size === 'number' ? humanSize(data.size as number) : undefined}
+            />
+          )}
+        </YStack>
+      )}
+    </FilesystemToolShell>
+  );
+}
+
+// ============================================================================
+// find-files
+// ============================================================================
+
+function FindFilesRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const pattern = (input?.pattern as string) || data?.pattern || '';
@@ -938,10 +1071,10 @@ function GlobRenderer({ input, output, status, duration, error, appIcon }: ToolC
 
   return (
     <FilesystemToolShell
-      toolName="glob"
+      toolName="find-files"
       status={status}
       appIcon={appIcon}
-      description={`Glob ${pattern}`}
+      description={`Find ${pattern}`}
       badge={
         status === 'completed' && data ? (
           <XStack gap={4}>
@@ -987,6 +1120,7 @@ function GlobRenderer({ input, output, status, duration, error, appIcon }: ToolC
             total={data?.totalFound ?? entries.length}
             returned={visible.length}
             truncated={truncated}
+            cursor={data?.nextCursor as string | undefined}
           />
         </YStack>
       ) : (
@@ -1008,14 +1142,15 @@ function extractGlobHighlightToken(pattern: string): string {
 }
 
 // ============================================================================
-// grep
+// search-in-files
 // ============================================================================
 
-function GrepRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function SearchInFilesRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const pattern = (input?.pattern as string) || data?.pattern || '';
-  const mode = (data?.mode as string) ?? 'content';
+  // The tool takes `output_mode` in INPUT; the response echoes it as `mode`.
+  const mode = (data?.mode as string) ?? (input?.output_mode as string) ?? 'content';
   const caseInsensitive = Boolean(input?.caseInsensitive);
 
   const badge =
@@ -1033,10 +1168,10 @@ function GrepRenderer({ input, output, status, duration, error, appIcon }: ToolC
 
   return (
     <FilesystemToolShell
-      toolName="grep"
+      toolName="search-in-files"
       status={status}
       appIcon={appIcon}
-      description={`Grep "${pattern}"`}
+      description={`Search "${pattern}"`}
       badge={badge}
     >
       {errorBody(error)}
@@ -1103,13 +1238,13 @@ function GrepRenderer({ input, output, status, duration, error, appIcon }: ToolC
                   </XStack>
                   <YStack paddingHorizontal={6} paddingVertical={4} gap={1}>
                     {Array.isArray(m.contextBefore) &&
-                      m.contextBefore.map((c: any, i: number) => (
+                      m.contextBefore.map((ctx: any, i: number) => (
                         <XStack key={`b-${i}`} gap={8}>
                           <Text width={36} textAlign="right" color={c.text3} fontSize={9} fontFamily="$mono">
-                            {c.lineNumber}
+                            {ctx.lineNumber}
                           </Text>
                           <Text flex={1} color={c.text2} fontSize={10} fontFamily="$mono" lineHeight={14}>
-                            {highlightMatch(String(c.text), pattern, {
+                            {highlightMatch(String(ctx.text), pattern, {
                               caseInsensitive,
                               accent: c.text3,
                             })}
@@ -1128,13 +1263,13 @@ function GrepRenderer({ input, output, status, duration, error, appIcon }: ToolC
                       </Text>
                     </XStack>
                     {Array.isArray(m.contextAfter) &&
-                      m.contextAfter.map((c: any, i: number) => (
+                      m.contextAfter.map((ctx: any, i: number) => (
                         <XStack key={`a-${i}`} gap={8}>
                           <Text width={36} textAlign="right" color={c.text3} fontSize={9} fontFamily="$mono">
-                            {c.lineNumber}
+                            {ctx.lineNumber}
                           </Text>
                           <Text flex={1} color={c.text2} fontSize={10} fontFamily="$mono" lineHeight={14}>
-                            {highlightMatch(String(c.text), pattern, {
+                            {highlightMatch(String(ctx.text), pattern, {
                               caseInsensitive,
                               accent: c.text3,
                             })}
@@ -1160,143 +1295,13 @@ function GrepRenderer({ input, output, status, duration, error, appIcon }: ToolC
 }
 
 // ============================================================================
-// stat
+// delete-file
 // ============================================================================
 
-function StatRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
-  const c = useColors();
-  const data = asObject(output);
-  const path = (input?.path as string) || data?.path || '';
-  const name = data?.name || baseName(path);
-  const exists = Boolean(data?.exists);
-
-  const sections: SpecsheetSection[] = exists && data
-    ? [
-        {
-          title: 'Identity',
-          rows: [
-            { key: 'name', value: String(name || '—') },
-            { key: 'type', value: String(data.type ?? '—') },
-            ...(data.kind ? [{ key: 'kind', value: String(data.kind) }] : []),
-            ...(data.mimeType ? [{ key: 'mime', value: String(data.mimeType) }] : []),
-          ],
-        },
-        {
-          title: 'Physical',
-          rows: [
-            { key: 'size', value: String(data.sizeHuman ?? humanSize(data.size)) },
-            { key: 'permissions', value: `${data.permissions ?? '—'}  (octal)` },
-          ],
-        },
-        {
-          title: 'Timeline',
-          rows: [
-            { key: 'modified', value: shortTime(data.mtime) || '—' },
-            ...(data.ctime ? [{ key: 'created', value: shortTime(data.ctime as string) }] : []),
-            ...(data.birthtime
-              ? [{ key: 'birth', value: shortTime(data.birthtime as string) }]
-              : []),
-          ],
-        },
-      ]
-    : [];
-
-  return (
-    <FilesystemToolShell
-      toolName="stat"
-      status={status}
-      appIcon={appIcon}
-      description={`Stat ${name || path}`}
-      badge={
-        status === 'completed' && data ? (
-          <Badge
-            text={exists ? (data.type as string) : 'missing'}
-            variant={exists ? 'info' : 'error'}
-          />
-        ) : null
-      }
-    >
-      {errorBody(error)}
-      {data && (
-        <YStack gap="$2">
-          <ResourceCard
-            leading={kindIconLeading({
-              name: name || path,
-              kind: data.kind,
-              type: data.type,
-            })}
-            title={name || path}
-            subtitle={path}
-          />
-          {exists ? (
-            <Specsheet sections={sections} />
-          ) : (
-            emptyState('Path does not exist', path)
-          )}
-        </YStack>
-      )}
-    </FilesystemToolShell>
-  );
-}
-
-// ============================================================================
-// hash
-// ============================================================================
-
-function HashRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
-  const c = useColors();
-  const data = asObject(output);
-  const path = (input?.filePath as string) || data?.file || '';
-  const name = data?.name || baseName(path);
-  const algorithm = String(data?.algorithm ?? input?.algorithm ?? 'sha256').toUpperCase();
-  const hashValue = String(data?.hash ?? '');
-
-  return (
-    <FilesystemToolShell
-      toolName="hash"
-      status={status}
-      appIcon={appIcon}
-      description={`Hash ${name || path}`}
-      badge={
-        status === 'completed' ? <Badge text={algorithm} variant="info" /> : null
-      }
-    >
-      {errorBody(error)}
-      {data && (
-        <YStack gap="$2">
-          <ResourceCard
-            leading={
-              <IconTile
-                icon={<FingerprintIcon size={16} color={c.text3} />}
-                size={28}
-                accent={c.text3}
-              />
-            }
-            title={name || path}
-            subtitle={path}
-          />
-          {hashValue && (
-            <CodeFingerprint
-              hash={hashValue}
-              algorithm={algorithm}
-              size={typeof data.size === 'number' ? humanSize(data.size as number) : undefined}
-            />
-          )}
-        </YStack>
-      )}
-    </FilesystemToolShell>
-  );
-}
-
-// ============================================================================
-// delete
-// ============================================================================
-
-function DeleteRenderer({
+function DeleteFileRenderer({
   input,
   output,
   status,
-  duration,
   error,
   appIcon,
 }: ToolCallRendererProps) {
@@ -1308,7 +1313,7 @@ function DeleteRenderer({
 
   return (
     <FilesystemToolShell
-      toolName="delete"
+      toolName="delete-file"
       status={status}
       appIcon={appIcon}
       description={`Delete ${name}`}
@@ -1373,10 +1378,10 @@ function DeleteRenderer({
 }
 
 // ============================================================================
-// copy
+// copy-file
 // ============================================================================
 
-function CopyRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function CopyFileRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const source = (input?.source as string) || data?.source || '';
@@ -1396,7 +1401,7 @@ function CopyRenderer({ input, output, status, duration, error, appIcon }: ToolC
 
   return (
     <FilesystemToolShell
-      toolName="copy"
+      toolName="copy-file"
       status={status}
       appIcon={appIcon}
       description={`Copy ${sourceName} → ${destName}`}
@@ -1429,10 +1434,10 @@ function CopyRenderer({ input, output, status, duration, error, appIcon }: ToolC
 }
 
 // ============================================================================
-// move
+// move-file
 // ============================================================================
 
-function MoveRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function MoveFileRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const source = (input?.source as string) || data?.source || '';
@@ -1444,7 +1449,7 @@ function MoveRenderer({ input, output, status, duration, error, appIcon }: ToolC
 
   return (
     <FilesystemToolShell
-      toolName="move"
+      toolName="move-file"
       status={status}
       appIcon={appIcon}
       description={`Move ${sourceName} → ${destName}`}
@@ -1479,10 +1484,10 @@ function MoveRenderer({ input, output, status, duration, error, appIcon }: ToolC
 }
 
 // ============================================================================
-// mkdir
+// create-directory
 // ============================================================================
 
-function MkdirRenderer({ input, output, status, duration, error, appIcon }: ToolCallRendererProps) {
+function CreateDirectoryRenderer({ input, output, status, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
   const data = asObject(output);
   const path = (input?.path as string) || data?.path || '';
@@ -1491,7 +1496,7 @@ function MkdirRenderer({ input, output, status, duration, error, appIcon }: Tool
 
   return (
     <FilesystemToolShell
-      toolName="mkdir"
+      toolName="create-directory"
       status={status}
       appIcon={appIcon}
       description={`Mkdir ${name}`}
@@ -1530,31 +1535,36 @@ function MkdirRenderer({ input, output, status, duration, error, appIcon }: Tool
 // Dispatch
 // ============================================================================
 
+/**
+ * One entry per tool in `mcas/mca.teros.filesystem/tools.json` (19 tools).
+ * The render test (FilesystemRenderer.render.test.tsx) fails CI if a
+ * tools.json tool has no entry here — guard against future renames.
+ */
 const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
-  '-health-check': HealthCheckRenderer,
-  read: ReadRenderer,
-  'read-batch': ReadBatchRenderer,
-  'read-media': ReadMediaRenderer,
-  write: WriteRenderer,
-  append: AppendRenderer,
-  edit: EditRenderer,
-  patch: PatchRenderer,
-  list: ListRenderer,
+  'health-check': HealthCheckRenderer,
   'list-roots': ListRootsRenderer,
-  tree: TreeRenderer,
-  stat: StatRenderer,
-  hash: HashRenderer,
-  glob: GlobRenderer,
-  grep: GrepRenderer,
-  delete: DeleteRenderer,
-  copy: CopyRenderer,
-  move: MoveRenderer,
-  mkdir: MkdirRenderer,
+  'read-file': ReadFileRenderer,
+  'read-files': ReadFilesRenderer,
+  'read-binary': ReadBinaryRenderer,
+  'create-file': CreateFileRenderer,
+  'append-file': AppendFileRenderer,
+  'edit-file': EditFileRenderer,
+  'patch-file': PatchFileRenderer,
+  'list-files': ListFilesRenderer,
+  'tree-view': TreeViewRenderer,
+  'file-info': FileInfoRenderer,
+  'hash-file': HashFileRenderer,
+  'find-files': FindFilesRenderer,
+  'search-in-files': SearchInFilesRenderer,
+  'delete-file': DeleteFileRenderer,
+  'copy-file': CopyFileRenderer,
+  'move-file': MoveFileRenderer,
+  'create-directory': CreateDirectoryRenderer,
 };
 
-function FallbackRenderer({ toolName, status, duration, output, error, appIcon }: ToolCallRendererProps) {
+function FallbackRenderer({ toolName, status, output, error, appIcon }: ToolCallRendererProps) {
   const c = useColors();
-  const shortName = stripPrefix(toolName);
+  const shortName = shortToolName(toolName);
   console.warn(
     `[FilesystemRenderer] No dedicated renderer for tool "${shortName}" — fallback indicates a bug`,
   );
@@ -1576,8 +1586,7 @@ function FallbackRenderer({ toolName, status, duration, output, error, appIcon }
 }
 
 function FilesystemRendererBase(props: ToolCallRendererProps) {
-  const c = useColors();
-  const shortName = stripPrefix(props.toolName);
+  const shortName = shortToolName(props.toolName);
   const Renderer = RENDERERS[shortName] ?? FallbackRenderer;
   return <Renderer {...props} />;
 }

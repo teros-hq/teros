@@ -3,6 +3,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk'
 import { getPlaudClient, getPlaudSecrets, mapRecording } from '../lib'
 
 export const healthCheck: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies PLAUD OAuth configuration and makes a live MCP call to confirm connectivity.',
   parameters: {
     type: 'object',

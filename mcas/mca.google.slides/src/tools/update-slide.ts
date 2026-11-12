@@ -1,6 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import {
-  ensureAuthenticated,
   initializeGoogleClients,
   processEscapeSequences,
   withAuthRetry,
@@ -52,7 +51,6 @@ export const updateSlide: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const {
       presentationId,

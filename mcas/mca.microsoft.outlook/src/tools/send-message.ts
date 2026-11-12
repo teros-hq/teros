@@ -1,5 +1,6 @@
 import type { ToolConfig } from '@teros/mca-sdk'
 import { createGraphClient, buildRecipients, processEmailBody, buildFileAttachment } from '../lib'
+import { resolveSignatureHtml, withSignature } from '../lib/signature'
 import type { OutlookSecrets } from '../lib'
 
 export const sendMessage: ToolConfig = {
@@ -51,11 +52,15 @@ export const sendMessage: ToolConfig = {
       args.isHtml as boolean | undefined,
     )
 
+    // Signature: appended AFTER body processing (see create-draft).
+    const signature = resolveSignatureHtml(secrets.SIGNATURE_HTML)
+    const finalBody = withSignature(processedBody, isHtml, signature)
+
     const message: any = {
       subject: args.subject as string,
       body: {
         contentType: isHtml ? 'HTML' : 'Text',
-        content: processedBody,
+        content: finalBody,
       },
       toRecipients: buildRecipients(args.to as string),
     }

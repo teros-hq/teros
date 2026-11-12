@@ -64,6 +64,7 @@ export function createRemoveDependencyHandler(
         tags: task.tags,
         columnId: task.columnId,
         dependsOnTaskId,
+        actorUserId: ctx.userId,
       }
       boardSubscriptionService.notifySubscribers(task.boardId, {
         eventType: 'board.dependency_removed',

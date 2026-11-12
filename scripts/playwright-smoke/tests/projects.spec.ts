@@ -54,7 +54,11 @@ test.describe("projects @projects", () => {
       terosPage,
       ({ pid, colId }) =>
         window.teros.board
-          .createTask(pid, { title: "Pw Task", columnId: colId })
+          .createTask(pid, {
+            title: "Pw Task",
+            instructions: "Pw task instructions.",
+            columnId: colId,
+          })
           .then((r) => r.task.taskId),
       { pid: projectId, colId: backlog.columnId },
     )
@@ -111,7 +115,11 @@ test.describe("projects @projects", () => {
       terosPage,
       ({ pid, colId }) =>
         window.teros.board
-          .createTask(pid, { title: "Di solo PONG y termina.", columnId: colId })
+          .createTask(pid, {
+            title: "Di solo PONG y termina.",
+            instructions: "Di solo PONG y termina.",
+            columnId: colId,
+          })
           .then((r) => r.task.taskId),
       { pid: projectId, colId: backlog.columnId },
     )

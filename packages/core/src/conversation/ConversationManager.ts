@@ -60,6 +60,10 @@ export interface PromptInput {
   // If systemPrompt is provided, it's used as-is (legacy)
   // If promptComponents is provided, ConversationManager composes and calculates breakdown
   systemPrompt?: string;
+  // Trailing per-request portion of systemPrompt (loaded skills + <context> timestamp).
+  // When present, systemPrompt.endsWith(systemPromptVolatile) holds. Forwarded to the
+  // LLM adapter so cache-aware providers cache only the stable prefix (TER-618).
+  systemPromptVolatile?: string;
   promptComponents?: {
     /** Base system prompt (identity, personality, constraints) */
     system: string;
@@ -113,6 +117,26 @@ export interface PromptInput {
    * TurnDriver reads this first, falling back to its construction-time dep.
    */
   toolExecutionMode?: 'sequential' | 'parallel';
+
+  /**
+   * Voice fast leg (F5a): cap the history this turn sends to the LLM — keep
+   * only the LAST N messages of the thread (the compaction summary, when
+   * present, still rides the prompt). Set by the backend for voice-originated
+   * turns when the `voice.llm` flag resolves 'fast' (trimmed context = part of
+   * the latency fix). Undefined (default) = full history, exactly as before —
+   * zero change for every other turn.
+   */
+  historyLimit?: number;
+
+  /**
+   * Latency lane of this turn (TLANE-REQ-2), set by the backend from what
+   * started the turn. Forwarded to every LLM request of the turn — the main
+   * stream, its retries and its compaction (TLANE-REQ-3). Travels with the
+   * input (not the turnDriver) for the same reason as `toolExecutionMode`: the
+   * per-channel worker outlives turns.
+   * @spec TLANE-REQ-2, TLANE-REQ-3
+   */
+  lane?: import('../llm/ILLMClient').LlmLane;
 }
 
 export type PartInput =
@@ -141,6 +165,12 @@ export class ConversationManager {
    * active — the main loop resets step to 0 and clears maxStepsReached. */
   private stepResetRequested = new Map<string, boolean>();
 
+  /** Set by TurnDriver.executeOneTool when a tool result carries endsTurn
+   * (awaiting-user markers: permission_requested / form_displayed) — the turn
+   * ends deterministically at the step_end; the user's response wakes a new
+   * turn. Same shared-map pattern as stepResetRequested. */
+  private turnEndRequested = new Map<string, boolean>();
+
   // Stream publisher for real-time updates
   private streamPublisher?: StreamPublisher;
 
@@ -153,6 +183,9 @@ export class ConversationManager {
 
   // Store current session's summary (from previous compaction)
   private sessionSummaries = new Map<string, string>();
+
+  // Timestamp of the last compaction per session (for cooldown enforcement)
+  private lastCompactionAt = new Map<string, number>();
 
   // Cache block size for mod-N breakpoint strategy (0 = legacy)
   private cacheBlockSize: number;
@@ -168,6 +201,15 @@ export class ConversationManager {
   private turnDriver: TurnDriver;
 
   private workerRegistry: ChannelWorkerRegistry;
+
+  /**
+   * Identity of the LLM client this ConversationManager was constructed with
+   * (e.g. `providerId:modelString` or `providerId:cutover:modelString`).
+   * Passed to `workerRegistry.getOrCreate` so the registry can detect when
+   * the client changed mid-conversation and replace the worker (TER-617/TER-386).
+   * The backend sets this from the resolved provider + model + fallback mode.
+   */
+  private clientKey: string;
 
   constructor(
     private sessionStore: SessionStore,
@@ -197,9 +239,9 @@ export class ConversationManager {
        * optional; an omitted one falls back to the TurnDriver default.
        */
       timeouts?: {
-        /** TTFT window for the LLM stream. Default 120_000. */
+        /** TTFT window for the LLM stream. Default 300_000 (5 min). */
         llmTtftTimeoutMs?: number;
-        /** Inter-token stall window for the LLM stream. Default 60_000. */
+        /** Inter-token stall window for the LLM stream. Default 120_000. */
         llmStallTimeoutMs?: number;
         /** Absolute wall-clock deadline for the whole turn. Default 1_800_000. */
         turnDeadlineMs?: number;
@@ -214,6 +256,15 @@ export class ConversationManager {
        * options object enables it (default ON). See `TurnDriverDeps.toolArgEviction`.
        */
       toolArgEviction?: false | { thresholdChars?: number; retainChars?: number };
+      /**
+       * Identity of the LLM client for this ConversationManager instance
+       * (TER-617/TER-386). Built by the backend from the resolved provider +
+       * model + teros.fallback mode. Passed to `workerRegistry.getOrCreate`
+       * so the registry can detect mid-conversation client changes and
+       * replace the worker, making the new client take effect on the next
+       * message without a restart or new conversation.
+       */
+      clientKey?: string;
     },
   ) {
     // Default limits
@@ -238,6 +289,7 @@ export class ConversationManager {
         triggerAt: config.compaction.triggerAt,
         targetSize: config.compaction.targetSize,
         protectRecent: config.compaction.protectRecent,
+        summaryModel: config.compaction.summaryModel,
       });
     }
 
@@ -275,7 +327,9 @@ export class ConversationManager {
       interruptStrategy: this.interruptStrategy,
       maxStepsReached: this.maxStepsReached,
       stepResetRequested: this.stepResetRequested,
+      turnEndRequested: this.turnEndRequested,
       sessionSummaries: this.sessionSummaries,
+      lastCompactionAt: this.lastCompactionAt,
       toolExecutionMode: this.toolExecutionMode,
       clock: config?.clock,
       billingGate: this.billingGate,
@@ -291,6 +345,7 @@ export class ConversationManager {
     });
 
     this.workerRegistry = workerRegistry;
+    this.clientKey = config?.clientKey ?? 'unknown';
   }
 
   /**
@@ -355,9 +410,20 @@ export class ConversationManager {
       });
     }
 
-    const worker = this.workerRegistry.getOrCreate(input.channelId, {
-      turnDriver: this.turnDriver,
-    });
+    // TER-617/TER-386: pass a clientKey so the registry can detect when the
+    // LLM client identity changed mid-conversation (provider switch, model
+    // change, teros.fallback cutover flip). When the key differs from the
+    // existing worker's key, the registry replaces the worker so the new
+    // turnDriver (with the fresh LLM client) takes effect on this message —
+    // no restart or new conversation required. Without this, the worker
+    // would keep using the first turn's frozen client until idle-GC (~5 min).
+    const worker = this.workerRegistry.getOrCreate(
+      input.channelId,
+      this.clientKey,
+      {
+        turnDriver: this.turnDriver,
+      },
+    );
     const handle = worker.enqueue(input);
 
     // Subscribing post-enqueue races with synchronous worker pulls; awaitStart is created inside enqueue.
@@ -498,6 +564,8 @@ export class ConversationManager {
         created: Date.now(),
       },
       meta: { queueState: 'pending' },
+      // MUW-F1: cross-reference for redaction propagation (channel_messages.messageId).
+      ...(input.messageId ? { channelMessageId: input.messageId } : {}),
     };
 
     try {

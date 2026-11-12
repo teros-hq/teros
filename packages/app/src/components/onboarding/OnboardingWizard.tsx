@@ -1,7 +1,8 @@
 /**
  * OnboardingWizard — Orchestrates the onboarding flow
  *
- * Flow (post-simplification): welcome → agent → apps → access → done.
+ * Flow (spec ONB v2): welcome → model (self-hosted, when no working default
+ * provider) → about → done. Apps and Access steps were removed (ONB-REQ-5).
  * Provider selection and plan/payment are NO LONGER part of onboarding:
  *   - Every user runs on the Teros model by default (Starter/"Basic" plan,
  *     created server-side at signup in user-service.createUser).
@@ -26,37 +27,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { useWindowDimensions } from "react-native"
-import { ScrollView, Text, YStack } from "tamagui"
+import { Platform, ScrollView, View, useWindowDimensions } from "react-native"
 import { getTerosClient } from "../../services/terosClientSingleton"
-import type { AppData } from "../../services/AppApi"
-import { TerosLoading } from "../TerosLoading"
-import { colors as semanticColors } from "../mca/primitives/colors"
+import { AppSpinner } from "../ui/AppSpinner"
+import { Btn, T } from "../ui/ds"
 import { useColors } from "../mca/primitives/useColors"
 import { AgentHeader } from "./AgentHeader"
 import { OnboardingProgress, type OnboardingStep } from "./OnboardingProgress"
 import { StepFooter, type StepFooterConfig } from "./StepFooter"
-import { AccessStep } from "./steps/AccessStep"
 import { AgentStep } from "./steps/AgentStep"
-import { AppsStep } from "./steps/AppsStep"
 import { DoneStep } from "./steps/DoneStep"
+import { ModelStep } from "./steps/ModelStep"
+import { buildOnboardingSteps, needsModelStep, type OnboardingStepId, STEP_COPY } from "./onboardingSteps"
+import { useEdition } from "../../config/edition"
 import { WelcomeStep } from "./steps/WelcomeStep"
 import { WelcomeSplash } from "./WelcomeSplash"
-
-// Exported (with STEP_IDS) so onboardingStepAlignment.render.test.tsx can assert
-// the step-indexed arrays here and in AgentHeader stay the same length.
-export const STEP_LABEL_KEYS = [
-  "onboarding.stepWelcome",
-  "onboarding.stepAboutYou",
-  "onboarding.stepApps",
-  "onboarding.stepAccess",
-  "onboarding.stepDone",
-]
-
-export const STEP_IDS = ["welcome", "agent", "apps", "access", "done"]
-
-// Apps is the only step whose "skip" needs to clear transient state.
-const APPS_STEP = STEP_IDS.indexOf("apps")
 
 // ── Init data shape ────────────────────────────────────────────────────────────
 
@@ -70,9 +55,8 @@ interface DefaultAgent {
 
 interface InitData {
   defaultAgent: DefaultAgent | null
-  installedApps: AppData[]
-  catalogMcaIds: Set<string>
-  alreadyGrantedAppIds: string[]
+  /** Steps of this run (ONB-REQ-5/6), decided once at load. */
+  steps: OnboardingStepId[]
 }
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -87,8 +71,7 @@ interface OnboardingWizardProps {
 export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) {
   const { t } = useTranslation()
   const c = useColors()
-  const STEPS: OnboardingStep[] = STEP_IDS.map((id, i) => ({ id, label: t(STEP_LABEL_KEYS[i]) }))
-  const DONE_STEP = STEPS.length - 1
+  const edition = useEdition()
   const { width, height: windowHeight } = useWindowDimensions()
   const isDesktop = width >= 768
 
@@ -101,7 +84,6 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
 
   const [currentStep, setCurrentStep] = useState<number>(0)
   const [splashDone, setSplashDone] = useState(false)
-  const [installedAppIds, setInstalledAppIds] = useState<string[]>([])
   const [summaryItems, setSummaryItems] = useState<string[]>([])
   const [preferredName, setPreferredName] = useState<string>("")
 
@@ -123,12 +105,10 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
     setInitLoading(true)
     setInitError(null)
     try {
-      const [{ agents }, { apps: installedApps }, { catalog }] = await Promise.all([
+      const [{ agents }, { providers }] = await Promise.all([
         client.agent.listAgents(),
-        client.app.listApps(),
-        client.app.listCatalog(),
+        client.provider.list(),
       ])
-
       const defaultAgentRaw = agents[0] ?? null
       const defaultAgent: DefaultAgent | null = defaultAgentRaw
         ? {
@@ -140,29 +120,27 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
           }
         : null
 
-      let alreadyGrantedAppIds: string[] = []
-      if (defaultAgent) {
+      // ONB-REQ-6: on self-hosted, test the default provider (no probe — cheap,
+      // and it fails for the Teros provider when no upstream is configured).
+      let defaultTestOk: boolean | undefined
+      const def = providers.find((p: any) => p.isDefault)
+      if (edition === "self-hosted" && def && def.status === "active") {
         try {
-          const { apps: agentApps } = await client.agent.getApps(defaultAgent.agentId)
-          alreadyGrantedAppIds = agentApps.filter((a: any) => a.hasAccess).map((a: any) => a.appId)
-        } catch (err) {
-          console.warn("[OnboardingWizard] Failed to load agent app access:", err)
+          defaultTestOk = (await client.provider.test(def.providerId)).ok
+        } catch {
+          defaultTestOk = false
         }
       }
+      const needsModel = needsModelStep({ edition, providers, defaultTestOk })
 
-      setInitData({
-        defaultAgent,
-        installedApps,
-        catalogMcaIds: new Set(catalog.map((c: any) => c.mcaId)),
-        alreadyGrantedAppIds,
-      })
+      setInitData({ defaultAgent, steps: buildOnboardingSteps({ edition, needsModel }) })
     } catch (err: any) {
       console.error("[OnboardingWizard] Init load failed:", err)
-      setInitError(err?.message || t('onboarding.somethingWentWrong'))
+      setInitError(err?.message || t("onboarding.somethingWentWrong"))
     } finally {
       setInitLoading(false)
     }
-  }, [])
+  }, [edition])
 
   useEffect(() => {
     if (client.isConnected()) {
@@ -184,9 +162,14 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
 
   // ── Navigation ─────────────────────────────────────────────────────────────
 
+  const steps: OnboardingStepId[] = initData?.steps ?? ["welcome", "about", "done"]
+  const STEPS: OnboardingStep[] = steps.map((id) => ({ id, label: t(STEP_COPY[id].labelKey) }))
+  const DONE_STEP = steps.length - 1
+  const stepId: OnboardingStepId = steps[currentStep] ?? "welcome"
+
   const goNext = useCallback(() => {
-    setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1))
-  }, [])
+    setCurrentStep((s) => Math.min(s + 1, DONE_STEP))
+  }, [DONE_STEP])
 
   const goBack = useCallback(() => {
     setCurrentStep((s) => Math.max(s - 1, 0))
@@ -199,7 +182,7 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
       if (name) setPreferredName(name)
       if (useCase || name) {
         setSummaryItems((prev) => {
-          const label = t('onboarding.youIntroducedYourself')
+          const label = t("onboarding.youIntroducedYourself")
           return prev.includes(label) ? prev : [...prev, label]
         })
       }
@@ -208,43 +191,16 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
     [goNext, t],
   )
 
-  const handleAppsComplete = useCallback(
-    async (appIds: string[]) => {
-      setInstalledAppIds(appIds)
-      if (appIds.length > 0) {
-        setSummaryItems((prev) => {
-          const label = t('onboarding.appsInstalledCount', { count: appIds.length })
-          const filtered = prev.filter((i) => !i.includes("app") || !i.includes("installed"))
-          return [...filtered, label]
-        })
-        // Refresh installedApps so AccessStep sees apps installed during this session (REQ-14)
-        try {
-          const { apps: freshApps } = await client.app.listApps()
-          setInitData((prev) => (prev ? { ...prev, installedApps: freshApps } : prev))
-        } catch (err) {
-          console.warn("[OnboardingWizard] Failed to refresh apps after install:", err)
-        }
-        goNext()
-      } else {
-        // No apps installed → access step is moot, jump to Done.
-        setCurrentStep(DONE_STEP)
-      }
+  const handleModelComplete = useCallback(
+    ({ providerName }: { providerName: string }) => {
+      setSummaryItems((prev) => {
+        const label = t("onboarding.modelConnected", { provider: providerName })
+        return prev.includes(label) ? prev : [label, ...prev]
+      })
+      goNext()
     },
-    [goNext, client, t, DONE_STEP],
+    [goNext, t],
   )
-
-  const handleAppsSkip = useCallback(() => {
-    setInstalledAppIds([])
-    setCurrentStep(DONE_STEP)
-  }, [DONE_STEP])
-
-  const handleAccessComplete = useCallback(() => {
-    setSummaryItems((prev) => {
-      const label = t('onboarding.accessConfigured')
-      return prev.includes(label) ? prev : [...prev, label]
-    })
-    goNext()
-  }, [goNext, t])
 
   // ── Footer button handlers ─────────────────────────────────────────────────
 
@@ -253,9 +209,8 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
   }, [])
 
   const handleFooterSkip = useCallback(() => {
-    if (currentStep === APPS_STEP) setInstalledAppIds([])
     setCurrentStep(DONE_STEP)
-  }, [currentStep, DONE_STEP])
+  }, [DONE_STEP])
 
   // ── Derived values ─────────────────────────────────────────────────────────
 
@@ -266,53 +221,44 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
 
   if (initLoading) {
     return (
-      <YStack
-        flex={1}
-        backgroundColor={c.bgPage}
-        justifyContent="center"
-        alignItems="center"
-        gap={16}
-      >
-        <TerosLoading size={48} color={semanticColors.indigo} />
-        <Text color={c.text2} fontSize={14}>
-          {t('onboarding.loadingTeros')}
-        </Text>
-      </YStack>
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", gap: 16 }}>
+        <AppSpinner size="lg" />
+        <T step="sm" tone="text2">
+          {t("onboarding.loadingTeros")}
+        </T>
+      </View>
     )
   }
 
   if (initError) {
     return (
-      <YStack
-        flex={1}
-        backgroundColor={c.bgPage}
-        justifyContent="center"
-        alignItems="center"
-        gap={16}
-        paddingHorizontal={32}
+      <View
+        style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 32 }}
       >
-        <Text fontSize={16} fontWeight="600" color={c.text} textAlign="center">
-          {t('onboarding.somethingWentWrong')}
-        </Text>
-        <Text fontSize={14} color={c.text2} textAlign="center" lineHeight={22}>
-          {initError}
-        </Text>
-        <YStack
-          paddingHorizontal={20}
-          paddingVertical={10}
-          borderRadius={8}
-          borderWidth={1}
-          borderColor={`${semanticColors.indigo}66`}
-          backgroundColor={semanticColors.indigoGlow}
-          cursor="pointer"
-          pressStyle={{ opacity: 0.7 }}
-          onPress={load}
+        <View
+          style={[
+            {
+              width: "100%",
+              maxWidth: 416,
+              borderRadius: 24,
+              backgroundColor: c.bgStep,
+              padding: 36,
+              gap: 12,
+            },
+            Platform.OS === "web" ? ({ boxShadow: c.elevRaised } as any) : null,
+          ]}
         >
-          <Text color={semanticColors.indigo} fontSize={14} fontWeight="600">
-            {t('onboarding.tryAgain')}
-          </Text>
-        </YStack>
-      </YStack>
+          <T step="xl">{t("onboarding.somethingWentWrong")}</T>
+          <T step="sm" tone="text2" style={{ lineHeight: 19 }}>
+            {initError}
+          </T>
+          <View style={{ flexDirection: "row", marginTop: 8 }}>
+            <Btn variant="primary" size="md" icon="arrow-clockwise" onPress={load}>
+              {t("onboarding.tryAgain")}
+            </Btn>
+          </View>
+        </View>
+      </View>
     )
   }
 
@@ -321,36 +267,47 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
   const showFooter = footerConfig.continueLabel !== "" || footerConfig.specialCta
 
   const cardContent = (
-    <YStack
-      flex={isDesktop ? undefined : 1}
-      width="100%"
-      maxWidth={isDesktop ? 560 : undefined}
-      height={isDesktop ? Math.min(windowHeight - 64, 700) : undefined}
-      backgroundColor={isDesktop ? c.bgCard : c.bgPage}
-      borderRadius={isDesktop ? 16 : 0}
-      borderWidth={isDesktop ? 1 : 0}
-      borderColor={c.border}
-      overflow="hidden"
+    <View
+      style={[
+        {
+          flex: isDesktop ? undefined : 1,
+          width: "100%",
+          maxWidth: isDesktop ? 560 : undefined,
+          height: isDesktop ? Math.min(windowHeight - 64, 720) : undefined,
+          backgroundColor: isDesktop ? c.bgStep : c.bgSheet,
+          borderRadius: isDesktop ? 24 : 0,
+          overflow: "hidden",
+        },
+        Platform.OS === "web" && isDesktop ? ({ boxShadow: c.elevRaised } as any) : null,
+      ]}
+      testID="onboarding-card"
     >
       {/* Progress — fixed top */}
       <OnboardingProgress steps={STEPS} currentStep={currentStep} />
 
       {/* Agent header — hidden on welcome step; WelcomeStep owns that real estate */}
-      {currentStep > 0 && (
-        <AgentHeader agentName={agentName} avatarUrl={agentAvatarUrl} currentStep={currentStep} />
+      {stepId !== "welcome" && (
+        <AgentHeader agentName={agentName} avatarUrl={agentAvatarUrl} stepId={stepId} />
       )}
 
       {/* ScrollView — SINGLE, contains step content only */}
       <ScrollView
         ref={scrollRef}
-        flex={1}
+        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: 24, gap: 20, flexGrow: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: 28,
+          paddingTop: 22,
+          paddingBottom: 24,
+          gap: 20,
+          flexGrow: 1,
+        }}
       >
         {/* WelcomeStep only mounts after splash completes — nothing to flash through */}
-        {currentStep === 0 && splashDone && (
+        {stepId === "welcome" && splashDone && (
           <WelcomeStep
+            steps={steps}
             agentName={agentName}
             agentAvatarUrl={agentAvatarUrl}
             animateIn
@@ -359,7 +316,16 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
             onComplete={goNext}
           />
         )}
-        {currentStep === 1 && (
+        {stepId === "model" && (
+          <ModelStep
+            agentName={agentName}
+            agentAvatarUrl={agentAvatarUrl}
+            onComplete={handleModelComplete}
+            setFooterConfig={setFooterConfig}
+            registerContinueHandler={registerContinueHandler}
+          />
+        )}
+        {stepId === "about" && (
           <AgentStep
             defaultAgent={initData?.defaultAgent ?? null}
             agentName={agentName}
@@ -371,35 +337,7 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
             registerContinueHandler={registerContinueHandler}
           />
         )}
-        {currentStep === 2 && (
-          <AppsStep
-            installedApps={initData?.installedApps ?? []}
-            catalogMcaIds={initData?.catalogMcaIds ?? new Set()}
-            agentName={agentName}
-            agentAvatarUrl={agentAvatarUrl}
-            onComplete={handleAppsComplete}
-            onSkip={handleAppsSkip}
-            onBack={goBack}
-            setFooterConfig={setFooterConfig}
-            registerContinueHandler={registerContinueHandler}
-          />
-        )}
-        {currentStep === 3 && (
-          <AccessStep
-            installedAppIds={installedAppIds}
-            installedApps={initData?.installedApps ?? []}
-            alreadyGrantedAppIds={initData?.alreadyGrantedAppIds ?? []}
-            defaultAgentId={initData?.defaultAgent?.agentId ?? null}
-            agentName={agentName}
-            agentAvatarUrl={agentAvatarUrl}
-            onComplete={handleAccessComplete}
-            onSkip={() => setCurrentStep(DONE_STEP)}
-            onBack={goBack}
-            setFooterConfig={setFooterConfig}
-            registerContinueHandler={registerContinueHandler}
-          />
-        )}
-        {currentStep === DONE_STEP && (
+        {stepId === "done" && (
           <DoneStep
             userName={preferredName || userName}
             agentName={agentName}
@@ -414,46 +352,47 @@ export function OnboardingWizard({ onFinish, userName }: OnboardingWizardProps) 
 
       {/* Footer — fixed bottom, OUTSIDE scroll */}
       {showFooter && (
-        <YStack paddingHorizontal={24} paddingBottom={24} paddingTop={12}>
+        <View style={{ paddingHorizontal: 28, paddingBottom: 28, paddingTop: 12 }}>
           <StepFooter
             config={footerConfig}
             onBack={goBack}
             onSkip={handleFooterSkip}
             onContinue={handleFooterContinue}
           />
-        </YStack>
+        </View>
       )}
-    </YStack>
+    </View>
   )
 
   // ── Responsive layout ──────────────────────────────────────────────────────
 
   const splashOverlay =
-    currentStep === 0 && !splashDone ? (
+    stepId === "welcome" && !splashDone ? (
       <WelcomeSplash exitPosY={splashExitY} onDone={() => setSplashDone(true)} />
     ) : null
 
   if (isDesktop) {
     return (
-      <YStack
-        flex={1}
-        backgroundColor={c.bgPage}
-        justifyContent="center"
-        alignItems="center"
-        padding={32}
-        position="relative"
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 32,
+          position: "relative",
+        }}
       >
         {cardContent}
         {splashOverlay}
-      </YStack>
+      </View>
     )
   }
 
   // Mobile: no landscape wrapper, no external ScrollView
   return (
-    <YStack flex={1} backgroundColor={c.bgPage} position="relative">
+    <View style={{ flex: 1, backgroundColor: c.bgSheet, position: "relative" }}>
       {cardContent}
       {splashOverlay}
-    </YStack>
+    </View>
   )
 }

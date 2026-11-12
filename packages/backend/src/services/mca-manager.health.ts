@@ -8,6 +8,7 @@
 import type { HealthStatus, HealthIssue } from '@teros/shared';
 import { captureException } from '../lib/sentry';
 import { createLogger } from '../lib/logger';
+import type { McaHttpClient } from './mca-http-client';
 import type { HealthCheckResult, ManagedMca, McaManagerConfig } from './mca-manager.types';
 import { normalizeHealthStatus, isHealthReady } from './mca-manager.types';
 
@@ -15,6 +16,8 @@ const log = createLogger('McaManager');
 
 export interface HealthContext {
   mcas: Map<string, ManagedMca>;
+  /** HTTP clients for containerized MCAs — a container MCA has client:null but a live httpClient. */
+  httpClients?: Map<string, McaHttpClient>;
   config: Pick<Required<McaManagerConfig>, 'maxRestarts'>;
   getOrSpawn: (appId: string) => Promise<ManagedMca>;
   registerApp: (appId: string) => Promise<ManagedMca | null>;
@@ -74,13 +77,19 @@ if (managed.status !== 'ready' && forceSpawn) {
 }
 
 // If still not ready after spawn attempt
-if (!managed || managed.status !== 'ready' || !managed.client) {
+if (!managed || managed.status !== 'ready' || (!managed.client && !ctx.httpClients?.get(appId))) {
   const result: HealthCheckResult = {
     status: 'unknown',
     message: `MCA not running (status: ${managed?.status || 'unknown'})`,
     checkedAt: new Date(),
   };
-  if (managed) {
+  // A dormant MCA (standby/error/stopping) is NOT unhealthy — it is asleep.
+  // Caching this 'unknown' snapshot on the entry would poison every later
+  // tool call: getCachedHealthIfNotReady() treats it as not_ready and (pre-fix)
+  // executeTool refused to spawn. Only cache the result when the MCA claims to
+  // be running — a ready MCA that cannot produce a client/transport genuinely
+  // has something to report.
+  if (managed && managed.status === 'ready') {
     managed.health = result;
   }
   return result;
@@ -91,7 +100,9 @@ const hasHealthCheck =
   managed.toolNameMapping.has(`${managed.appName}__health-check`) ||
   Array.from(managed.toolNameMapping.values()).includes('_health_check');
 
-if (!hasHealthCheck) {
+// Container MCAs have no MCP client (client:null, HTTP transport) — infer from
+// status instead of crashing on client.callTool.
+if (!hasHealthCheck || !managed.client) {
   // No health check tool - infer from MCA status
   const result: HealthCheckResult = {
     status: managed.status === 'ready' ? 'healthy' : 'unknown',

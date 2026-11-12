@@ -10,18 +10,16 @@
  * The user can also dismiss it manually.
  */
 
-import { CheckCircle, ChevronRight, Circle, Rocket, X } from '@tamagui/lucide-icons'
-import React, { useCallback, useEffect, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { Platform } from 'react-native'
-import { Text, XStack, YStack } from 'tamagui'
-import { getTerosClient } from '../../services/terosClientSingleton'
-import type { OnboardingStatus } from '../../services/ProfileApi'
-import { storage, STORAGE_KEYS } from '../../services/storage'
-import { useTilingStore } from '../../store/tilingStore'
-import { useWorkspaceStore } from '../../store/workspaceStore'
-import { colors as semanticColors } from '../mca/primitives/colors'
-import { useColors } from '../mca/primitives/useColors'
+import React, { useCallback, useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { Platform, Pressable, View } from "react-native"
+import { getTerosClient } from "../../services/terosClientSingleton"
+import type { OnboardingStatus } from "../../services/ProfileApi"
+import { storage, STORAGE_KEYS } from "../../services/storage"
+import { useTilingStore } from "../../store/tilingStore"
+import { useWorkspaceStore } from "../../store/workspaceStore"
+import { useColors } from "../mca/primitives/useColors"
+import { CountPill, IconBtn, Ph, T } from "../ui/ds"
 
 interface ChecklistItem {
   id: keyof OnboardingStatus
@@ -46,7 +44,7 @@ export function GettingStartedWidget({ onOpenWindow }: GettingStartedWidgetProps
   const [dismissed, setDismissed] = useState(false)
   useEffect(() => {
     storage.get<string>(STORAGE_KEYS.GETTING_STARTED).then((val) => {
-      if (val === '1') setDismissed(true)
+      if (val === "1") setDismissed(true)
     })
   }, [])
 
@@ -57,7 +55,7 @@ export function GettingStartedWidget({ onOpenWindow }: GettingStartedWidgetProps
       const s = await client.profile.getOnboardingStatus()
       setStatus(s)
     } catch (err) {
-      console.warn('[GettingStartedWidget] Failed to load onboarding status:', err)
+      console.warn("[GettingStartedWidget] Failed to load onboarding status:", err)
     }
   }, [client])
 
@@ -66,9 +64,12 @@ export function GettingStartedWidget({ onOpenWindow }: GettingStartedWidgetProps
     if (client.isConnected()) {
       loadStatus()
     } else {
-      const onConnected = () => { loadStatus(); client.off('connected', onConnected) }
-      client.on('connected', onConnected)
-      return () => client.off('connected', onConnected)
+      const onConnected = () => {
+        loadStatus()
+        client.off("connected", onConnected)
+      }
+      client.on("connected", onConnected)
+      return () => client.off("connected", onConnected)
     }
   }, [dismissed, loadStatus])
 
@@ -81,13 +82,13 @@ export function GettingStartedWidget({ onOpenWindow }: GettingStartedWidgetProps
 
   // Close dropdown on outside click (web)
   useEffect(() => {
-    if (!open || Platform.OS !== 'web') return
+    if (!open || Platform.OS !== "web") return
     const handler = (e: MouseEvent) => {
-      const el = document.getElementById('getting-started-widget')
+      const el = document.getElementById("getting-started-widget")
       if (el && !el.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
   }, [open])
 
   // ── Actions ──────────────────────────────────────────────────────────────
@@ -100,37 +101,35 @@ export function GettingStartedWidget({ onOpenWindow }: GettingStartedWidgetProps
 
   const items: ChecklistItem[] = [
     {
-      id: 'hasProvider',
-      label: t('onboarding.connectAProvider'),
-      action: () => openW('providers'),
+      id: "hasProvider",
+      label: t("onboarding.connectAProvider"),
+      action: () => openW("providers"),
     },
     {
-      id: 'hasOnboardingCompleted',
-      label: t('onboarding.customizeYourAgent'),
-      action: () => openW('agent', { agentId: undefined }),
+      id: "hasOnboardingCompleted",
+      label: t("onboarding.customizeYourAgent"),
+      action: () => openW("agent", { agentId: undefined }),
     },
     {
-      id: 'hasAppWithCredentials',
-      label: t('onboarding.configureAppCredentials'),
-      action: () => openW('apps', { workspaceId: activeWorkspaceId ?? undefined }),
+      id: "hasAppWithCredentials",
+      label: t("onboarding.configureAppCredentials"),
+      action: () => openW("apps", { workspaceId: activeWorkspaceId ?? undefined }),
     },
     {
-      id: 'hasAppAssigned',
-      label: t('onboarding.grantAgentAccessToApps'),
-      action: () => openW('apps', { workspaceId: activeWorkspaceId ?? undefined }),
+      id: "hasAppAssigned",
+      label: t("onboarding.grantAgentAccessToApps"),
+      action: () => openW("apps", { workspaceId: activeWorkspaceId ?? undefined }),
     },
     {
-      id: 'hasFirstMessage',
-      label: t('onboarding.sendYourFirstMessage'),
-      action: () => openW('chat', { workspaceId: activeWorkspaceId ?? undefined }),
+      id: "hasFirstMessage",
+      label: t("onboarding.sendYourFirstMessage"),
+      action: () => openW("chat", { workspaceId: activeWorkspaceId ?? undefined }),
     },
   ]
 
   // ── Derived state ────────────────────────────────────────────────────────
 
-  const pendingCount = status
-    ? items.filter((item) => !status[item.id]).length
-    : 0
+  const pendingCount = status ? items.filter((item) => !status[item.id]).length : 0
 
   // Hide if dismissed or all complete
   if (dismissed) return null
@@ -143,142 +142,139 @@ export function GettingStartedWidget({ onOpenWindow }: GettingStartedWidgetProps
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <YStack
+    <View
       // @ts-ignore — id prop for web click-outside detection
       id="getting-started-widget"
-      position="relative"
+      style={{ position: "relative" }}
     >
       {/* Trigger button */}
-      <XStack
-        width={36}
-        height={36}
-        borderRadius="$2"
-        backgroundColor={open ? semanticColors.indigoGlow : c.bgCardHover}
-        alignItems="center"
-        justifyContent="center"
-        cursor="pointer"
-        pressStyle={{ opacity: 0.7 }}
-        animation="quick"
-        onPress={() => setOpen((v) => !v)}
-        position="relative"
-      >
-        <Rocket size={18} color={open ? semanticColors.indigo : c.text2} />
+      <View style={{ position: "relative" }}>
+        <IconBtn
+          icon="rocket-launch"
+          on={open}
+          onPress={() => setOpen((v) => !v)}
+          title={t("onboarding.gettingStarted")}
+        />
         {pendingCount > 0 && (
-          <YStack
-            position="absolute"
-            top={2}
-            right={2}
-            width={16}
-            height={16}
-            borderRadius={8}
-            backgroundColor={semanticColors.indigo}
-            alignItems="center"
-            justifyContent="center"
-          >
-            <Text color={c.bgPage} fontSize={9} fontWeight="700" lineHeight={16}>
-              {pendingCount}
-            </Text>
-          </YStack>
+          <View style={{ position: "absolute", top: -4, right: -4 }} pointerEvents="none">
+            <CountPill n={pendingCount} />
+          </View>
         )}
-      </XStack>
+      </View>
 
       {/* Dropdown */}
       {open && (
-        <YStack
-          position="absolute"
-          // @ts-ignore — web-only positioning
-          bottom={Platform.OS === 'web' ? 44 : undefined}
-          top={Platform.OS !== 'web' ? 44 : undefined}
-          left={0}
-          width={280}
-          backgroundColor={c.bgPage}
-          borderRadius="$3"
-          borderWidth={1}
-          borderColor={c.border}
-          padding="$4"
-          zIndex={9999}
-          // @ts-ignore — web-only shadow
-          style={Platform.OS === 'web' ? { boxShadow: '0 8px 32px rgba(0,0,0,0.6)' } : undefined}
+        <Pressable
           onPress={(e: any) => e?.stopPropagation?.()} // web-only: stopPropagation not typed in RN events
+          style={[
+            {
+              position: "absolute",
+              bottom: Platform.OS === "web" ? 44 : undefined,
+              top: Platform.OS !== "web" ? 44 : undefined,
+              left: 0,
+              width: 280,
+              backgroundColor: c.bgStep,
+              borderRadius: 16,
+              padding: 14,
+              zIndex: 9999,
+            },
+            Platform.OS === "web" ? ({ boxShadow: c.elevRaised, cursor: "default" } as any) : null,
+          ]}
         >
           {/* Header */}
-          <XStack alignItems="center" justifyContent="space-between" marginBottom="$3">
-            <XStack alignItems="center" gap="$2">
-              <Rocket size={14} color={semanticColors.indigo} />
-              <Text color={c.text} fontSize="$3" fontWeight="700">
-                {t('onboarding.gettingStarted')}
-              </Text>
-            </XStack>
-            <XStack alignItems="center" gap="$2">
-              <Text color={c.text3} fontSize={11}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Ph name="rocket-launch" size={14} color={c.accent} />
+              <T step="sm">{t("onboarding.gettingStarted")}</T>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <T step="codenote" tone="text3">
                 {completedCount}/{items.length}
-              </Text>
-              <XStack
-                padding="$1"
-                cursor="pointer"
-                pressStyle={{ opacity: 0.6 }}
-                animation="quick"
-                onPress={() => { storage.set(STORAGE_KEYS.GETTING_STARTED, '1'); setDismissed(true); setOpen(false) }}
-              >
-                <X size={14} color={c.text3} />
-              </XStack>
-            </XStack>
-          </XStack>
+              </T>
+              <IconBtn
+                icon="x"
+                plain
+                sm
+                onPress={() => {
+                  storage.set(STORAGE_KEYS.GETTING_STARTED, "1")
+                  setDismissed(true)
+                  setOpen(false)
+                }}
+              />
+            </View>
+          </View>
 
           {/* Progress bar */}
-          <YStack
-            height={3}
-            backgroundColor={c.borderStrong}
-            borderRadius={2}
-            marginBottom="$3"
-            overflow="hidden"
+          <View
+            style={{
+              height: 3,
+              backgroundColor: c.wash2,
+              borderRadius: 2,
+              marginBottom: 10,
+              overflow: "hidden",
+            }}
           >
-            <YStack
-              height={3}
-              width={`${progressPct}%`}
-              backgroundColor={semanticColors.indigo}
-              borderRadius={2}
-              animation="quick"
+            <View
+              style={[
+                { height: 3, width: `${progressPct}%`, backgroundColor: c.accent, borderRadius: 2 },
+                Platform.OS === "web" ? ({ transition: "width 0.3s" } as any) : null,
+              ]}
             />
-          </YStack>
+          </View>
 
           {/* Checklist items */}
-          <YStack gap="$1">
+          <View style={{ gap: 2 }}>
             {items.map((item) => {
               const done = !!status[item.id]
               return (
-                <XStack
+                <Pressable
                   key={item.id}
-                  alignItems="center"
-                  gap="$2"
-                  paddingVertical="$2"
-                  paddingHorizontal="$1"
-                  borderRadius="$2"
-                  cursor={done ? 'default' : 'pointer'}
-                  pressStyle={done ? {} : { backgroundColor: c.bgCardHover }}
-                  animation="quick"
-                  opacity={done ? 0.5 : 1}
+                  disabled={done}
                   onPress={done ? undefined : item.action}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    {
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      paddingVertical: 8,
+                      paddingHorizontal: 8,
+                      borderRadius: 10,
+                      backgroundColor: pressed && !done ? c.wash2 : "transparent",
+                      opacity: done ? 0.5 : 1,
+                    },
+                    Platform.OS === "web"
+                      ? ({ cursor: done ? "default" : "pointer" } as any)
+                      : null,
+                  ]}
                 >
-                  {done
-                    ? <CheckCircle size={16} color={semanticColors.green} />
-                    : <Circle size={16} color={c.text3} />
-                  }
-                  <Text
+                  <Ph
+                    name={done ? "check-circle" : "circle"}
+                    size={16}
+                    color={done ? c.tint.g.tx : c.text3}
+                    weight={done ? "fill" : "regular"}
+                  />
+                  <T
+                    step="sm"
                     color={done ? c.text2 : c.text}
-                    fontSize="$3"
-                    textDecorationLine={done ? 'line-through' : 'none'}
-                    flex={1}
+                    style={[{ flex: 1 }, done ? { textDecorationLine: "line-through" } : null]}
                   >
                     {item.label}
-                  </Text>
-                  {!done && <ChevronRight size={13} color={c.text3} />}
-                </XStack>
+                  </T>
+                  {!done && <Ph name="caret-right" size={12} color={c.text3} />}
+                </Pressable>
               )
             })}
-          </YStack>
-        </YStack>
+          </View>
+        </Pressable>
       )}
-    </YStack>
+    </View>
   )
 }

@@ -1,0 +1,193 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "list-items": {
+      "name": "list-items",
+      "description": "List files and folders inside a OneDrive folder. Defaults to the drive root. Address the folder by itemId or by path.",
+      "params": {
+        "itemId": "Folder item ID. Takes precedence over path.",
+        "path": "Folder path relative to the drive root, e.g. \"Documents/Reports\". Pass literal folder names, not pre-encoded ones.",
+        "maxResults": "Maximum number of items to return (default: 50, max: 200)"
+      }
+    },
+    "get-item": {
+      "name": "get-item",
+      "description": "Get metadata for a single OneDrive file or folder, addressed by itemId or by path.",
+      "params": {
+        "itemId": "Item ID. Takes precedence over path.",
+        "path": "Item path relative to the drive root, e.g. \"Documents/notes.txt\". Pass literal file and folder names, not pre-encoded ones."
+      }
+    },
+    "search-items": {
+      "name": "search-items",
+      "description": "Search OneDrive for files and folders matching a free-text query.",
+      "params": {
+        "query": "Free-text search query",
+        "maxResults": "Maximum number of results to return (default: 25, max: 200)"
+      }
+    },
+    "download-file": {
+      "name": "download-file",
+      "description": "Download a OneDrive file and save it to the local filesystem. Files above 50 MB are refused.",
+      "params": {
+        "itemId": "Item ID. Takes precedence over path.",
+        "path": "File path relative to the drive root. Pass literal file and folder names, not pre-encoded ones.",
+        "outputPath": "Output directory (default: /workspace/onedrive-downloads)"
+      }
+    },
+    "get-file-content": {
+      "name": "get-file-content",
+      "description": "Read the contents of a text-based OneDrive file inline, without saving it to disk. Limited to 1 MB.",
+      "params": {
+        "itemId": "Item ID. Takes precedence over path.",
+        "path": "File path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+      }
+    },
+    "convert-file": {
+      "name": "convert-file",
+      "description": "Convert a OneDrive document (Word, Excel, PowerPoint, and other supported types) to PDF and save it locally. Files above 50 MB are refused.",
+      "params": {
+        "itemId": "Item ID. Takes precedence over path.",
+        "path": "File path relative to the drive root. Pass literal file and folder names, not pre-encoded ones.",
+        "outputPath": "Output directory (default: /workspace/onedrive-downloads)"
+      }
+    },
+    "upload-file": {
+      "name": "upload-file",
+      "description": "Upload a local file to OneDrive. Files below 4 MB upload directly; larger files use a chunked upload session — a failed chunk aborts the whole upload rather than resuming. Overwrites an existing file with the same name.",
+      "params": {
+        "localPath": "Absolute path of the local file to upload",
+        "destinationPath": "Destination folder path relative to the drive root, e.g. \"Documents\". Pass literal folder names, not pre-encoded ones. Defaults to the root.",
+        "fileName": "Name to store the file under, as a literal name rather than a pre-encoded one. Defaults to the local file name."
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "Create a new folder in OneDrive. Address the containing folder with parentId or parentPath; with neither, the folder is created at the drive root.",
+      "params": {
+        "name": "Name of the new folder",
+        "parentId": "ID of the folder to create the new folder inside. Takes precedence over parentPath. Defaults to the drive root.",
+        "parentPath": "Path of the folder to create the new folder inside, relative to the drive root, e.g. \"Documents/Reports\". Pass literal folder names, not pre-encoded ones. Defaults to the drive root.",
+        "itemId": "Deprecated alias for parentId.",
+        "path": "Deprecated alias for parentPath.",
+        "conflictBehavior": "What to do if the name exists: \"rename\" (default), \"replace\", or \"fail\"."
+      }
+    },
+    "copy-item": {
+      "name": "copy-item",
+      "description": "Copy a OneDrive file or folder to another folder. Waits for the copy to finish before returning. Specify the item with itemId or path, and the destination with destinationFolderId or destinationPath; with neither destination, the copy is placed at the drive root.",
+      "params": {
+        "itemId": "Item ID to copy. Takes precedence over path.",
+        "path": "Path of the item to copy, relative to the drive root. Pass literal file and folder names, not pre-encoded ones.",
+        "destinationFolderId": "Destination folder ID. Takes precedence over destinationPath.",
+        "destinationPath": "Destination folder path relative to the drive root. Pass literal folder names, not pre-encoded ones. Omitting both destination arguments copies to the drive root.",
+        "newName": "Optional new name for the copy",
+        "pollIntervalMs": "Milliseconds between progress checks (default: 1000)"
+      }
+    },
+    "move-item": {
+      "name": "move-item",
+      "description": "Move a OneDrive file or folder into a different folder. Specify the item with itemId or path, and the destination with destinationFolderId or destinationPath; with neither destination, the item is moved to the drive root.",
+      "params": {
+        "itemId": "Item ID to move. Takes precedence over path.",
+        "path": "Path of the item to move, relative to the drive root. Pass literal file and folder names, not pre-encoded ones.",
+        "destinationFolderId": "Destination folder ID. Takes precedence over destinationPath.",
+        "destinationPath": "Destination folder path relative to the drive root. Pass literal folder names, not pre-encoded ones. Omitting both destination arguments moves the item to the drive root."
+      }
+    },
+    "rename-item": {
+      "name": "rename-item",
+      "description": "Rename a OneDrive file or folder without moving it.",
+      "params": {
+        "itemId": "Item ID. Takes precedence over path.",
+        "path": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones.",
+        "newName": "The new name for the item"
+      }
+    },
+    "delete-item": {
+      "name": "delete-item",
+      "description": "Delete a OneDrive file or folder. The item moves to the recycle bin, but this app cannot restore it.",
+      "params": {
+        "itemId": "Item ID. Takes precedence over path.",
+        "path": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+      }
+    },
+    "create-share-link": {
+      "name": "create-share-link",
+      "description": "Create a sharing link for a OneDrive item, with a chosen permission level and audience.",
+      "params": {
+        "itemId": "Item ID. Takes precedence over path.",
+        "path": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones.",
+        "type": "Link permission: \"view\" (default), \"edit\", or \"embed\".",
+        "scope": "Audience: \"anonymous\" (default) or \"organization\".",
+        "expirationDateTime": "Optional ISO 8601 expiry, e.g. \"2026-12-31T23:59:59Z\"."
+      }
+    },
+    "invite-people": {
+      "name": "invite-people",
+      "description": "Share a OneDrive item with specific people by email, granting read or write access.",
+      "params": {
+        "itemId": "Item ID. Takes precedence over path.",
+        "path": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones.",
+        "emails": "Comma-separated email addresses to invite",
+        "role": "Access level: \"read\" (default) or \"write\".",
+        "message": "Optional message included in the invitation",
+        "requireSignIn": "Whether recipients must sign in (default: true)",
+        "sendInvitation": "Whether to email the invitation (default: true)"
+      }
+    },
+    "list-permissions": {
+      "name": "list-permissions",
+      "description": "List everyone and every sharing link that currently has access to a OneDrive item.",
+      "params": {
+        "itemId": "Item ID. Takes precedence over path.",
+        "path": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+      }
+    },
+    "remove-permission": {
+      "name": "remove-permission",
+      "description": "Revoke a sharing grant or link on a OneDrive item. Use list-permissions to find the permission ID.",
+      "params": {
+        "itemId": "Item ID. Takes precedence over path.",
+        "path": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones.",
+        "permissionId": "The permission ID to revoke"
+      }
+    },
+    "list-shared-with-me": {
+      "name": "list-shared-with-me",
+      "description": "List OneDrive files and folders that other people have shared with this account. Listing only: a shared item lives on the drive of the person who shared it, and every other tool in this app addresses /me/drive, so the IDs returned here cannot be passed to get-item, download-file, or any other tool. Use webUrl to open a shared item.",
+      "params": {
+        "maxResults": "Maximum number of items to return (default: 50, max: 200)"
+      }
+    },
+    "list-recent": {
+      "name": "list-recent",
+      "description": "List OneDrive files this account accessed recently, most recent first.",
+      "params": {
+        "maxResults": "Maximum number of items to return (default: 25, max: 200)"
+      }
+    },
+    "get-drive-info": {
+      "name": "get-drive-info",
+      "description": "Get information about the OneDrive account, including storage quota and usage."
+    },
+    "list-versions": {
+      "name": "list-versions",
+      "description": "List the version history of a OneDrive file. Use this to recover an earlier version after an unwanted overwrite.",
+      "params": {
+        "itemId": "Item ID. Takes precedence over path.",
+        "path": "Item path relative to the drive root. Pass literal file and folder names, not pre-encoded ones."
+      }
+    }
+  },
+  "name": "OneDrive",
+  "description": "Microsoft OneDrive file management — browse, upload, download, organize, and share files via Microsoft Graph API",
+  "changelog": [
+    {
+      "notes": "Initial release — browse, upload, download, organize, share, and search OneDrive files"
+    }
+  ]
+}

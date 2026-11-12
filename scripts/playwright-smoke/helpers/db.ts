@@ -55,6 +55,10 @@ export async function ensureLockoutUser(
     providerUserId: lower,
   })
   if (existing) {
+    // Repair probes seeded before the email-verification login gate (ca2c5d6ce, SEC-1).
+    await d
+      .collection("users")
+      .updateOne({ userId: existing.userId }, { $set: { emailVerified: true } })
     return { email: lower, userId: existing.userId }
   }
   const userId = `user_${new ObjectId().toHexString().slice(0, 16)}`
@@ -65,6 +69,9 @@ export async function ensureLockoutUser(
     profile: { email: lower, displayName: "Lockout Probe" },
     status: "active",
     role: "user",
+    // Login refuses unverified emails since ca2c5d6ce (SEC-1) — a real probe user would
+    // have verified before it could ever be locked out.
+    emailVerified: true,
     createdAt: now,
     updatedAt: now,
   })

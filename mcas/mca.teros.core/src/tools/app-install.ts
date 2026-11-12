@@ -1,7 +1,10 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const appInstall: ToolConfig = {
-  annotations: { readOnlyHint: false, alwaysAsk: true },
+  // @todo pablo - 2026.09.30 : re-add alwaysAsk: true once the reason for
+  // unlocking is resolved — self-install is a privilege-escalation vector;
+  // an agent with allow-all can currently install new apps autonomously.
+  annotations: { readOnlyHint: false },
   description:
     "Install an MCA from the catalog as an app. The installed app is auto-granted to the user's superagents. Apps are scoped to a workspace: their tools are only available in conversations of that workspace.",
   parameters: {

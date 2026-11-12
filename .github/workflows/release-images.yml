@@ -1,0 +1,204 @@
+# Publishes the backend and frontend images, plus the MCA runtime images the
+# container-agent starts apps from, to GHCR for every release tag.
+#
+# Why this lives in the PUBLIC repo only (the `if:` below): the backend image
+# bakes `mcas/` and `scripts/` into its layers, so it must be built from the
+# tree that is already public — never from a private checkout. The tag reaches
+# this repo through the public-release checklist (phase G), and this workflow
+# is the last step of that phase: push the tag, wait here, record the digests.
+#
+# One native build per architecture (no QEMU), pushed by digest, then one
+# multi-arch manifest per image with the version tags. Layer cache lives in
+# GHCR next to the images.
+name: Release images
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to (re)build, e.g. v1.4.7"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  # Package names: ghcr.io/teros-hq/teros-backend, -frontend, -mca-runtime,
+  # -mca-runtime-bash and -mca-runtime-playwright. The installer re-tags the
+  # runtimes as teros/mca-runtime*:latest, the names MCA manifests use
+  # (docker/pull-runtimes.sh). mca-runtime-whatsapp is not published: its base
+  # image is a paid upstream.
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/teros
+
+jobs:
+  build:
+    name: ${{ matrix.image }} (${{ matrix.arch }})
+    # Guard: the same file is exported to the public repo, but only the public
+    # repo may publish images (see the header). In the private repo this is a no-op.
+    if: github.repository == 'teros-hq/teros'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        image: [backend, frontend, mca-runtime, mca-runtime-bash, mca-runtime-playwright]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    outputs:
+      version: ${{ steps.ref.outputs.version }}
+    steps:
+      - name: Resolve the tag to build
+        id: ref
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.tag }}
+
+      # The backend image is ~4 GB plus a builder stage of similar size; the
+      # hosted runner starts with ~14 GB free. Same recipe as ci.yml.
+      - name: Free disk space
+        if: matrix.image == 'backend'
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata (labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          labels: |
+            org.opencontainers.image.title=Teros ${{ matrix.image }}
+            org.opencontainers.image.vendor=Teros
+            org.opencontainers.image.licenses=FSL-1.1-Apache-2.0
+
+      - name: Pick the Dockerfile
+        id: df
+        run: |
+          case "${{ matrix.image }}" in
+            backend)  echo "file=packages/backend/Dockerfile" >> "$GITHUB_OUTPUT" ;;
+            frontend) echo "file=packages/app/Dockerfile" >> "$GITHUB_OUTPUT" ;;
+            mca-runtime*) echo "file=docker/${{ matrix.image }}/Dockerfile" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      # The runtime images bake the union of the MCAs' dependencies from a
+      # generated (gitignored) manifest — same first step as
+      # scripts/build-mca-runtimes.sh.
+      - name: Generate the MCA dependency manifests
+        if: startsWith(matrix.image, 'mca-runtime')
+        run: node scripts/gen-mca-union-deps.mjs
+
+      # Pushed by digest only; the tags are applied once per image by the
+      # `manifest` job after both architectures exist.
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.df.outputs.file }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE_PREFIX }}-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}/release-cache:${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}/release-cache:${{ matrix.image }}-${{ matrix.arch }},mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          # Arch first: with the image last, the manifest job's pattern cannot match
+          # another image that shares the prefix (mca-runtime vs mca-runtime-bash).
+          name: digests-${{ matrix.arch }}-${{ matrix.image }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    name: ${{ matrix.image }} manifest
+    needs: build
+    if: github.repository == 'teros-hq/teros'
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        image: [backend, frontend, mca-runtime, mca-runtime-bash, mca-runtime-playwright]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*-${{ matrix.image }}
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # v1.4.7 → 1.4.7, 1.4 and latest (metadata-action skips `latest` for
+      # pre-releases such as v1.5.0-rc.1).
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}},value=v${{ needs.build.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ needs.build.outputs.version }}
+
+      - name: Create the multi-arch manifest
+        working-directory: /tmp/digests
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+        run: |
+          args=()
+          while IFS= read -r tag; do args+=(-t "$tag"); done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          for d in *; do args+=("$IMAGE@sha256:$d"); done
+          docker buildx imagetools create "${args[@]}"
+
+      - name: Inspect
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ needs.build.outputs.version }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE"
+          {
+            echo "### ${{ matrix.image }}"
+            echo '```'
+            docker buildx imagetools inspect "$IMAGE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

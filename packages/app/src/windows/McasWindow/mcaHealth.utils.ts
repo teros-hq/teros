@@ -7,6 +7,7 @@
 import type { McaToolAnnotations } from "@teros/shared"
 import type { McaData, McaHealthRecord, McaTestResult, McaToolSchema } from "../../services/AppApi"
 import type { McaOverallStatus, McaRowData, McaToolResult, ToolTestStatus } from "./mcaStatus.types"
+import { CAT_ORDER } from "../CatalogWindow/catalogCategories"
 
 export const STATUS_COLORS: Record<string, string> = {
   ok: "#22C55E",
@@ -20,22 +21,12 @@ export const STATUS_COLORS: Record<string, string> = {
 }
 
 /**
- * Fixed semantic content-category order (D-12). Category headers always render in this sequence,
- * never alphabetical or by-count. Any catalog category not in this list (including empty/missing)
+ * Fixed semantic content-category order — re-exported from the unified
+ * catalogCategories module so the health dashboard and the catalog stay
+ * synchronised. Any catalog category not in this list (including empty/missing)
  * buckets into "other".
  */
-export const CATEGORY_ORDER = [
-  "productivity",
-  "development",
-  "ai",
-  "communication",
-  "data",
-  "design",
-  "storage",
-  "system",
-  "utility",
-  "other",
-] as const
+export const CATEGORY_ORDER = CAT_ORDER
 
 export type CategoryKey = (typeof CATEGORY_ORDER)[number]
 

@@ -35,7 +35,7 @@ export function AggregatedReportRenderer({ status, output, error, appIcon }: Too
   return (
     <ToolCallCard
       status={status}
-      verb="Get email stats"
+      description="Get email stats"
       badge={badge}
       iconUri={appIcon}
       animateExpand

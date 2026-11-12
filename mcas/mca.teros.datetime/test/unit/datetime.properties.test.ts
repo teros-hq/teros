@@ -7,17 +7,16 @@
  *   P2 diff es antisimétrico: diff(a,b) === -diff(b,a).
  *   P3 roundtrip: todo ISO emitido por add parsea valid:true.
  * Cada propiedad se demostró falsable con mutación dirigida (hunt P*).
+ *
+ * v0.9.1: mismo dispatcher de test que handlers.test.ts (./_dispatcher).
  */
 
 import { describe, expect, it } from "bun:test"
 import fc from "fast-check"
-import { handleToolCall } from "../../mcp/src/handlers"
+import { handleToolCall } from "./_dispatcher"
 
 async function call(name: string, args: unknown): Promise<Record<string, unknown>> {
-  const result = (await handleToolCall(name, args)) as {
-    content: Array<{ text: string }>
-    isError?: boolean
-  }
+  const result = await handleToolCall(name, args)
   expect(result.isError).toBeUndefined()
   return JSON.parse(result.content[0].text)
 }

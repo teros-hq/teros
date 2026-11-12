@@ -1,30 +1,13 @@
 /**
- * Static chrome for the MCA Health dashboard: the pinned summary cards (D-14) and the
+ * Static chrome for the MCA Health dashboard: the pinned summary stats (D-14) and the
  * availability-chip + search filter strip (D-08). Split out so the dashboard render stays under the
  * line/complexity limits (CLAUDE.md). Pure display — no run or fetch logic.
  */
-import { EyeOff, Lock, Shield, Users } from "@tamagui/lucide-icons"
-import type React from "react"
-import { Input, Text, XStack, YStack } from "tamagui"
-import { STATUS_COLORS, type AvailabilityFilters } from "./mcaHealth.utils"
-import { useColors } from "../../components/mca/primitives/useColors"
-import { colors as semanticColors } from "../../components/mca/primitives/colors"
+import { View } from "react-native"
+import { ChipBtn, Field, Stat, Stats } from "../../components/ui/ds"
+import type { AvailabilityFilters } from "./mcaHealth.utils"
 
 type Translate = (key: string, opts?: Record<string, unknown>) => string
-
-function SummaryCard({ value, label, color }: { value: number; label: string; color: string }) {
-  const c = useColors()
-  return (
-    <YStack minWidth={80}>
-      <Text fontSize="$6" fontWeight="700" color={color}>
-        {value}
-      </Text>
-      <Text fontSize="$2" color={c.text2}>
-        {label}
-      </Text>
-    </YStack>
-  )
-}
 
 /** Pinned summary counts from the full catalog — not affected by filters/search (D-14). */
 export function SummaryCards({
@@ -40,70 +23,13 @@ export function SummaryCards({
   total: number
   t: Translate
 }) {
-  const c = useColors()
   return (
-    <XStack
-      backgroundColor={c.bgInner}
-      borderRadius="$4"
-      padding="$4"
-      gap="$4"
-      borderWidth={1}
-      borderColor={c.border}
-      flexWrap="wrap"
-    >
-      <SummaryCard
-        value={operational}
-        label={t("mca.status.summary.operational")}
-        color={STATUS_COLORS.operational}
-      />
-      <SummaryCard
-        value={failed}
-        label={t("mca.status.summary.failed")}
-        color={STATUS_COLORS.failed}
-      />
-      <SummaryCard
-        value={partial}
-        label={t("mca.status.summary.partial")}
-        color={STATUS_COLORS.partial}
-      />
-      <SummaryCard value={total} label={t("mca.status.summary.total")} color="$color" />
-    </XStack>
-  )
-}
-
-function Chip({
-  active,
-  label,
-  icon,
-  onToggle,
-}: {
-  active: boolean
-  label: string
-  icon: React.ReactNode
-  onToggle: () => void
-}) {
-  const c = useColors()
-  return (
-    <XStack
-      paddingHorizontal="$2.5"
-      paddingVertical="$1.5"
-      borderRadius="$3"
-      borderWidth={1}
-      alignItems="center"
-      gap="$1.5"
-      cursor="pointer"
-      backgroundColor={active ? c.bgCardHover : c.bgInner}
-      borderColor={c.borderStrong}
-      hoverStyle={{ backgroundColor: c.bgCardHover }}
-      pressStyle={{ opacity: 0.8 }}
-      opacity={active ? 1 : 0.55}
-      onPress={onToggle}
-    >
-      {icon}
-      <Text fontSize="$2" color={c.text2}>
-        {label}
-      </Text>
-    </XStack>
+    <Stats cols={4}>
+      <Stat v={operational} label={t("mca.status.summary.operational")} accent />
+      <Stat v={failed} label={t("mca.status.summary.failed")} />
+      <Stat v={partial} label={t("mca.status.summary.partial")} />
+      <Stat v={total} label={t("mca.status.summary.total")} />
+    </Stats>
   )
 }
 
@@ -121,52 +47,42 @@ export function FilterStrip({
   setRawSearch: (v: string) => void
   t: Translate
 }) {
-  const c = useColors()
+  const chips: Array<{ key: keyof AvailabilityFilters; label: string; icon: string }> = [
+    { key: "showSystem", label: t("mca.status.filters.system"), icon: "shield-check" },
+    { key: "showAdminOnly", label: t("mca.status.filters.adminOnly"), icon: "users-three" },
+    { key: "showUser", label: t("mca.status.filters.user"), icon: "user" },
+    { key: "showHidden", label: t("mca.status.filters.hidden"), icon: "eye-slash" },
+    { key: "showDisabled", label: t("mca.status.filters.disabled"), icon: "lock" },
+  ]
   return (
-    <XStack gap="$3" flexWrap="wrap" alignItems="center" justifyContent="space-between">
-      <XStack gap="$2" flexWrap="wrap" alignItems="center">
-        <Chip
-          active={filters.showSystem}
-          label={t("mca.status.filters.system")}
-          icon={<Shield size={14} color={semanticColors.violet} />}
-          onToggle={() => onToggle("showSystem")}
-        />
-        <Chip
-          active={filters.showAdminOnly}
-          label={t("mca.status.filters.adminOnly")}
-          icon={<Users size={14} color={semanticColors.amber} />}
-          onToggle={() => onToggle("showAdminOnly")}
-        />
-        <Chip
-          active={filters.showUser}
-          label={t("mca.status.filters.user")}
-          icon={<Users size={14} color={semanticColors.green} />}
-          onToggle={() => onToggle("showUser")}
-        />
-        <Chip
-          active={filters.showHidden}
-          label={t("mca.status.filters.hidden")}
-          icon={<EyeOff size={14} color={c.text3} />}
-          onToggle={() => onToggle("showHidden")}
-        />
-        <Chip
-          active={filters.showDisabled}
-          label={t("mca.status.filters.disabled")}
-          icon={<Lock size={14} color={semanticColors.red} />}
-          onToggle={() => onToggle("showDisabled")}
-        />
-      </XStack>
-      <Input
-        size="$3"
-        minWidth={200}
-        flexGrow={1}
-        maxWidth={320}
+    <View
+      style={{
+        flexDirection: "row",
+        flexWrap: "wrap",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+      }}
+    >
+      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+        {chips.map((chip) => (
+          <ChipBtn
+            key={chip.key}
+            icon={chip.icon}
+            on={filters[chip.key]}
+            onPress={() => onToggle(chip.key)}
+          >
+            {chip.label}
+          </ChipBtn>
+        ))}
+      </View>
+      <Field
+        icon="magnifying-glass"
         placeholder={t("mca.status.searchPlaceholder")}
         value={rawSearch}
         onChangeText={setRawSearch}
-        backgroundColor={c.bgInner}
-        borderColor={c.borderStrong}
+        containerStyle={{ minWidth: 200, flexGrow: 1, maxWidth: 320 }}
       />
-    </XStack>
+    </View>
   )
 }

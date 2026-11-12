@@ -24,7 +24,6 @@ import {
   EntityRow,
   ErrorBlock,
   ExternalLink,
-  colors as globalColors,
   IconChip,
   IconTile,
   KeyValueGrid,
@@ -34,6 +33,7 @@ import {
   ResourceCard,
   Sparkles,
   SuccessBlock,
+  useColors,
 } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
 import {
@@ -196,6 +196,7 @@ export function ListEventsRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const raw = output ? parseOutput<ListEventsOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
   const list = parsed ? unwrapList<CalendarEvent>(parsed, "events") : { items: [] }
@@ -235,7 +236,7 @@ export function ListEventsRenderer({
                     badges={eventBadges(event, account)}
                     meta={
                       event.timeZone ? (
-                        <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                        <Text color={c.text3} fontSize={9} fontFamily="$mono">
                           {event.timeZone}
                         </Text>
                       ) : undefined
@@ -245,7 +246,7 @@ export function ListEventsRenderer({
                     }
                     trailing={
                       event.htmlLink ? (
-                        <ExternalLink size={12} color={globalColors.muted} />
+                        <ExternalLink size={12} color={c.text3} />
                       ) : undefined
                     }
                   />
@@ -256,12 +257,12 @@ export function ListEventsRenderer({
           {(list.nextCursor || typeof list.total === "number" || list.hasMore) && (
             <XStack gap={6} justifyContent="flex-end" paddingHorizontal={4} paddingTop={2}>
               {typeof list.total === "number" && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   {list.total} shown
                 </Text>
               )}
               {list.nextCursor && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   · more
                 </Text>
               )}
@@ -284,6 +285,7 @@ export function GetEventRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const raw = output ? parseOutput<SingleEventOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
   const event = unwrap<CalendarEvent>(parsed, "event") ?? parsed?.event
@@ -304,7 +306,7 @@ export function GetEventRenderer({
             <YStack gap={3}>
               <Text
                 textTransform="uppercase"
-                color={globalColors.muted}
+                color={c.text3}
                 fontSize={9}
                 fontFamily="$mono"
               >
@@ -317,7 +319,7 @@ export function GetEventRenderer({
             <YStack gap={3}>
               <Text
                 textTransform="uppercase"
-                color={globalColors.muted}
+                color={c.text3}
                 fontSize={9}
                 fontFamily="$mono"
               >
@@ -330,7 +332,7 @@ export function GetEventRenderer({
             <YStack gap={3}>
               <Text
                 textTransform="uppercase"
-                color={globalColors.muted}
+                color={c.text3}
                 fontSize={9}
                 fontFamily="$mono"
               >
@@ -357,6 +359,7 @@ export function CreateEventRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const { t } = useTranslation()
   const raw = output ? parseOutput<MutationOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
@@ -393,7 +396,7 @@ export function CreateEventRenderer({
             <SuccessBlock message={`Meet link generated · ${event.hangoutLink}`} />
           )}
           {sendUpdates && sendUpdates !== "none" && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               notifications: sent{" "}
               {sendUpdates === "all" ? "to all attendees" : "to external attendees only"}
             </Text>
@@ -416,6 +419,7 @@ export function UpdateEventRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const raw = output ? parseOutput<MutationOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
   const event = parsed?.event ?? unwrap<CalendarEvent>(parsed, "event")
@@ -446,17 +450,17 @@ export function UpdateEventRenderer({
         >
           {event && <KeyValueGrid rows={eventDetailRows(event)} />}
           {change?.mode === "merge" && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               attendees: +{change.added} / −{change.removed}
             </Text>
           )}
           {change?.mode === "replace" && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               attendees replaced ({change.total} total)
             </Text>
           )}
           {sendUpdates && sendUpdates !== "none" && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               notifications: sent{" "}
               {sendUpdates === "all" ? "to all attendees" : "to external attendees only"}
             </Text>
@@ -536,6 +540,7 @@ export function SearchEventsRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const raw = output ? parseOutput<ListEventsOutput & { query?: string }>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
   const list = parsed ? unwrapList<CalendarEvent>(parsed, "events") : { items: [] }
@@ -572,7 +577,7 @@ export function SearchEventsRenderer({
                     }
                     trailing={
                       event.htmlLink ? (
-                        <ExternalLink size={12} color={globalColors.muted} />
+                        <ExternalLink size={12} color={c.text3} />
                       ) : undefined
                     }
                   />
@@ -583,12 +588,12 @@ export function SearchEventsRenderer({
           {(list.nextCursor || typeof list.total === "number") && (
             <XStack gap={6} justifyContent="flex-end" paddingHorizontal={4} paddingTop={2}>
               {typeof list.total === "number" && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   {list.total} shown
                 </Text>
               )}
               {list.nextCursor && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   · more
                 </Text>
               )}
@@ -659,6 +664,7 @@ export function RespondToEventRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const { t } = useTranslation()
   const raw = output ? parseOutput<RespondOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
@@ -700,13 +706,13 @@ export function RespondToEventRenderer({
             }
           />
           {sendUpdates !== "none" && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               notifications: sent{" "}
               {sendUpdates === "all" ? "to organizer + attendees" : "to external attendees only"}
             </Text>
           )}
           {parsed?.addedAttendee && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               note: you were not in the attendee list and have been added.
             </Text>
           )}
@@ -738,6 +744,7 @@ export function QuickAddEventRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const { t } = useTranslation()
   const raw = output ? parseOutput<QuickAddOutput>(output) : null
   const parsed = raw && typeof raw === "object" ? raw : null
@@ -775,20 +782,20 @@ export function QuickAddEventRenderer({
             <YStack gap={3}>
               <Text
                 textTransform="uppercase"
-                color={globalColors.muted}
+                color={c.text3}
                 fontSize={9}
                 fontFamily="$mono"
               >
                 from
               </Text>
-              <Text color={globalColors.primary} fontSize={11}>
+              <Text color={c.text} fontSize={11}>
                 "{sourceText}"
               </Text>
             </YStack>
           )}
           {event && <KeyValueGrid rows={eventDetailRows(event)} />}
           {sendUpdates !== "none" && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               notifications: sent{" "}
               {sendUpdates === "all" ? "to all attendees" : "to external attendees only"}
             </Text>

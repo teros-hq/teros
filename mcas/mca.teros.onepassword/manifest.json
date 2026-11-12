@@ -1,0 +1,55 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.onepassword",
+  "name": "1Password",
+  "version": "1.0.0",
+  "description": "Read-only access to 1Password vaults, items and secret field values via a Service Account token — lets agents locate and read API keys and other secrets on demand",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "utility",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "1password",
+    "password",
+    "secrets",
+    "vault",
+    "api-key",
+    "credentials",
+    "password-manager"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": [
+        "OP_SERVICE_ACCOUNT_TOKEN"
+      ]
+    },
+    "agent": false
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-10-02",
+      "notes": "Initial release — read-only 1Password access via Service Account: list vaults, list items per vault, and read item fields including secret values"
+    }
+  ]
+}

@@ -6,7 +6,7 @@ import { assertBackendConnected, resolveFields, withTimeout } from './utils';
 export const updateProject: ToolConfig = {
   description:
     'Partial update of project properties (name, description, context). context is injected into agent system prompts when working on this project (markdown supported). Returns: { project: { ...PROJECT_FIELDS } }.',
-  annotations: { version: '1.0.0', stability: 'stable' },
+  annotations: { readOnlyHint: false, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
     properties: {
@@ -22,8 +22,10 @@ export const updateProject: ToolConfig = {
     },
     required: ['projectId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const projectId = args?.projectId as string;
     if (!projectId) throw new Error('projectId is required');
@@ -34,6 +36,7 @@ export const updateProject: ToolConfig = {
         name: args?.name,
         description: args?.description,
         context: args?.context,
+        callerAgentId,
       }),
       15_000,
       'update_project',

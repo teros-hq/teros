@@ -3,22 +3,40 @@
   "mcaId": "mca.teros.filesystem",
   "tools": [
     {
-      "name": "-health-check",
-      "description": "Internal health check. Verifies workspace roots are accessible and ripgrep binary is available.",
+      "name": "health-check",
+      "description": "Internal health check. Verifies that the storage layer is accessible and ripgrep binary is available. Workspace role: ctx.volume (workspace volume via backend callbacks) rooted at /workspace. Admin role: native node:fs over the whole host (no callbacks involved).",
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
-      "name": "read",
+      "name": "list-roots",
+      "description": "List the workspace roots this MCA can access. In the ctx.volume architecture, the root is always `/workspace` (the volume root) for the workspace role — the host root `/` for the admin role. Useful for auditing scope when a path is rejected by the sandbox.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "read-file",
       "description": "Read a text file with optional line-based pagination. Returns content formatted as \"cat -n\" (numbered lines) plus metadata (name, size, lineCount, kind). Use offset+limit for ranges or head/tail for the first/last N lines. Returns text content; binary files are rejected.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "filePath": {
             "type": "string",
-            "description": "Absolute or workspace-relative path"
+            "description": "Path to the file (e.g. '/workspace/src/file.ts')"
           },
           "offset": {
             "type": "number",
@@ -46,12 +64,14 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
-      "name": "read-batch",
-      "description": "Read multiple text files in a single call. Returns an array with one entry per requested path (ok, content/error). Each file is read with the same default limits as `read`; pass perFileLimit to override. Failures on individual paths do not abort the batch.",
+      "name": "read-files",
+      "description": "Read multiple text files in a single call. Returns an array with one entry per requested path (ok, content/error). Each file is read with the same default limits as `read-file`; pass perFileLimit to override. Failures on individual paths do not abort the batch.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -60,7 +80,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Absolute or workspace-relative paths (max 50)"
+            "description": "Paths to files (e.g. '/workspace/src/a.ts', '/workspace/src/b.ts'; max 50)"
           },
           "perFileLimit": {
             "type": "number",
@@ -72,18 +92,41 @@
         ]
       },
       "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
         "readOnlyHint": true
       }
     },
     {
-      "name": "write",
-      "description": "Write content to a file, overwriting if it exists. Safety: an existing file must have been read first in this session (use `read` before overwriting). For new files, parent directories are created automatically. Use `edit` for in-place modifications and `append` for additions.",
+      "name": "read-binary",
+      "description": "Read a binary file (image, PDF, audio, archive, …) and return base64 + detected MIME type. For text files use `read-file`. Hard cap 10 MB to avoid blowing up the chat context.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "filePath": {
             "type": "string",
-            "description": "Absolute or workspace-relative path"
+            "description": "Path to the file"
+          }
+        },
+        "required": [
+          "filePath"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-file",
+      "description": "Write content to a file, overwriting if it exists. Safety: an existing file must have been read first in this session (use `read-file` before overwriting). For new files, parent directories are created automatically. Use `edit-file` for in-place modifications and `append-file` for additions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filePath": {
+            "type": "string",
+            "description": "Path to the file (e.g. '/workspace/src/file.ts')"
           },
           "content": {
             "type": "string",
@@ -96,18 +139,22 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "idempotentHint": true
       }
     },
     {
-      "name": "append",
-      "description": "Append content to the end of a file. Creates the file (and parents) if it does not exist. Does NOT require a prior read (appends are non-destructive to existing content). For replacing content, use `write` (after `read`) or `edit`.",
+      "name": "append-file",
+      "description": "Append content to the end of a file. Creates the file (and parents) if it does not exist. Does NOT require a prior read (appends are non-destructive to existing content). For replacing content, use `create-file` (after `read-file`) or `edit-file`.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "filePath": {
             "type": "string",
-            "description": "Absolute or workspace-relative path"
+            "description": "Path to the file"
           },
           "content": {
             "type": "string",
@@ -120,17 +167,21 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true
       }
     },
     {
-      "name": "edit",
-      "description": "Replace exact string occurrence(s) in a file. By default fails if `oldString` appears zero or multiple times — pass `replaceAll: true` to rewrite every match. The replacement is literal (no regex). Returns a unified diff of the change. For structured hunks use `patch`; for larger rewrites use `write`.",
+      "name": "edit-file",
+      "description": "Replace exact string occurrence(s) in a file. By default fails if `oldString` appears zero or multiple times — pass `replaceAll: true` to rewrite every match. The replacement is literal (no regex). Returns a unified diff of the change. For structured hunks use `patch-file`; for larger rewrites use `create-file`.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "filePath": {
-            "type": "string"
+            "type": "string",
+            "description": "Path to the file to edit"
           },
           "oldString": {
             "type": "string",
@@ -156,18 +207,21 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true
       }
     },
     {
-      "name": "patch",
-      "description": "Apply a unified diff (patch format) to a file atomically. Useful for multi-hunk fixes where several edits must go together. Uses fuzzy matching (fuzzFactor 2) so minor context drift is tolerated. Returns whether all hunks applied. For single-point changes prefer `edit`.",
+      "name": "patch-file",
+      "description": "Apply a unified diff (patch format) to a file atomically. Useful for multi-hunk fixes where several edits must go together. Uses fuzzy matching (fuzzFactor 2) so minor context drift is tolerated. Returns whether all hunks applied. For single-point changes prefer `edit-file`.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "filePath": {
             "type": "string",
-            "description": "Target file to patch"
+            "description": "Path to the target file to patch"
           },
           "unifiedDiff": {
             "type": "string",
@@ -188,18 +242,21 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental",
+        "destructiveHint": true
       }
     },
     {
-      "name": "list",
-      "description": "List directory entries with metadata (name, type, size, mtime, kind). Optionally recursive via `depth`. Honors `ignore` patterns (glob-style) and `respectGitignore`. Paginates with `limit` + `cursor`. For a hierarchical view use `tree`; for pattern-based search use `glob`.",
+      "name": "list-files",
+      "description": "List directory entries with metadata (name, type, size, mtime, kind). Optionally recursive via `depth`. Honors `ignore` patterns (glob-style) and `respectGitignore`. Paginates with `limit` + `cursor`. For a hierarchical view use `tree-view`; for pattern-based search use `find-files`.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "path": {
             "type": "string",
-            "description": "Directory to list (default: workspace root)"
+            "description": "Directory to list (default: `/workspace`, the volume root)"
           },
           "depth": {
             "type": "number",
@@ -214,7 +271,7 @@
           },
           "respectGitignore": {
             "type": "boolean",
-            "description": "If true, load .gitignore from the root and honor it. Requires the root to be a git repo (looks for .git/); standalone .gitignore files are not picked up"
+            "description": "If true, honor .gitignore from the volume root"
           },
           "limit": {
             "type": "number",
@@ -227,18 +284,20 @@
         }
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
-      "name": "tree",
-      "description": "Return a hierarchical JSON tree of a directory up to `depth` levels. Files have size and mtime; directories have children. Honors `ignore` patterns and `respectGitignore`. Capped by maxNodes to prevent runaway output. Use `list` for flat pagination or `glob` for pattern match.",
+      "name": "tree-view",
+      "description": "Return a hierarchical JSON tree of a directory up to `depth` levels. Files have size and mtime; directories have children. Honors `ignore` patterns and `respectGitignore`. Capped by maxNodes to prevent runaway output. Use `list-files` for flat pagination or `find-files` for pattern match.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "path": {
             "type": "string",
-            "description": "Root directory (default: workspace root)"
+            "description": "Root directory (default: `/workspace`, the volume root)"
           },
           "depth": {
             "type": "number",
@@ -261,18 +320,20 @@
         }
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
-      "name": "stat",
-      "description": "Return metadata for a single path: exists, type (file/directory/symlink), size, mtime, permissions. Does NOT read content. Prefer this over `read` when you only need to check existence or size.",
+      "name": "file-info",
+      "description": "Return metadata for a single path: exists, type (file/directory), size, mtime, permissions. Does NOT read content. Prefer this over `read-file` when you only need to check existence or size.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "path": {
             "type": "string",
-            "description": "Absolute or workspace-relative path"
+            "description": "Path to the file or directory (e.g. '/workspace/docs')"
           }
         },
         "required": [
@@ -280,12 +341,43 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
-      "name": "glob",
-      "description": "Find files matching a glob pattern (e.g. \"**/*.ts\", \"src/**/*.test.{ts,tsx}\"). Results sorted by mtime (most recently modified first). Honors `ignore` patterns and `respectGitignore`. Use `grep` for content search and `list` for flat directory listing.",
+      "name": "hash-file",
+      "description": "Compute the cryptographic hash of a file (default sha256). Reads the file via ctx.volume and hashes in memory. Useful for integrity checks and detecting changes between reads.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filePath": {
+            "type": "string",
+            "description": "Path to the file"
+          },
+          "algorithm": {
+            "type": "string",
+            "enum": [
+              "sha256",
+              "sha512"
+            ],
+            "description": "Hash algorithm (default sha256)"
+          }
+        },
+        "required": [
+          "filePath"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "find-files",
+      "description": "Find files matching a glob pattern (e.g. \"**/*.ts\", \"src/**/*.test.{ts,tsx}\"). Results sorted by mtime (most recently modified first). Honors `ignore` patterns and `respectGitignore`. Use `search-in-files` for content search and `list-files` for flat directory listing.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -295,7 +387,7 @@
           },
           "path": {
             "type": "string",
-            "description": "Base directory (default: workspace root)"
+            "description": "Base directory (default: `/workspace`, the volume root)"
           },
           "respectGitignore": {
             "type": "boolean"
@@ -328,12 +420,14 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
-      "name": "grep",
-      "description": "Search file contents for a regex pattern using ripgrep. `output_mode` controls the shape: \"content\" returns {file, line, match, context} objects; \"files\" returns one entry per matching file with matchCount; \"count\" returns only totals. Supports context lines (-B/-A), include glob, case insensitive, multiline. Shell-injection safe (args are not interpolated). For finding files by name use `glob`.",
+      "name": "search-in-files",
+      "description": "Search file contents for a regex pattern using ripgrep. `output_mode` controls the shape: \"content\" returns {file, line, match, context} objects; \"files\" returns one entry per matching file with matchCount; \"count\" returns only totals. Supports context lines (-B/-A), include glob, case insensitive, multiline. Shell-injection safe (args are not interpolated). For finding files by name use `find-files`.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -343,7 +437,7 @@
           },
           "path": {
             "type": "string",
-            "description": "Base directory or file (default: workspace root)"
+            "description": "Base directory or file (default: `/workspace`, the volume root)"
           },
           "output_mode": {
             "type": "string",
@@ -368,7 +462,7 @@
           },
           "type": {
             "type": "string",
-            "description": "Pre-defined file type filter passed to ripgrep --type (e.g. js, py, rust, ts, go, md). Faster than `include` when targeting a known language"
+            "description": "Pre-defined file type filter passed to ripgrep --type (e.g. js, py, rust, ts, go, md). Faster than `include` when you target a known language"
           },
           "caseInsensitive": {
             "type": "boolean"
@@ -379,7 +473,7 @@
           },
           "respectGitignore": {
             "type": "boolean",
-            "description": "Honor .gitignore (default false). Requires the root to be a git repo (looks for .git/); standalone .gitignore files are not picked up"
+            "description": "Honor .gitignore (default false)"
           },
           "limit": {
             "type": "number",
@@ -394,21 +488,20 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
-      "name": "delete",
+      "name": "delete-file",
       "description": "Delete a file or directory. Set `recursive: true` for non-empty directories. Idempotent: succeeds silently if the path does not exist (reports existed=false).",
-      "annotations": {
-        "readOnlyHint": false,
-        "irreversible": true
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Path to the file or directory to delete (e.g. '/workspace/old-dir')"
           },
           "recursive": {
             "type": "boolean",
@@ -418,19 +511,28 @@
         "required": [
           "path"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true
       }
     },
     {
-      "name": "copy",
+      "name": "copy-file",
       "description": "Copy a file or directory. For directories set `recursive: true`. Fails if the destination exists unless `overwrite: true`. Parent directories of the destination are created automatically.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "source": {
-            "type": "string"
+            "type": "string",
+            "description": "Path to the source file or directory (e.g. '/workspace/docs')"
           },
           "destination": {
-            "type": "string"
+            "type": "string",
+            "description": "Path to the destination (e.g. '/workspace/docs-copy')"
           },
           "recursive": {
             "type": "boolean",
@@ -447,23 +549,29 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
       }
     },
     {
-      "name": "move",
+      "name": "move-file",
       "description": "Move or rename a file or directory. Fails if the destination exists unless `overwrite: true`. Parent directories of the destination are created automatically.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "source": {
-            "type": "string"
+            "type": "string",
+            "description": "Path to the source file or directory"
           },
           "destination": {
-            "type": "string"
+            "type": "string",
+            "description": "Path to the destination"
           },
           "overwrite": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Overwrite destination if it exists"
           }
         },
         "required": [
@@ -472,17 +580,21 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true
       }
     },
     {
-      "name": "mkdir",
+      "name": "create-directory",
       "description": "Create a directory. By default creates parent directories as needed (recursive). Idempotent: returns created=false if the directory already exists.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Path to the directory to create (e.g. '/workspace/docs')"
           },
           "recursive": {
             "type": "boolean",
@@ -494,66 +606,10 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
-      }
-    },
-    {
-      "name": "list-roots",
-      "description": "List the workspace roots this MCA can access. Returns {count, roots[{path, exists, type}]}. Useful for auditing scope when a path is rejected by the sandbox.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {}
-      },
-      "annotations": {
-        "readOnlyHint": true
-      }
-    },
-    {
-      "name": "read-media",
-      "description": "Read a binary file (image, PDF, audio, archive, ...) and return base64 + detected MIME type via magic bytes. Returns {file, name, size, mimeType, base64, mtime}. Hard cap 10 MB; for text use `read`.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "filePath": {
-            "type": "string",
-            "description": "Absolute or workspace-relative path"
-          }
-        },
-        "required": [
-          "filePath"
-        ]
-      },
-      "annotations": {
-        "readOnlyHint": true
-      }
-    },
-    {
-      "name": "hash",
-      "description": "Compute the cryptographic hash of a file (default sha256). Streams the file so it works on large files without loading them. Returns {file, name, algorithm, hash, size}. Useful for integrity checks and detecting changes between reads.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "filePath": {
-            "type": "string",
-            "description": "Absolute or workspace-relative path"
-          },
-          "algorithm": {
-            "type": "string",
-            "enum": [
-              "sha256",
-              "sha1",
-              "md5",
-              "sha512"
-            ],
-            "description": "Hash algorithm (default sha256)"
-          }
-        },
-        "required": [
-          "filePath"
-        ]
-      },
-      "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
       }
     }
   ]

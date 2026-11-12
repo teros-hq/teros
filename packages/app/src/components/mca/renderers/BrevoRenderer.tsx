@@ -9,7 +9,7 @@
 
 import type React from 'react';
 import { Text, YStack } from 'tamagui';
-import { Badge, FallbackBody, ToolCallCard, colors as globalColors } from '../primitives';
+import { Badge, FallbackBody, ToolCallCard, colors as globalColors, useColors } from '../primitives';
 import type { ToolCallRendererProps } from '../types';
 import { withPermissionSupport } from '../withPermissionSupport';
 import { AddToListRenderer } from './brevo/AddToListRenderer';
@@ -66,6 +66,7 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
 };
 
 function FallbackRenderer({ toolName, input, status, output, error, appIcon }: ToolCallRendererProps) {
+  const c = useColors();
   const shortName = getShortToolName(toolName);
 
   const badge = __DEV__ ? (
@@ -77,7 +78,7 @@ function FallbackRenderer({ toolName, input, status, output, error, appIcon }: T
   ) : null;
 
   return (
-    <ToolCallCard status={status} verb={getToolLabel(toolName)} iconUri={appIcon} badge={badge} animateExpand>
+    <ToolCallCard status={status} description={getToolLabel(toolName)} iconUri={appIcon} badge={badge} animateExpand>
       {__DEV__ && (
         <YStack
           backgroundColor="rgba(239,68,68,0.12)"
@@ -91,7 +92,7 @@ function FallbackRenderer({ toolName, input, status, output, error, appIcon }: T
           <Text color={globalColors.badgeError.text} fontSize={10} fontWeight="600">
             [dev] Missing sub-renderer for "{shortName}"
           </Text>
-          <Text color={globalColors.secondary} fontSize={9}>
+          <Text color={c.text2} fontSize={9}>
             Register it in the RENDERERS map in BrevoRenderer.tsx.
           </Text>
         </YStack>

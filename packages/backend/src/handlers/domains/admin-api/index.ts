@@ -45,7 +45,8 @@
  *   admin-api.access-revoke  ← DELETE /admin/access/:agentId/:appId
  *
  * Catalog:
- *   admin-api.catalog-list ← GET /admin/catalog
+ *   admin-api.catalog-list ← GET /admin/catalog (light summaries + search)
+ *   admin-api.catalog-get  ← single MCA full detail
  *
  * MCA Management:
  *   admin-api.mca-status   ← GET  /admin/mca/status
@@ -56,6 +57,7 @@
  * System:
  *   admin-api.system-status ← GET  /admin/status
  *   admin-api.system-sync   ← POST /admin/sync
+ *   admin-api.system-refresh-clients ← POST /admin/refresh-clients (deploy signal)
  *
  * Usage:
  *   admin-api.usage-summary                 ← GET /admin/usage/summary
@@ -65,11 +67,15 @@
  *   admin-api.usage-by-model                ← GET /admin/usage/by-model
  *   admin-api.usage-expensive-conversations ← GET /admin/usage/expensive-conversations
  *   admin-api.usage-timeline                ← GET /admin/usage/timeline
+ *
+ * Channel usage (admin-only since 2026-10-31 — Pablo's decision):
+ *   admin-api.channel-token-budget           ← token usage of one conversation
  */
 
 import type { Db } from "mongodb"
 import type { McaManager } from "../../../services/mca-manager"
 import type { McaService } from "../../../services/mca-service"
+import type { SessionManager } from "../../../services/session-manager"
 import type { WorkspaceService } from "../../../services/workspace-service"
 import type { WsRouter } from "../../../ws-framework/WsRouter"
 import {
@@ -92,6 +98,7 @@ import {
 } from "./agents"
 
 import {
+  createAppsCopyAuthHandler,
   createAppsCreateHandler,
   createAppsDeleteHandler,
   createAppsGetAccessHandler,
@@ -101,7 +108,8 @@ import {
   createAppsUpdateHandler,
   createAppsUpdatePermissionHandler,
 } from "./apps"
-import { createCatalogListHandler } from "./catalog"
+import { createCatalogGetHandler, createCatalogListHandler } from "./catalog"
+import { createChannelTokenBudgetHandler } from "./channel-usage"
 import { createLatitudeSignalsListHandler } from "./latitude-signals"
 import {
   createMcaCleanupHandler,
@@ -109,7 +117,7 @@ import {
   createMcaKillHandler,
   createMcaStatusHandler,
 } from "./mca-management"
-import { createSystemStatusHandler, createSystemSyncHandler } from "./system"
+import { createSystemActiveSessionsHandler, createSystemRefreshClientsHandler, createSystemStatusHandler, createSystemSyncHandler } from "./system"
 import {
   createUsageByAgentHandler,
   createUsageByModelHandler,
@@ -154,13 +162,38 @@ import {
   createFeatureFlagsSetRolloutHandler,
   createFeatureFlagsUpdateHandler,
 } from "./feature-flags"
+import {
+  createFeedbackAddUpdateHandler,
+  createFeedbackGetHandler,
+  createFeedbackListHandler,
+  createFeedbackSetPriorityHandler,
+  createFeedbackStatsHandler,
+  createFeedbackUpdateStatusHandler,
+} from "./feedback"
+import {
+  createVoiceTelemetrySessionsHandler,
+  createVoiceTelemetrySummaryHandler,
+} from "./voice-telemetry"
+import {
+  createUsersGrantAccessHandler,
+  createUsersUpdateRoleHandler,
+} from "./users"
 
 export interface AdminApiDomainDeps {
   db: Db
+  sessionManager?: SessionManager | null
   mcaService: McaService
   mcaManager?: McaManager | null
   workspaceService?: WorkspaceService | null
+  /** User management (admin-api.users-*) — same UserService as the admin UI domain. */
+  userService?: import("../../../auth/user-service").UserService | null
+  /** Credential store (user_credentials) — powers admin-api.apps-copy-auth. */
+  authManager?: import("../../../auth/auth-manager").AuthManager | null
   featureFlagService?: import("../../../services/feature-flag-service").FeatureFlagService | null
+  /** Broadcast layer. When present, exposes admin-api.system-refresh-clients
+   * (the "refresh all browsers" deploy signal). Absent → the action reports
+   * SERVICE_UNAVAILABLE instead of silently no-oping. */
+  pubSubService?: import("../../../services/pubsub-service").PubSubService | null
   /** Agent usage instrumentation deps. When present, exposes admin-api.agent-usage-* actions. */
   agentUsageHealthDeps?: AgentUsageHealthDeps | null
   /** F4·C1 return path. When present, the Session Trace is decorated with a
@@ -169,6 +202,16 @@ export interface AdminApiDomainDeps {
   /** F4·C2 signals dashboard. When present, admin-api.latitude-signals-list reads
    * Latitude's clustered signals. Absent → the action reports `unconfigured`. */
   latitudeReadClient?: import("../../../services/latitude-read-client").LatitudeReadClient | null
+  /** Voice Mode v2 F4: the native voice loop. When present, exposes
+   * admin-api.voice-telemetry-* (health telemetry query surface, AC-9).
+   * Absent → the actions report `unconfigured`. A GETTER (not the instance):
+   * the loop is constructed AFTER the WebSocketHandler in server-bootstrap,
+   * so the domain must resolve it lazily at call time. */
+  getVoiceLoop?: (() => import("../../../handlers/voice-loop").VoiceLoop | null) | null
+  /** Token usage per conversation (admin-api.channel-token-budget). When absent,
+   * the action is not registered (the chat header's "View token usage" is
+   * admin-only — see channel-usage.ts). */
+  usageService?: import("../../../services/usage-service").UsageService | null
 }
 
 export function register(router: WsRouter, deps: AdminApiDomainDeps): void {
@@ -177,10 +220,16 @@ export function register(router: WsRouter, deps: AdminApiDomainDeps): void {
     mcaService,
     mcaManager,
     workspaceService,
+    userService,
+    authManager,
     featureFlagService,
     agentUsageHealthDeps,
     latitudeSignalIndex,
     latitudeReadClient,
+    sessionManager,
+    getVoiceLoop,
+    pubSubService,
+    usageService,
   } = deps
 
   // --- Agents ---
@@ -236,14 +285,30 @@ export function register(router: WsRouter, deps: AdminApiDomainDeps): void {
     createAppsUpdatePermissionHandler(db, mcaService),
   )
   router.register("admin-api.apps-set-permissions", createAppsSetPermissionsHandler(db, mcaService))
+  // copy-app-auth admin replica (tn_aGVdSrVwIJi9mfvc) — shared service, masked summary only
+  router.register("admin-api.apps-copy-auth", createAppsCopyAuthHandler(db, authManager ?? null))
 
   // --- Access ---
   router.register("admin-api.access-list", createAccessListHandler(db, mcaService))
   router.register("admin-api.access-grant", createAccessGrantHandler(db, mcaService))
   router.register("admin-api.access-revoke", createAccessRevokeHandler(db, mcaService))
 
+  // --- Users (waitlist access + roles) — tn_h3KIMygPUs0nvl5F, Pablo 2-nov ---
+  // Thin wrappers over UserService.grantAccess()/updateRole(), the same
+  // surface the UI handlers (admin.grant-access / admin.update-user-role)
+  // use. Reached from mca.teros.admin via the admin_request bridge.
+  router.register(
+    "admin-api.users-grant-access",
+    createUsersGrantAccessHandler(db, userService ?? undefined),
+  )
+  router.register(
+    "admin-api.users-update-role",
+    createUsersUpdateRoleHandler(db, userService ?? undefined),
+  )
+
   // --- Catalog ---
   router.register("admin-api.catalog-list", createCatalogListHandler(db, mcaService))
+  router.register("admin-api.catalog-get", createCatalogGetHandler(db, mcaService))
 
   // --- MCA Management ---
   router.register(
@@ -260,6 +325,11 @@ export function register(router: WsRouter, deps: AdminApiDomainDeps): void {
   // --- System ---
   router.register("admin-api.system-status", createSystemStatusHandler(db, mcaManager ?? null))
   router.register("admin-api.system-sync", createSystemSyncHandler(db))
+  router.register("admin-api.system-active-sessions", createSystemActiveSessionsHandler(db, sessionManager ?? null))
+  router.register(
+    "admin-api.system-refresh-clients",
+    createSystemRefreshClientsHandler(db, sessionManager ?? null, pubSubService ?? null),
+  )
 
   // --- Usage ---
   router.register("admin-api.usage-summary", createUsageSummaryHandler(db))
@@ -272,6 +342,14 @@ export function register(router: WsRouter, deps: AdminApiDomainDeps): void {
     createUsageExpensiveConversationsHandler(db),
   )
   router.register("admin-api.usage-timeline", createUsageTimelineHandler(db))
+
+  // --- Channel usage (admin-only — Pablo 2026-10-30) ---
+  if (usageService) {
+    router.register(
+      "admin-api.channel-token-budget",
+      createChannelTokenBudgetHandler(db, usageService),
+    )
+  }
 
   // --- Agent usage instrumentation (new subsystem) ---
   router.register(
@@ -309,12 +387,33 @@ export function register(router: WsRouter, deps: AdminApiDomainDeps): void {
     "admin-api.latitude-signals-list",
     createLatitudeSignalsListHandler(db, latitudeReadClient ?? null),
   )
+  // Voice Mode v2 F4 — health telemetry query surface (AC-9; `unconfigured`
+  // when the loop is not wired — same pattern as latitude-signals-list).
+  router.register(
+    "admin-api.voice-telemetry-summary",
+    createVoiceTelemetrySummaryHandler(db, getVoiceLoop ?? (() => null)),
+  )
+  router.register(
+    "admin-api.voice-telemetry-sessions",
+    createVoiceTelemetrySessionsHandler(db, getVoiceLoop ?? (() => null)),
+  )
   if (agentUsageHealthDeps) {
     router.register(
       "admin-api.agent-usage-health",
       createAgentUsageHealthHandler(db, agentUsageHealthDeps),
     )
   }
+
+  // --- Feedback (admin panel) ---
+  // Thin wrappers over FeedbackAdminService — the same service the
+  // mca.teros.feedback-admin agent tools use. Views: tracking | future |
+  // dismissed (wont_fix|invalid) | completed | all.
+  router.register("admin-api.feedback-list", createFeedbackListHandler(db))
+  router.register("admin-api.feedback-get", createFeedbackGetHandler(db))
+  router.register("admin-api.feedback-update-status", createFeedbackUpdateStatusHandler(db))
+  router.register("admin-api.feedback-set-priority", createFeedbackSetPriorityHandler(db))
+  router.register("admin-api.feedback-add-update", createFeedbackAddUpdateHandler(db))
+  router.register("admin-api.feedback-stats", createFeedbackStatsHandler(db))
 
   // --- Feature Flags ---
   if (featureFlagService) {

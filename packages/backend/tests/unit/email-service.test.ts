@@ -8,31 +8,26 @@
  */
 
 import { join } from "node:path"
-import { afterAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
-// Do NOT `mock.module('../../src/config')` here: module mocks are process-global
-// and do not reset between test files, so the mocked config leaks into every
-// other suite (it caused TDZ ReferenceErrors — "Cannot access 'config' before
-// initialization" — in unrelated handlers like file-share). Instead we mutate
-// the real config object in place and restore it after this file's tests.
-import { config } from "../../src/config"
-
-const savedStaticBaseUrl = config.static.baseUrl
-const savedFromEmail = config.email.fromEmail
-const savedFromName = config.email.fromName
-;(config.static as any).baseUrl = "https://static.teros.ai"
-;(config.email as any).fromEmail = "hello@teros.ai"
-;(config.email as any).fromName = "Teros"
-
-afterAll(() => {
-  ;(config.static as any).baseUrl = savedStaticBaseUrl
-  ;(config.email as any).fromEmail = savedFromEmail
-  ;(config.email as any).fromName = savedFromName
-})
+import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
+// Capture the REAL config before mocking it. `mock.module` is process-global and
+// does NOT reset between test files, so an incomplete mock here leaks into every
+// other suite: any module that resolves this mock and reads a field we omitted
+// (e.g. message-handler reading `config.uploads.basePath`) throws. Spreading the
+// real config keeps the mock complete; we only override what EmailService needs.
+import { config as realConfig } from "../../src/config"
 
 const defaultResendResponse = () =>
   Promise.resolve({ data: { id: "mock-id" }, error: null })
 
 const mockResendSend = mock(defaultResendResponse)
+
+mock.module("../../src/config", () => ({
+  config: {
+    ...realConfig,
+    static: { baseUrl: "https://static.teros.ai" },
+    email: { fromEmail: "hello@teros.ai", fromName: "Teros" },
+  },
+}))
 
 mock.module("resend", () => ({
   Resend: class {
@@ -143,6 +138,54 @@ describe("EmailService", () => {
       expect(result.success).toBe(false)
       expect(result.error).toBe("Network failure")
       expect(mockResendSend).toHaveBeenCalledTimes(4)
+    })
+  })
+
+  describe("sendWelcome / sendAccessGranted", () => {
+    it("sends welcome email with correct subject and rendered template", async () => {
+      const result = await service.sendWelcome("new@example.com", { USER_NAME: "Dana" })
+
+      expect(result.success).toBe(true)
+      const call = mockResendSend.mock.calls[0][0] as any
+      expect(call.to).toBe("new@example.com")
+      expect(call.subject).toBe("Welcome to Teros")
+      expect(call.from).toBe("Teros <hello@teros.ai>")
+      expect(call.html).toContain("Dana")
+      expect(call.html).toContain("Your account is ready")
+      // Every placeholder in the real template must be supplied by the method.
+      expect(call.html).not.toMatch(/\{\{[A-Z_]+\}\}/)
+    })
+
+    it("sends the access-granted email from its own template", async () => {
+      const result = await service.sendAccessGranted("back@example.com", { USER_NAME: "Dana" })
+
+      expect(result.success).toBe(true)
+      const call = mockResendSend.mock.calls[0][0] as any
+      expect(call.subject).toBe("You're in. Welcome to Teros.")
+      expect(call.html).toContain("Full access is now yours")
+      expect(call.html).not.toContain("Your account is ready")
+      expect(call.html).not.toMatch(/\{\{[A-Z_]+\}\}/)
+    })
+
+    // welcome and access-granted are separate templates on purpose — they are
+    // different emails and are expected to diverge further. Only the welcome
+    // palette is pinned here, since that is what this feature owns;
+    // access-granted's styling is deliberately NOT asserted so it can be
+    // restyled without editing this test.
+    it("renders welcome in the light-mode palette", async () => {
+      await service.sendWelcome("light@example.com", { USER_NAME: "Dana" })
+
+      const html = (mockResendSend.mock.calls[0][0] as any).html as string
+      expect(html).toContain("#FAF7F0") // cream card
+      expect(html).toContain("#5E6AD2") // indigo accent
+      expect(html).not.toContain("#2D2D30") // not the dark card
+    })
+
+    it("treats a display name containing $ patterns as literal text", async () => {
+      await service.sendWelcome("dollar@example.com", { USER_NAME: "$& $` Dana" })
+
+      const html = (mockResendSend.mock.calls[0][0] as any).html as string
+      expect(html).toContain("$& $` Dana")
     })
   })
 

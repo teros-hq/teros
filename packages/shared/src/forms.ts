@@ -1,6 +1,6 @@
 /**
  * Inline user forms — agent → user structured input
- *
+ * (docs/specs/20260705_inline-user-forms.md)
  *
  * The agent composes a form from a CLOSED set of platform-defined field types
  * via the built-in `request-user-input` tool; the user fills it inline in the

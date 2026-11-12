@@ -29,19 +29,20 @@ import type React from 'react';
 import { Text } from 'tamagui';
 import { Badge, ToolCallCard, useColors, useMcaTheme } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
+import { backendUrl } from '../../../../config/runtime';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
 /**
- * Logo path follows the canonical `/static/mcas/<id>/icon.png` pattern (see
- * `feedback_mca_icon_path_canonical`). The manifest declares `icon: "icon.png"`
- * — `getMcaStaticUrl` adds the directory prefix server-side. Older MCAs in
- * the codebase use legacy `/static/<name>-icon.png` paths; new ones use
- * `/static/mcas/<id>/icon.png`.
+ * Logo path follows the canonical `/static/mcas/<id>/icon.svg` pattern (see
+ * `feedback_mca_icon_path_canonical`). Mono SVG so the icon inherits the
+ * theme colour via McaIcon inline rendering in HeaderRow. Older MCAs in
+ * the codebase used legacy `/static/<name>-icon.png` paths; the convention
+ * now is `/static/mcas/<id>/icon.svg`.
  */
-export const SLACK_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/mcas/mca.slack/icon.png`;
+export const SLACK_ICON = `${backendUrl()}/static/mcas/mca.slack/icon.svg`;
 
 /**
  * Slack official brand palette. Source: Slack media kit PDF.

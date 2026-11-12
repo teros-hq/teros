@@ -1,257 +1,218 @@
 /**
  * AuthPanel Component
  *
- * Collapsible panel for app authentication configuration.
- * Contains two subsections:
+ * Collapsible panel for app authentication configuration, in the OS
+ * prototype's language (a lifted Card with a status Dot, section notes on
+ * the wash, Field inputs and pill buttons). Contains two subsections:
  * 1. OAuth Connection - Connect/disconnect OAuth accounts
  * 2. Credentials - Edit API keys and secrets
  */
 
+import React, { useState } from "react"
+import { useTranslation } from "react-i18next"
+import { Animated, Linking, Platform, Pressable, View } from "react-native"
+import { usePulseAnimation } from "../../hooks/usePulseAnimation"
+import { AppSpinner } from "../../components/ui"
+import { ConfirmDialog } from "../../components/mca/primitives/ConfirmDialog"
+import { colors as semantic } from "../../components/mca/primitives/colors"
+import { useColors } from "../../components/mca/primitives/useColors"
 import {
-  AlertCircle,
-  Check,
-  ChevronRight,
-  Copy,
-  ExternalLink,
-  Eye,
-  EyeOff,
-  FolderPlus,
-  Info,
-  Key,
-  Link,
-  Pencil,
-  RefreshCw,
-  Unlink,
-  X,
-} from '@tamagui/lucide-icons';
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  Animated,
-  Easing,
-  Linking,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
-import { usePulseAnimation } from '../../hooks/usePulseAnimation';
-import { AppSpinner } from '../../components/ui';
-import {
-  colors as semantic,
-  indicators,
-} from '../../components/mca/primitives/colors';
-import { FONT_MONO, FONT_SANS } from '../../components/mca/primitives/fonts';
-import { type AdaptiveColors, useColors } from '../../components/mca/primitives/useColors';
+  Badge,
+  type BadgeTone,
+  Btn,
+  Card,
+  Field,
+  FieldHelp,
+  FieldLabel,
+  IconBtn,
+  Ph,
+  T,
+} from "../ui/ds"
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type OAuthStatus = 'connected' | 'disconnected' | 'expired' | 'error';
+export type OAuthStatus = "connected" | "disconnected" | "expired" | "error"
 
 export interface OAuthInfo {
-  provider: string;
-  status: OAuthStatus;
-  email?: string;
+  provider: string
+  status: OAuthStatus
+  email?: string
   /**
    * Login/handle del proveedor (e.g. GitHub `login`). Cuando esté presente
    * se prefiere mostrar `@${userLogin}` sobre el email — relevante para
    * GitHub App con userOAuth donde el email puede no estar verificado.
    */
-  userLogin?: string;
-  expiresAt?: string;
-  scopes?: string[];
-  error?: string;
+  userLogin?: string
+  expiresAt?: string
+  scopes?: string[]
+  error?: string
   /**
    * Auth method used by the MCA. `github-app` swaps the OAuth-style
    * "Connect" copy for GitHub App-style "Install" copy and adds a banner
    * pointing to `/settings/installations/<id>` on github.com when connected.
    * Defaults to `'oauth2'` when omitted.
    */
-  authType?: 'oauth2' | 'github-app';
+  authType?: "oauth2" | "github-app"
   /** GitHub App installation ID (only when `authType === 'github-app'` and connected). */
-  installationId?: string;
+  installationId?: string
   /** GitHub App slug — used to build the install URL. */
-  appSlug?: string;
+  appSlug?: string
   /** True when a legacy OAuth ACCESS_TOKEN is present without an INSTALLATION_ID — surface migration banner. */
-  legacyOAuth?: boolean;
+  legacyOAuth?: boolean
+  installed?: boolean
+  installUrl?: string
+  installations?: GitHubInstallation[]
+  savedBranches?: GitHubSavedBranch[]
 }
 
+export interface GitHubSavedBranch {
+  repo: string
+  branch: string
+  savedAt: string
+  url: string
+}
+
+export interface GitHubInstallation {
+  id: string
+  account: string
+  accountType?: string
+  manageUrl?: string
+  suspended?: boolean
+  pendingPermissions?: string[]
+}
+
+const TAP_SLOP = { top: 8, bottom: 8, left: 4, right: 4 }
+
 export interface CredentialField {
-  name: string;
-  label?: string;
-  type: 'text' | 'password';
-  required: boolean;
-  placeholder?: string;
-  hint?: string;
-  value?: string;
-  isSet?: boolean;
+  name: string
+  label?: string
+  type: "text" | "password"
+  required: boolean
+  placeholder?: string
+  hint?: string
+  value?: string
+  isSet?: boolean
 }
 
 export interface AuthPanelProps {
   /** OAuth info (null if not OAuth-based) */
-  oauth?: OAuthInfo | null;
+  oauth?: OAuthInfo | null
   /** Credential fields to display */
-  credentials?: CredentialField[];
+  credentials?: CredentialField[]
   /** Loading state */
-  loading?: boolean;
+  loading?: boolean
   /** Whether there are unsaved changes */
-  hasChanges?: boolean;
+  hasChanges?: boolean
   /** Saving state */
-  saving?: boolean;
+  saving?: boolean
   /** OAuth callbacks */
-  onConnect?: () => void;
-  onDisconnect?: () => void;
-  onRefresh?: () => void;
-  connecting?: boolean;
-  disconnecting?: boolean;
+  onConnect?: () => void
+  onDisconnect?: () => void
+  onRefresh?: () => void
+  connecting?: boolean
+  disconnecting?: boolean
   /** Credentials callbacks */
-  onCredentialChange?: (name: string, value: string) => void;
-  onSaveCredentials?: () => void;
+  onCredentialChange?: (name: string, value: string) => void
+  onSaveCredentials?: () => void
   /** Initial expanded state */
-  defaultExpanded?: boolean;
+  defaultExpanded?: boolean
   /** Message shown when system-level secrets are missing (admin must configure) */
-  systemSetupMessage?: string;
+  systemSetupMessage?: string
 }
 
-// ============================================================================
-// Palette
-// ============================================================================
-//
-// Theme-adaptive palette derived from `useColors()` (surface/text/border) plus
-// the theme-agnostic semantic colors (status signals). Same shape as the
-// pre-redesign hardcoded `colors` object so the sub-components keep reading
-// `p.<token>`. Each sub-component calls `useColors()` and builds its own `p`
-// (the hook is memoized, so this is cheap).
+type PanelStatus = "ready" | "pending" | "warning" | "error"
+type BadgeVariant = "green" | "blue" | "yellow" | "red" | "gray"
 
-function makePalette(c: AdaptiveColors) {
-  return {
-    // Status (semantic — theme-agnostic signals)
-    ready: semantic.green,
-    pending: semantic.indigo,
-    warning: semantic.amber,
-    error: semantic.red,
+const VARIANT_TONE: Record<BadgeVariant, BadgeTone> = {
+  green: "g",
+  blue: "i",
+  yellow: "a",
+  red: "r",
+  gray: "muted",
+}
 
-    // Glows
-    glowReady: 'rgba(34, 197, 94, 0.5)',
-    glowPending: 'rgba(94, 106, 210, 0.5)',
-    glowWarning: 'rgba(245, 158, 11, 0.5)',
-    glowError: 'rgba(239, 68, 68, 0.5)',
-
-    // Section
-    iconKey: semantic.violet,
-
-    // Badges (theme-adaptive)
-    badgeGreen: c.badges.ok,
-    badgeBlue: c.badges.info,
-    badgeYellow: c.badges.warn,
-    badgeRed: c.badges.err,
-    badgeGray: c.badges.gray,
-
-    // Text (theme-adaptive)
-    textPrimary: c.text,
-    textSecondary: c.text2,
-    textMuted: c.text3,
-    textBright: c.text,
-
-    // Backgrounds (theme-adaptive)
-    panelBg: c.bgCard,
-    sectionBg: c.bgInner,
-    cardBg: c.bgInner,
-    inputBg: c.bgInner,
-
-    // Borders (theme-adaptive)
-    border: c.border,
-    borderFocus: semantic.indigo,
-
-    // Buttons
-    btnDanger: { bg: c.badges.err.bg, text: c.badges.err.text, border: c.badges.err.border },
-    btnPrimary: { bg: c.badges.info.bg, text: c.badges.info.text, border: c.badges.info.border },
-    btnWarning: { bg: c.badges.warn.bg, text: c.badges.warn.text, border: c.badges.warn.border },
-    btnGhost: { bg: 'transparent', text: c.text2, border: c.borderStrong },
-
-    // Chevron
-    chevron: c.text3,
-  };
+const STATUS_COLOR: Record<PanelStatus, string> = {
+  ready: semantic.green,
+  pending: semantic.purple300,
+  warning: semantic.amber,
+  error: semantic.red,
 }
 
 // ============================================================================
 // Status Dot Component
 // ============================================================================
 
-interface StatusDotProps {
-  status: 'ready' | 'pending' | 'warning' | 'error';
-}
-
-function StatusDot({ status }: StatusDotProps) {
-  const colors = makePalette(useColors());
-  const colorMap = {
-    ready: { color: colors.ready, glow: colors.glowReady },
-    pending: { color: colors.pending, glow: colors.glowPending },
-    warning: { color: colors.warning, glow: colors.glowWarning },
-    error: { color: colors.error, glow: colors.glowError },
-  };
-
-  const { color, glow } = colorMap[status];
-
-  const pulseAnim = usePulseAnimation(status === 'pending');
-
+function StatusDot({ status }: { status: PanelStatus }) {
+  const pulseAnim = usePulseAnimation(status === "pending")
   return (
     <Animated.View
       style={{
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: color,
+        backgroundColor: STATUS_COLOR[status],
         flexShrink: 0,
-        opacity: status === 'pending' ? pulseAnim : 1,
-        shadowColor: glow,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 4,
-        elevation: 3,
+        opacity: status === "pending" ? pulseAnim : 1,
       }}
     />
-  );
+  )
 }
 
 // ============================================================================
-// Badge Component
+// Note (`.ap-note`) — a wash box with an icon and a line of copy
 // ============================================================================
 
-interface BadgeProps {
-  text: string;
-  variant: 'green' | 'blue' | 'yellow' | 'red' | 'gray';
-}
-
-function Badge({ text, variant }: BadgeProps) {
-  const colors = makePalette(useColors());
-  const colorMap = {
-    green: colors.badgeGreen,
-    blue: colors.badgeBlue,
-    yellow: colors.badgeYellow,
-    red: colors.badgeRed,
-    gray: colors.badgeGray,
-  };
-
-  const { text: textColor, bg, border } = colorMap[variant];
-
+function Note({
+  tone,
+  icon,
+  children,
+}: {
+  tone: "neutral" | "amber" | "red" | "info"
+  icon: string
+  children: React.ReactNode
+}) {
+  const c = useColors()
+  const bg =
+    tone === "amber"
+      ? c.tint.a.bg
+      : tone === "red"
+        ? c.tint.r.bg
+        : tone === "info"
+          ? c.tint.i.bg
+          : c.wash
+  const fg =
+    tone === "amber"
+      ? c.tint.a.tx
+      : tone === "red"
+        ? c.tint.r.tx
+        : tone === "info"
+          ? c.tint.i.tx
+          : c.text2
   return (
     <View
       style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 10,
+        padding: 12,
+        paddingHorizontal: 14,
+        borderRadius: 10,
         backgroundColor: bg,
-        borderWidth: 1,
-        borderColor: border,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 4,
       }}
     >
-      <Text color={textColor} fontSize={11} fontFamily={FONT_MONO} fontWeight="500">
-        {text}
-      </Text>
+      <Ph
+        name={icon}
+        size={16}
+        color={tone === "neutral" ? c.text3 : fg}
+        style={{ marginTop: 1 }}
+      />
+      <T step="12" color={fg} style={{ flex: 1, lineHeight: 17 }}>
+        {children}
+      </T>
     </View>
-  );
+  )
 }
 
 // ============================================================================
@@ -259,168 +220,111 @@ function Badge({ text, variant }: BadgeProps) {
 // ============================================================================
 
 interface CredentialInputProps {
-  field: CredentialField;
-  onChange: (value: string) => void;
+  field: CredentialField
+  onChange: (value: string) => void
 }
 
 function CredentialInput({ field, onChange }: CredentialInputProps) {
-  const c = useColors();
-  const colors = makePalette(c);
-  const alreadySet = !!(field.isSet && !field.value);
-  const [editing, setEditing] = useState(!alreadySet);
-  const [showValue, setShowValue] = useState(false);
-  const [localValue, setLocalValue] = useState(field.value || '');
-  const [isFocused, setIsFocused] = useState(false);
+  const c = useColors()
+  const alreadySet = !!(field.isSet && !field.value)
+  const [editing, setEditing] = useState(!alreadySet)
+  const [showValue, setShowValue] = useState(false)
+  const [localValue, setLocalValue] = useState(field.value || "")
 
-  const isPassword = field.type === 'password';
-  const displayLabel = field.label || field.name;
-  const isConfigured = alreadySet || !!localValue;
+  const isPassword = field.type === "password"
+  const displayLabel = field.label || field.name
+  const isConfigured = alreadySet || !!localValue
 
   const handleChange = (text: string) => {
-    setLocalValue(text);
-    onChange(text);
-  };
+    setLocalValue(text)
+    onChange(text)
+  }
 
   return (
     <View style={{ marginBottom: 16 }}>
-      {/* Label row */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <Text fontFamily={FONT_SANS} fontSize={12} color={colors.textSecondary} fontWeight="500">
-          {displayLabel}
-        </Text>
-        {field.required && !isConfigured ? (
-          <Text fontFamily={FONT_SANS} fontSize={10} color={colors.error} fontWeight="500">
-            requerido
-          </Text>
-        ) : !field.required ? (
-          <Text fontFamily={FONT_SANS} fontSize={10} color={colors.textMuted}>
-            opcional
-          </Text>
-        ) : null}
-      </View>
+      <FieldLabel
+        required={field.required && !isConfigured}
+        right={
+          !field.required ? (
+            <T step="codenote" tone="text3">
+              opcional
+            </T>
+          ) : !isConfigured ? (
+            <T step="codenote" tone="danger">
+              requerido
+            </T>
+          ) : null
+        }
+      >
+        {displayLabel}
+      </FieldLabel>
 
       {/* Configured state — collapsed */}
       {isConfigured && !editing ? (
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            backgroundColor: colors.inputBg,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            height: 36,
+            paddingLeft: 14,
+            paddingRight: 6,
+            backgroundColor: c.field,
             borderWidth: 1,
-            borderColor: colors.badgeGreen.border,
-            borderRadius: 6,
+            borderColor: c.tint.g.bd,
+            borderRadius: 10,
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Check size={13} color={colors.ready} />
-            <Text fontSize={13} color={colors.ready} fontFamily={FONT_MONO}>
-              {'•'.repeat(16)}
-            </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Ph name="check" size={13} color={c.tint.g.tx} />
+            <T step="code" color={c.tint.g.tx}>
+              {"•".repeat(16)}
+            </T>
           </View>
-          <TouchableOpacity
-            onPress={() => setEditing(true)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 4,
-              backgroundColor: c.bgCardHover,
-            }}
-          >
-            <Pencil size={11} color={colors.textMuted} />
-            <Text fontFamily={FONT_SANS} fontSize={11} color={colors.textMuted}>
-              Cambiar
-            </Text>
-          </TouchableOpacity>
+          <Btn variant="ghost" size="sm" icon="pencil-simple" onPress={() => setEditing(true)}>
+            Cambiar
+          </Btn>
         </View>
       ) : (
         /* Edit state — full input */
-        <View style={{ position: 'relative' }}>
-          <TextInput
-            value={localValue}
-            onChangeText={handleChange}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            placeholder={field.placeholder}
-            placeholderTextColor={colors.textMuted}
-            secureTextEntry={isPassword && !showValue}
-            autoFocus={alreadySet}
-            style={{
-              width: '100%',
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              paddingRight: isPassword ? 80 : 44,
-              backgroundColor: colors.inputBg,
-              borderWidth: 1,
-              borderColor: isFocused ? colors.borderFocus : colors.border,
-              borderRadius: 6,
-              color: colors.textPrimary,
-              fontSize: 13,
-              fontFamily: FONT_MONO,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              right: 8,
-              top: 0,
-              bottom: 0,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            {isPassword && (
-              <TouchableOpacity
-                onPress={() => setShowValue(!showValue)}
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 4,
-                  backgroundColor: c.bgCardHover,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {showValue ? (
-                  <EyeOff size={14} color={colors.textMuted} />
-                ) : (
-                  <Eye size={14} color={colors.textMuted} />
-                )}
-              </TouchableOpacity>
-            )}
-            {alreadySet && (
-              <TouchableOpacity
-                onPress={() => { setEditing(false); setLocalValue(''); onChange(''); }}
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 4,
-                  backgroundColor: c.bgCardHover,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <X size={14} color={colors.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+        <Field
+          mono
+          value={localValue}
+          onChangeText={handleChange}
+          placeholder={field.placeholder}
+          secureTextEntry={isPassword && !showValue}
+          autoFocus={alreadySet}
+          containerStyle={{ paddingRight: 6 }}
+          right={
+            <View style={{ flexDirection: "row", gap: 2 }}>
+              {isPassword ? (
+                <IconBtn
+                  icon={showValue ? "eye-slash" : "eye"}
+                  plain
+                  sm
+                  onPress={() => setShowValue(!showValue)}
+                />
+              ) : null}
+              {alreadySet ? (
+                <IconBtn
+                  icon="x"
+                  plain
+                  sm
+                  onPress={() => {
+                    setEditing(false)
+                    setLocalValue("")
+                    onChange("")
+                  }}
+                />
+              ) : null}
+            </View>
+          }
+        />
       )}
 
-      {/* Hint */}
-      {field.hint && (
-        <Text fontFamily={FONT_SANS} fontSize={11} color={colors.textMuted} style={{ marginTop: 6, lineHeight: 16 }}>
-          {field.hint}
-        </Text>
-      )}
+      {field.hint ? <FieldHelp>{field.hint}</FieldHelp> : null}
     </View>
-  );
+  )
 }
 
 // ============================================================================
@@ -428,382 +332,300 @@ function CredentialInput({ field, onChange }: CredentialInputProps) {
 // ============================================================================
 
 interface OAuthSectionProps {
-  oauth: OAuthInfo;
-  onConnect?: () => void;
-  onDisconnect?: () => void;
-  onRefresh?: () => void;
-  connecting?: boolean;
-  disconnecting?: boolean;
+  oauth: OAuthInfo
+  onConnect?: () => void
+  onDisconnect?: () => void
+  onRefresh?: () => void
+  connecting?: boolean
+  disconnecting?: boolean
 }
 
 function OAuthSection({
   oauth,
   onConnect,
-  onDisconnect,
   onRefresh,
   connecting,
-  disconnecting,
 }: OAuthSectionProps) {
-  const c = useColors();
-  const colors = makePalette(c);
-  const isConnected = oauth.status === 'connected';
-  const isExpired = oauth.status === 'expired';
-  const isError = oauth.status === 'error';
-  const needsConnect = oauth.status === 'disconnected';
-  const isGitHubApp = oauth.authType === 'github-app';
-  const isLegacyOAuth = oauth.legacyOAuth === true;
+  const c = useColors()
+  const { t } = useTranslation()
+  const isConnected = oauth.status === "connected"
+  const isExpired = oauth.status === "expired"
+  const isError = oauth.status === "error"
+  const needsConnect = oauth.status === "disconnected"
+  const isGitHubApp = oauth.authType === "github-app"
+  const isLegacyOAuth = oauth.legacyOAuth === true
+  const provider = oauth.provider
 
-  const getStatusBadge = () => {
-    switch (oauth.status) {
-      case 'connected':
-        return { text: 'conectado', variant: 'green' as const };
-      case 'disconnected':
-        return { text: 'desconectado', variant: 'blue' as const };
-      case 'expired':
-        return { text: 'expirado', variant: 'yellow' as const };
-      case 'error':
-        return { text: 'error', variant: 'red' as const };
-    }
-  };
+  const badge: { text: string; variant: BadgeVariant } = {
+    connected: { text: t("authPanel.status.connected"), variant: "green" as BadgeVariant },
+    disconnected: { text: t("authPanel.status.disconnected"), variant: "blue" as BadgeVariant },
+    expired: { text: t("authPanel.status.expired"), variant: "yellow" as BadgeVariant },
+    error: { text: t("authPanel.status.error"), variant: "red" as BadgeVariant },
+  }[oauth.status]
 
-  const badge = getStatusBadge();
-  const sectionTitle = isGitHubApp ? 'GitHub' : 'OAuth connection';
-  const connectVerb = 'Connect';
-  const disconnectVerb = 'Disconnect';
+  const sectionTitle = isGitHubApp ? "GitHub" : t("authPanel.oauthTitle")
+
+  const primary = oauth.userLogin ? `@${oauth.userLogin}` : (oauth.email ?? "")
+  const secondary = oauth.userLogin && oauth.email ? oauth.email : null
+  const showAccount = (isConnected || isExpired) && !!primary
+  const installations = oauth.installations
+  const installUrl =
+    oauth.installUrl ??
+    (oauth.appSlug ? `https://github.com/apps/${oauth.appSlug}/installations/select_target` : undefined)
 
   return (
-    <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-      {/* Subsection header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Text
-          fontFamily={FONT_SANS}
-          fontSize={12}
-          fontWeight="600"
-          color={colors.textMuted}
-          style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}
-        >
+    <View style={{ padding: 16, gap: 12, borderBottomWidth: 1, borderBottomColor: c.border }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <T step="xs" tone="text3">
           {sectionTitle}
-        </Text>
-        <Badge text={badge.text} variant={badge.variant} />
+        </T>
+        <Badge tone={VARIANT_TONE[badge.variant]} mono sm>
+          {badge.text}
+        </Badge>
       </View>
 
-      {/* Legacy OAuth migration banner — shown only for github-app MCAs that
-          still hold an ACCESS_TOKEN from the pre-v4 era. */}
-      {isGitHubApp && isLegacyOAuth && (
+      {isGitHubApp && isLegacyOAuth ? (
+        <Note tone="amber" icon="warning-circle">
+          {t("authPanel.github.legacy")}
+        </Note>
+      ) : null}
+
+      {needsConnect || isExpired || isError ? (
+        <Note
+          tone={isError ? "red" : isExpired ? "amber" : "info"}
+          icon={isError ? "warning-circle" : "info"}
+        >
+          {isError
+            ? oauth.error || t("authPanel.errorValidating")
+            : isExpired
+              ? t("authPanel.expiredNote")
+              : isGitHubApp
+                ? t("authPanel.github.connectNote")
+                : t("authPanel.connectNote", { provider })}
+        </Note>
+      ) : null}
+
+      {showAccount ? (
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            gap: 10,
-            padding: 12,
-            backgroundColor: colors.badgeYellow.bg,
-            borderRadius: 6,
-            marginBottom: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            padding: 10,
+            paddingHorizontal: 12,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: c.border,
+            backgroundColor: c.bgStep,
+            opacity: isExpired ? 0.7 : 1,
           }}
         >
-          <AlertCircle size={16} color={colors.badgeYellow.text} />
-          <Text
-            flex={1}
-            fontFamily={FONT_SANS}
-            fontSize={13}
-            color={colors.badgeYellow.text}
-            style={{ lineHeight: 20 }}
-          >
-            Tu conexión OAuth está deprecada. Instala la Teros App una sola vez para seguir
-            usando esta integración — tus repos siguen siendo los mismos.
-          </Text>
-        </View>
-      )}
-
-      {/* Info message for non-connected states */}
-      {(needsConnect || isExpired || isError) && (
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            gap: 10,
-            padding: 12,
-            backgroundColor: isError
-              ? colors.badgeRed.bg
-              : isExpired
-                ? colors.badgeYellow.bg
-                : colors.badgeBlue.bg,
-            borderRadius: 6,
-            marginBottom: 12,
-          }}
-        >
-          {isError ? (
-            <AlertCircle size={16} color={colors.badgeRed.text} />
-          ) : (
-            <Info size={16} color={isExpired ? colors.badgeYellow.text : colors.badgeBlue.text} />
-          )}
-          <Text
-            flex={1}
-            fontFamily={FONT_SANS}
-            fontSize={13}
-            color={
-              isError
-                ? colors.badgeRed.text
-                : isExpired
-                  ? colors.badgeYellow.text
-                  : colors.badgeBlue.text
-            }
-            style={{ lineHeight: 20 }}
-          >
-            {isError
-              ? oauth.error || 'Error al validar credenciales.'
-              : isExpired
-                ? 'Tu sesión ha caducado. Reconecta tu cuenta para continuar.'
-                : isGitHubApp
-                  ? 'Conecta tu cuenta de GitHub. Tras autorizar, podrás añadir tu cuenta personal u otras organizaciones para dar acceso a sus repos. Las acciones (commits, PRs, comments) aparecerán firmadas con tu identidad.'
-                  : `Conecta tu cuenta de ${oauth.provider} para que el agente pueda acceder a este servicio.`}
-          </Text>
-        </View>
-      )}
-
-      {/* Connected account card */}
-      {(() => {
-        // Identidad mostrada: prioriza @login (GitHub user OAuth) sobre email.
-        const primary = oauth.userLogin
-          ? `@${oauth.userLogin}`
-          : oauth.email ?? '';
-        const secondary = oauth.userLogin && oauth.email ? oauth.email : null;
-        if (!(isConnected || isExpired) || !primary) return null;
-        return (
           <View
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 12,
-              padding: 12,
-              backgroundColor: colors.cardBg,
-              borderRadius: 8,
-              marginBottom: 12,
-              opacity: isExpired ? 0.6 : 1,
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: isExpired ? c.tint.a.bg : c.tint.m.bg,
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: isExpired ? colors.badgeYellow.bg : colors.badgeBlue.bg,
-                borderWidth: 1,
-                borderColor: isExpired ? colors.badgeYellow.border : colors.badgeBlue.border,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text
-                fontFamily={FONT_SANS}
-                fontSize={14}
-                fontWeight="600"
-                color={isExpired ? colors.badgeYellow.text : colors.badgeBlue.text}
-              >
-                {(oauth.userLogin?.charAt(0) ?? oauth.email?.charAt(0) ?? '?').toUpperCase()}
-              </Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text fontFamily={FONT_SANS} fontSize={14} color={colors.textBright}>
-                {primary}
-              </Text>
-              <Text
-                fontFamily={FONT_SANS}
-                fontSize={12}
-                color={isExpired ? colors.badgeYellow.text : colors.textMuted}
-                style={{ marginTop: 2 }}
-              >
-                {isExpired
-                  ? 'Sesión caducada — reconecta tu cuenta'
-                  : secondary ?? oauth.provider ?? 'Conectado'}
-              </Text>
-            </View>
+            <T step="bserif" color={isExpired ? c.tint.a.tx : c.tint.m.tx}>
+              {(oauth.userLogin?.charAt(0) ?? oauth.email?.charAt(0) ?? "?").toUpperCase()}
+            </T>
           </View>
-        );
-      })()}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <T step="sm" ellipsis>
+              {primary}
+            </T>
+            <T step="12" color={isExpired ? c.tint.a.tx : c.text3} ellipsis>
+              {isExpired ? t("authPanel.expiredAccount") : (secondary ?? provider ?? t("authPanel.status.connected"))}
+            </T>
+          </View>
+        </View>
+      ) : null}
 
-      {/* GitHub App: secondary panel with "add account / configure repos" link.
-          Renders only when connected — sin esto el user no tiene forma de instalar
-          la App en su cuenta personal o gestionar los repos accesibles, lo que
-          confunde después del primer "Conectar". */}
-      {isConnected && isGitHubApp && oauth.appSlug && (
-        <View
-          style={{
-            padding: 12,
-            backgroundColor: colors.badgeBlue.bg,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: colors.badgeBlue.border,
-            marginBottom: 12,
-          }}
-        >
-          <Text fontFamily={FONT_SANS} fontSize={12} color={colors.textMuted} style={{ marginBottom: 8, lineHeight: 18 }}>
-            ¿No ves todos tus repos? La Teros App debe estar instalada en cada cuenta u
-            organización cuyos repos quieras usar. Añadir o configurar instalaciones se hace
-            en GitHub.
-          </Text>
-          <TouchableOpacity
-            onPress={() =>
-              Linking.openURL(
-                `https://github.com/apps/${oauth.appSlug}/installations/select_target`,
-              )
-            }
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              padding: 10,
-              backgroundColor: colors.btnGhost.bg,
-              borderRadius: 6,
-              borderWidth: 1,
-              borderColor: colors.btnGhost.border,
-            }}
+      {isConnected && isGitHubApp && oauth.installed === false ? (
+        <Note tone="amber" icon="warning-circle">
+          {t("authPanel.github.notInstalled")}
+        </Note>
+      ) : null}
+
+      {isConnected && isGitHubApp && installations && installations.length > 0 ? (
+        <View style={{ gap: 8 }}>
+          <T step="12" tone="text3">
+            {t("authPanel.github.installationsTitle")}
+          </T>
+          {installations.map((inst) => (
+            <View
+              key={inst.id}
+              style={{ gap: 8, padding: 10, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <T step="sm" style={{ flex: 1, minWidth: 120 }} ellipsis>
+                  {`@${inst.account}`}
+                </T>
+                {inst.accountType === "Organization" ? (
+                  <Badge tone="m" sm>
+                    {t("authPanel.github.organization")}
+                  </Badge>
+                ) : null}
+                {inst.suspended ? (
+                  <Badge tone="r" sm>
+                    {t("authPanel.github.suspended")}
+                  </Badge>
+                ) : null}
+                {inst.manageUrl ? (
+                  <Btn
+                    variant="sec"
+                    size="sm"
+                    iconRight="arrow-up-right"
+                    hitSlop={TAP_SLOP}
+                    accessibilityLabel={t("authPanel.github.manageA11y", { account: inst.account })}
+                    onPress={() => Linking.openURL(inst.manageUrl as string)}
+                  >
+                    {t("authPanel.github.manage")}
+                  </Btn>
+                ) : null}
+              </View>
+              {inst.pendingPermissions && inst.pendingPermissions.length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  <Note tone="amber" icon="warning-circle">
+                    {t("authPanel.github.pendingPermissions", {
+                      account: inst.account,
+                      permissions: inst.pendingPermissions.map((p) => t(`authPanel.github.permission.${p}`, { defaultValue: p })).join(", "),
+                    })}
+                  </Note>
+                  {inst.manageUrl ? (
+                    <Btn
+                      variant="amber"
+                      size="sm"
+                      iconRight="arrow-up-right"
+                      hitSlop={TAP_SLOP}
+                      accessibilityLabel={t("authPanel.github.reviewA11y", { account: inst.account })}
+                      onPress={() => Linking.openURL(inst.manageUrl as string)}
+                      style={{ alignSelf: "flex-start" }}
+                    >
+                      {t("authPanel.github.review")}
+                    </Btn>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {isConnected && isGitHubApp && installUrl ? (
+        <View style={{ gap: 10, padding: 12, paddingHorizontal: 14, borderRadius: 10, backgroundColor: c.wash }}>
+          <T step="12" tone="text2" style={{ lineHeight: 17 }}>
+            {t("authPanel.github.installHint")}
+          </T>
+          <Btn
+            variant={oauth.installed === false ? "primary" : "sec"}
+            size="sm"
+            icon="folder-plus"
+            iconRight="arrow-up-right"
+            hitSlop={TAP_SLOP}
+            accessibilityLabel={t("authPanel.github.installA11y")}
+            onPress={() => Linking.openURL(installUrl)}
+            style={{ alignSelf: "flex-start" }}
           >
-            <FolderPlus size={14} color={colors.btnGhost.text} />
-            <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="500" color={colors.btnGhost.text}>
-              Añadir cuenta o configurar repos en GitHub
-            </Text>
-            <ExternalLink size={12} color={colors.textMuted} />
-          </TouchableOpacity>
+            {oauth.installed === false ? t("authPanel.github.install") : t("authPanel.github.addAccount")}
+          </Btn>
+          <T step="12" tone="text3" style={{ lineHeight: 17 }}>
+            {t("authPanel.github.cloneVisibility")}
+          </T>
         </View>
-      )}
+      ) : null}
 
-      {/* Action buttons */}
-      {isConnected && (
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {onRefresh && (
-            <TouchableOpacity
-              onPress={onRefresh}
-              style={{
-                flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                padding: 10,
-                backgroundColor: colors.btnGhost.bg,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: colors.btnGhost.border,
-              }}
+      {isConnected && isGitHubApp && oauth.savedBranches && oauth.savedBranches.length > 0 ? (
+        <View style={{ gap: 8 }}>
+          <T step="12" tone="text3">
+            {t("authPanel.github.savedTitle")}
+          </T>
+          {oauth.savedBranches.map((saved) => (
+            <View
+              key={`${saved.repo}:${saved.branch}`}
+              style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap", padding: 10, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border }}
             >
-              <RefreshCw size={14} color={colors.btnGhost.text} />
-              <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="500" color={colors.btnGhost.text}>
-                Refrescar
-              </Text>
-            </TouchableOpacity>
-          )}
-          {/* GitHub App: link externo para gestionar la installation actual del user
-              en GitHub. NO desconecta — eso es el botón rojo de abajo. Antes había
-              un solo botón "Manage on GitHub" que decía manage pero hacía disconnect:
-              copy y acción no coincidían y el user perdía el token al clicar. */}
-          {isGitHubApp && oauth.installationId && (
-            <TouchableOpacity
-              onPress={() =>
-                Linking.openURL(
-                  `https://github.com/settings/installations/${oauth.installationId}`,
-                )
-              }
-              style={{
-                flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                padding: 10,
-                backgroundColor: colors.btnGhost.bg,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: colors.btnGhost.border,
-              }}
-            >
-              <ExternalLink size={14} color={colors.btnGhost.text} />
-              <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="500" color={colors.btnGhost.text}>
-                Gestionar en GitHub
-              </Text>
-            </TouchableOpacity>
-          )}
-          {onDisconnect && (
-            <TouchableOpacity
-              onPress={onDisconnect}
-              disabled={disconnecting}
-              style={{
-                flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                padding: 10,
-                backgroundColor: colors.btnDanger.bg,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: colors.btnDanger.border,
-                opacity: disconnecting ? 0.6 : 1,
-              }}
-            >
-              {disconnecting ? (
-                <AppSpinner size="sm" variant="danger" />
-              ) : (
-                <>
-                  <Unlink size={14} color={colors.btnDanger.text} />
-                  <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="500" color={colors.btnDanger.text}>
-                    Desconectar
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-
-      {(needsConnect || isExpired || isError) && onConnect && (
-        <TouchableOpacity
-          onPress={onConnect}
-          disabled={connecting}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            padding: 12,
-            backgroundColor: isExpired
-              ? colors.btnWarning.bg
-              : colors.btnPrimary.bg,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: isExpired ? colors.btnWarning.border : colors.btnPrimary.border,
-            opacity: connecting ? 0.6 : 1,
-          }}
-        >
-          {connecting ? (
-            <AppSpinner size="sm" />
-          ) : (
-            <>
-              <Link
-                size={14}
-                color={isExpired ? colors.badgeYellow.text : colors.btnPrimary.text}
-              />
-              <Text
-                fontFamily={FONT_SANS}
-                fontSize={13}
-                fontWeight="500"
-                color={isExpired ? colors.badgeYellow.text : colors.btnPrimary.text}
+              <View style={{ flex: 1, minWidth: 160 }}>
+                <T step="code" ellipsis>
+                  {saved.branch}
+                </T>
+                <T step="12" tone="text3" ellipsis>
+                  {t("authPanel.github.savedMeta", { repo: saved.repo, date: saved.savedAt.slice(0, 16).replace("T", " ") })}
+                </T>
+              </View>
+              <Btn
+                variant="sec"
+                size="sm"
+                iconRight="arrow-up-right"
+                hitSlop={TAP_SLOP}
+                accessibilityLabel={t("authPanel.github.savedOpenA11y", { branch: saved.branch })}
+                onPress={() => Linking.openURL(saved.url)}
               >
-                {isExpired
-                  ? isGitHubApp
-                    ? 'Reconectar GitHub'
-                    : 'Reconectar'
-                  : isGitHubApp
-                    ? 'Conectar con GitHub'
-                    : `Conectar con ${oauth.provider}`}
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
-      )}
+                {t("authPanel.github.savedOpen")}
+              </Btn>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {isConnected && onRefresh ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          <Btn variant="sec" icon="arrows-clockwise" hitSlop={TAP_SLOP} onPress={onRefresh}>
+            {t("authPanel.refresh")}
+          </Btn>
+        </View>
+      ) : null}
+
+      {(needsConnect || isExpired || isError) && onConnect ? (
+        <Btn
+          variant={isExpired ? "amber" : "primary"}
+          icon="plugs-connected"
+          loading={connecting}
+          hitSlop={TAP_SLOP}
+          onPress={onConnect}
+          style={{ alignSelf: "flex-start" }}
+        >
+          {isExpired
+            ? t("authPanel.reconnect", { provider })
+            : t("authPanel.connect", { provider })}
+        </Btn>
+      ) : null}
     </View>
-  );
+  )
+}
+
+export interface DisconnectButtonProps {
+  provider: string
+  label: string
+  busy?: boolean
+  onConfirm: () => void
+}
+
+export function DisconnectButton({ provider, label, busy, onConfirm }: DisconnectButtonProps) {
+  const { t } = useTranslation()
+  const [asking, setAsking] = useState(false)
+  return (
+    <>
+      <Btn variant="dangerSoft" icon="plugs" loading={busy} hitSlop={TAP_SLOP} onPress={() => setAsking(true)}>
+        {label}
+      </Btn>
+      <ConfirmDialog
+        visible={asking}
+        variant="deny"
+        title={t("authPanel.disconnectConfirm.title", { provider })}
+        message={t("authPanel.disconnectConfirm.message", { provider })}
+        onCancel={() => setAsking(false)}
+        onConfirm={() => {
+          setAsking(false)
+          onConfirm()
+        }}
+      />
+    </>
+  )
 }
 
 // ============================================================================
@@ -811,31 +633,25 @@ function OAuthSection({
 // ============================================================================
 
 interface CredentialsSectionProps {
-  credentials: CredentialField[];
-  onCredentialChange: (name: string, value: string) => void;
+  credentials: CredentialField[]
+  onCredentialChange: (name: string, value: string) => void
 }
 
 function CredentialsSection({ credentials, onCredentialChange }: CredentialsSectionProps) {
-  const colors = makePalette(useColors());
-  if (credentials.length === 0) return null;
+  const { t } = useTranslation()
+  if (credentials.length === 0) return null
 
   return (
     <View style={{ padding: 16 }}>
       {/* Subsection header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Text
-          fontFamily={FONT_SANS}
-          fontSize={12}
-          fontWeight="600"
-          color={colors.textMuted}
-          style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}
-        >
-          Credenciales
-        </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <T step="xs" tone="text3">
+          {t("authPanel.credentials")}
+        </T>
       </View>
 
       {/* Credential inputs */}
-      {credentials.map((field, index) => (
+      {credentials.map((field) => (
         <CredentialInput
           key={field.name}
           field={field}
@@ -843,7 +659,7 @@ function CredentialsSection({ credentials, onCredentialChange }: CredentialsSect
         />
       ))}
     </View>
-  );
+  )
 }
 
 // ============================================================================
@@ -851,54 +667,34 @@ function CredentialsSection({ credentials, onCredentialChange }: CredentialsSect
 // ============================================================================
 
 interface SaveBarProps {
-  onSave: () => void;
-  saving?: boolean;
+  onSave: () => void
+  saving?: boolean
 }
 
 function SaveBar({ onSave, saving }: SaveBarProps) {
-  const colors = makePalette(useColors());
+  const c = useColors()
   return (
     <View
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
         padding: 12,
         paddingHorizontal: 16,
-        backgroundColor: colors.badgeBlue.bg,
+        backgroundColor: c.tint.i.bg,
         borderTopWidth: 1,
-        borderTopColor: colors.badgeBlue.border,
+        borderTopColor: c.tint.i.bd,
       }}
     >
-      <Text fontFamily={FONT_SANS} fontSize={12} color={colors.badgeBlue.text}>
+      <T step="12" color={c.tint.i.tx}>
         Tienes cambios sin guardar
-      </Text>
-      <TouchableOpacity
-        onPress={onSave}
-        disabled={saving}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 6,
-          paddingVertical: 8,
-          paddingHorizontal: 16,
-          backgroundColor: colors.btnPrimary.bg,
-          borderRadius: 6,
-          borderWidth: 1,
-          borderColor: colors.btnPrimary.border,
-          opacity: saving ? 0.6 : 1,
-        }}
-      >
-        {saving ? (
-          <AppSpinner size="sm" variant="brand" />
-        ) : (
-          <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="500" color={colors.btnPrimary.text}>
-            Guardar
-          </Text>
-        )}
-      </TouchableOpacity>
+      </T>
+      <Btn variant="primary" size="sm" icon="check" loading={saving} onPress={onSave}>
+        Guardar
+      </Btn>
     </View>
-  );
+  )
 }
 
 // ============================================================================
@@ -921,133 +717,95 @@ export function AuthPanel({
   defaultExpanded = true,
   systemSetupMessage,
 }: AuthPanelProps) {
-  const colors = makePalette(useColors());
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const rotateAnim = useRef(new Animated.Value(defaultExpanded ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(rotateAnim, {
-      toValue: expanded ? 1 : 0,
-      duration: 150,
-      easing: Easing.inOut(Easing.ease),
-      useNativeDriver: true,
-    }).start();
-  }, [expanded, rotateAnim]);
-
-  const rotation = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '90deg'],
-  });
+  const c = useColors()
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(defaultExpanded)
 
   // Determine overall status
-  const getStatus = (): 'ready' | 'pending' | 'warning' | 'error' => {
-    if (systemSetupMessage) return 'warning';
+  const getStatus = (): PanelStatus => {
+    if (systemSetupMessage) return "warning"
     if (oauth) {
-      if (oauth.status === 'connected') return 'ready';
-      if (oauth.status === 'disconnected') return 'pending';
-      if (oauth.status === 'expired') return 'warning';
-      if (oauth.status === 'error') return 'error';
+      if (oauth.status === "connected") return "ready"
+      if (oauth.status === "disconnected") return "pending"
+      if (oauth.status === "expired") return "warning"
+      if (oauth.status === "error") return "error"
     }
-    const requiredMissing = credentials.some((c) => c.required && !c.isSet && !c.value);
-    if (requiredMissing) return 'pending';
-    return 'ready';
-  };
+    const requiredMissing = credentials.some((c) => c.required && !c.isSet && !c.value)
+    if (requiredMissing) return "pending"
+    return "ready"
+  }
 
   // Determine badge text
-  const getBadge = (): { text: string; variant: BadgeProps['variant'] } => {
-    if (systemSetupMessage) return { text: 'admin requerido', variant: 'yellow' };
+  const getBadge = (): { text: string; variant: BadgeVariant } => {
+    if (systemSetupMessage) return { text: t("authPanel.badge.adminRequired"), variant: "yellow" }
 
-    const oauthPart = oauth ? (oauth.status === 'connected' ? 'OAuth' : '') : '';
-    const credCount = credentials.filter((c) => c.isSet || c.value).length;
-    const credPart = credCount > 0 ? `${credCount} key${credCount > 1 ? 's' : ''}` : '';
+    const oauthPart = oauth ? (oauth.status === "connected" ? "OAuth" : "") : ""
+    const credCount = credentials.filter((c) => c.isSet || c.value).length
+    const credPart = credCount > 0 ? `${credCount} key${credCount > 1 ? "s" : ""}` : ""
 
-    if (oauthPart && credPart) return { text: `${oauthPart} + ${credPart}`, variant: 'green' };
-    if (oauthPart) return { text: oauthPart, variant: 'green' };
-    if (credPart) return { text: credPart, variant: 'green' };
+    if (oauthPart && credPart) return { text: `${oauthPart} + ${credPart}`, variant: "green" }
+    if (oauthPart) return { text: oauthPart, variant: "green" }
+    if (credPart) return { text: credPart, variant: "green" }
 
-    if (oauth?.status === 'disconnected') return { text: 'conectar', variant: 'blue' };
-    if (oauth?.status === 'expired') return { text: 'expirado', variant: 'yellow' };
-    if (oauth?.status === 'error') return { text: 'error', variant: 'red' };
+    if (oauth?.status === "disconnected") return { text: t("authPanel.badge.connect"), variant: "blue" }
+    if (oauth?.status === "expired") return { text: t("authPanel.status.expired"), variant: "yellow" }
+    if (oauth?.status === "error") return { text: "error", variant: "red" }
 
-    const requiredMissing = credentials.some((c) => c.required && !c.isSet && !c.value);
-    if (requiredMissing) return { text: 'configurar', variant: 'blue' };
+    const requiredMissing = credentials.some((c) => c.required && !c.isSet && !c.value)
+    if (requiredMissing) return { text: t("authPanel.badge.configure"), variant: "blue" }
 
-    return { text: 'N/A', variant: 'gray' };
-  };
+    return { text: "N/A", variant: "gray" }
+  }
 
-  const status = getStatus();
-  const badge = getBadge();
+  const status = getStatus()
+  const badge = getBadge()
 
   return (
-    <View
-      style={{
-        backgroundColor: colors.panelBg,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: colors.border,
-        overflow: 'hidden',
-      }}
-    >
+    <Card>
       {/* Header */}
-      <TouchableOpacity
+      <Pressable
+        accessibilityRole="button"
         onPress={() => setExpanded(!expanded)}
-        activeOpacity={0.7}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 10,
-          paddingVertical: 14,
-          paddingHorizontal: 16,
-        }}
+        style={[
+          {
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+          },
+          Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null,
+        ]}
       >
         <StatusDot status={status} />
-        <Key size={18} color={colors.iconKey} />
-        <Text flex={1} fontFamily={FONT_SANS} fontSize={14} fontWeight="500" color={colors.textPrimary}>
-          Authentication
-        </Text>
+        <Ph name="key" size={16} color={c.accent} />
+        <T step="sm" style={{ flex: 1 }}>
+          {t("authPanel.title")}
+        </T>
         {loading ? (
           <AppSpinner size="sm" variant="muted" />
         ) : (
-          <Badge text={badge.text} variant={badge.variant} />
+          <Badge tone={VARIANT_TONE[badge.variant]} mono sm>
+            {badge.text}
+          </Badge>
         )}
-        <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-          <ChevronRight size={14} color={colors.chevron} />
-        </Animated.View>
-      </TouchableOpacity>
+        <Ph name={expanded ? "caret-up" : "caret-down"} size={14} color={c.text3} />
+      </Pressable>
 
       {/* Content */}
-      {expanded && (
-        <View
-          style={{
-            backgroundColor: colors.sectionBg,
-            borderTopWidth: 1,
-            borderTopColor: colors.border,
-          }}
-        >
+      {expanded ? (
+        <View style={{ borderTopWidth: 1, borderTopColor: c.border }}>
           {/* System setup warning */}
-          {systemSetupMessage && (
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: 10,
-                padding: 12,
-                margin: 12,
-                backgroundColor: indicators.risk.bg,
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: indicators.risk.border,
-              }}
-            >
-              <AlertCircle size={15} color={colors.badgeYellow.text} style={{ marginTop: 1 }} />
-              <Text flex={1} fontFamily={FONT_SANS} fontSize={12} color={colors.badgeYellow.text} style={{ lineHeight: 18 }}>
+          {systemSetupMessage ? (
+            <View style={{ padding: 12 }}>
+              <Note tone="amber" icon="warning-circle">
                 {systemSetupMessage}
-              </Text>
+              </Note>
             </View>
-          )}
+          ) : null}
 
           {/* OAuth section */}
-          {oauth && (
+          {oauth ? (
             <OAuthSection
               oauth={oauth}
               onConnect={onConnect}
@@ -1056,21 +814,21 @@ export function AuthPanel({
               connecting={connecting}
               disconnecting={disconnecting}
             />
-          )}
+          ) : null}
 
           {/* Credentials section */}
-          {credentials.length > 0 && onCredentialChange && (
+          {credentials.length > 0 && onCredentialChange ? (
             <CredentialsSection credentials={credentials} onCredentialChange={onCredentialChange} />
-          )}
+          ) : null}
 
           {/* Save bar */}
-          {hasChanges && onSaveCredentials && (
+          {hasChanges && onSaveCredentials ? (
             <SaveBar onSave={onSaveCredentials} saving={saving} />
-          )}
+          ) : null}
         </View>
-      )}
-    </View>
-  );
+      ) : null}
+    </Card>
+  )
 }
 
-export default AuthPanel;
+export default AuthPanel

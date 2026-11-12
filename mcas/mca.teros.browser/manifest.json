@@ -1,0 +1,82 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.browser",
+  "name": "Browser",
+  "version": "1.0.0",
+  "description": "Browser automation and web scraping. Navigate, interact, take screenshots, and extract data from web pages.",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": true,
+    "role": "user",
+    "defaultEnabled": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "appDataMount": true,
+    "dockerImage": "teros/mca-runtime-playwright",
+    "systemEnvironment": {
+      "BROWSER_PROXY_SERVER": "${SECRET_MCA_BROWSER_PROXY_SERVER}",
+      "BROWSER_PROXY_SERVER_USERNAME": "${SECRET_MCA_BROWSER_PROXY_SERVER_USERNAME}",
+      "BROWSER_PROXY_SERVER_PASSWORD": "${SECRET_MCA_BROWSER_PROXY_SERVER_PASSWORD}"
+    },
+    "resources": {
+      "cpus": 2,
+      "memoryMb": 2048
+    }
+  },
+  "keywords": [
+    "browser",
+    "playwright",
+    "automation",
+    "web",
+    "scraping",
+    "screenshot"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false,
+    "streams": true
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-11-04",
+      "notes": "Renamed: the MCA id is mca.teros.browser (was mca.teros.playwright); existing installs are migrated by the backend (BRN) and keep their app name"
+    },
+    {
+      "version": "0.10.0",
+      "date": "2026-11-04",
+      "notes": "Visible tabs: the Browser window on web shows a tab of this MCA streamed with MCA streams; browser-view / browser-open-tab / browser-list-tabs / browser-close-tab / browser-use-tab / browser-control / browser-suggest; input tools gated by the user's consent toggle and the take-over fence; persistent per-user profiles under /app-data"
+    },
+    {
+      "version": "0.9.3",
+      "date": "2026-11-03",
+      "notes": "Optional residential proxy for the browser (BROWSER_PROXY_SERVER + credentials from .secrets/mcas/mca.teros.playwright) — shared with the cloud browser the backend streams to the web Browser window"
+    },
+    {
+      "version": "0.9.2",
+      "date": "2026-09-29",
+      "notes": "Add browser-html-to-pdf — high-fidelity PDF from local HTML or URL with painted margins on every page (dark-background safe)"
+    },
+    {
+      "version": "0.9.1",
+      "date": "2026-01-28",
+      "notes": "Initial release — browse pages, click and fill forms, capture screenshots, run scripts, and read console and network activity"
+    }
+  ]
+}

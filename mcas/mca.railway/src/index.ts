@@ -72,6 +72,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description:
     'Internal health check tool. Verifies Railway API token and connectivity.',
   parameters: {
@@ -192,10 +193,25 @@ server.tool('railway-list-projects', {
   },
   handler: async (args, context) => {
     const client = await createClient(context);
+    let workspaces: Awaited<ReturnType<typeof client.listWorkspaces>> = [];
+    try {
+      workspaces = await client.listWorkspaces();
+    } catch {
+      // Some project-scoped tokens cannot list workspaces — fall through.
+    }
     const projects = await client.listProjects();
 
     if (projects.length === 0) {
-      return 'No projects found. Use railway-create-project to create one.';
+      if (workspaces.length === 0) {
+        return (
+          'No projects visible to this token. This usually means one of:\n' +
+          '- The token is **project-scoped** (tied to a single project) — use railway-get-project with the project ID directly.\n' +
+          '- The token has no access to any project yet — create one in the Railway dashboard first.\n' +
+          '- The token belongs to a different Railway account than expected.'
+        );
+      }
+      const wsNames = workspaces.map((w) => w.name).join(', ');
+      return `No projects found in workspace(s): ${wsNames}. Use railway-create-project to create one.`;
     }
 
     const formatted = projects.map(formatProject).join('\n\n');
@@ -609,8 +625,9 @@ server.tool('railway-set-variables', {
 // =============================================================================
 
 server.tool('railway-list-deployments', {
-  annotations: { readOnlyHint: false },
-  description: 'List recent deployments for a service.',
+  annotations: { readOnlyHint: true },
+  description:
+    'List recent deployments for a service. Optionally filter by status (e.g. SUCCESS, FAILED, CRASHED, BUILDING, DEPLOYING).',
   parameters: {
     type: 'object',
     properties: {
@@ -626,14 +643,27 @@ server.tool('railway-list-deployments', {
         type: 'string',
         description: 'The Railway environment ID',
       },
+      status: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Optional list of statuses to include (e.g. ["SUCCESS", "FAILED"]). If omitted, returns all.',
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum number of deployments to return (default: 10, max: 100)',
+        default: 10,
+      },
     },
     required: ['projectId', 'serviceId', 'environmentId'],
   },
   handler: async (args, context) => {
-    const { projectId, serviceId, environmentId } = args as {
+    const { projectId, serviceId, environmentId, status, limit = 10 } = args as {
       projectId: string;
       serviceId: string;
       environmentId: string;
+      status?: string[];
+      limit?: number;
     };
 
     const client = await createClient(context);
@@ -641,25 +671,31 @@ server.tool('railway-list-deployments', {
       projectId,
       serviceId,
       environmentId,
+      {
+        status: status && status.length > 0 ? { in: status } : undefined,
+        first: Math.min(limit, 100),
+      },
     );
 
     if (deployments.length === 0) {
-      return 'No deployments found.';
+      return status && status.length > 0
+        ? `No deployments found with status in [${status.join(', ')}].`
+        : 'No deployments found.';
     }
 
     const list = deployments
-      .map(
-        (d) =>
-          `- **${d.id}**: ${d.status} (${d.createdAt})${d.staticUrl ? ` - ${d.staticUrl}` : ''}`,
-      )
+      .map((d) => {
+        const url = d.staticUrl || d.url;
+        return `- **${d.id}**: ${d.status} (${d.createdAt})${url ? ` - ${url}` : ''}`;
+      })
       .join('\n');
 
-    return `Recent deployments:\n\n${list}`;
+    return `Recent deployments (${deployments.length}):\n\n${list}`;
   },
 });
 
 server.tool('railway-get-deployment', {
-  annotations: { readOnlyHint: false },
+  annotations: { readOnlyHint: true },
   description: 'Get the status of a specific deployment.',
   parameters: {
     type: 'object',
@@ -685,7 +721,12 @@ server.tool('railway-get-deployment', {
       status: deployment.status,
       createdAt: deployment.createdAt,
       updatedAt: deployment.updatedAt,
-      url: deployment.staticUrl || null,
+      url: deployment.staticUrl || deployment.url || null,
+      serviceId: deployment.serviceId ?? null,
+      environmentId: deployment.environmentId ?? null,
+      canRedeploy: deployment.canRedeploy ?? null,
+      canRollback: deployment.canRollback ?? null,
+      meta: deployment.meta ?? null,
     };
   },
 });
@@ -759,9 +800,38 @@ server.tool('railway-list-domains', {
       return 'No domains configured. Use railway-create-domain to create one.';
     }
 
-    const list = domains.map((d) => `- **${d.domain}** (${d.id})`).join('\n');
+    const list = domains
+      .map((d) => {
+        const kind = d.kind === 'custom' ? 'custom' : 'railway';
+        let line = `- **${d.domain}** (${kind}, id: ${d.id})`;
+        if (d.status) {
+          const s = d.status;
+          const bits: string[] = [];
+          bits.push(s.verified ? 'verified' : 'pending');
+          bits.push(`cert: ${s.certificateStatus}`);
+          if (s.cdnProvider) bits.push(`cdn: ${s.cdnProvider}`);
+          line += ` — ${bits.join(', ')}`;
+          if (!s.verified && s.dnsRecords && s.dnsRecords.length > 0) {
+            const pending = s.dnsRecords.filter((r) => r.status !== 'VALID');
+            if (pending.length > 0) {
+              const hints = pending
+                .map(
+                  (r) =>
+                    `    - DNS ${r.recordType || 'record'} ${r.hostlabel || ''} → ${r.requiredValue || '?'} (current: ${r.currentValue || 'none'})`,
+                )
+                .join('\n');
+              line += `\n  Pending DNS:\n${hints}`;
+            }
+          }
+          if (s.certificateErrorMessage) {
+            line += `\n  Certificate error: ${s.certificateErrorMessage}`;
+          }
+        }
+        return line;
+      })
+      .join('\n');
 
-    return `Domains:\n\n${list}`;
+    return `Domains (${domains.length}):\n\n${list}`;
   },
 });
 
@@ -955,7 +1025,9 @@ server.tool('railway-create-volume', {
       message: 'Volume created successfully',
       volumeId: volume.id,
       name: volume.name,
-      mountPath,
+      projectId: volume.projectId,
+      createdAt: volume.createdAt,
+      mountPath, // input echo — the Volume object itself does not carry mountPath in v2
     };
   },
 });
@@ -1018,7 +1090,7 @@ server.tool('railway-get-build-logs', {
 });
 
 server.tool('railway-get-deploy-logs', {
-  annotations: { readOnlyHint: false },
+  annotations: { readOnlyHint: true },
   description:
     'Get runtime/deployment logs for a deployment. Shows application output, errors, and startup logs.',
   parameters: {

@@ -6,16 +6,16 @@
     },
     "higgsfield-run": {
       "name": "higgsfield-run",
-      "description": "Run any model on Higgsfield. Supports text-to-image, image-to-video, and other AI generation models.",
+      "description": "Run any model on Higgsfield. Supports text-to-image, image-to-video, and other AI generation models. Image/video inputs inside `input` must be PUBLIC URLs (https://...) or data: URIs — Higgsfield cannot reach internal/localhost URLs. Internal Teros objects URLs (http://localhost:.../objects/obj_... or http://127.0.0.1:.../objects/obj_...) are automatically resolved to data URIs (objects up to 10 MB).",
       "params": {
-        "model": "Model/endpoint identifier (e.g., 'bytedance/seedream/v4/text-to-image')",
+        "model": "Model/endpoint identifier (e.g., 'higgsfield-ai/soul/standard'). Run higgsfield-list-models to see what's available.",
         "input": "Input parameters for the model",
         "wait": "Wait for completion (default: false)"
       }
     },
     "higgsfield-text-to-image": {
       "name": "higgsfield-text-to-image",
-      "description": "Generate images from text prompts using Seedream v4.",
+      "description": "Generate images from text prompts using Higgsfield Soul Standard (ultra-realistic fashion/portrait).",
       "params": {
         "prompt": "Text description of the image to generate",
         "resolution": "Output resolution",
@@ -24,21 +24,9 @@
         "wait": "Wait for completion (default: false)"
       }
     },
-    "higgsfield-image-to-video": {
-      "name": "higgsfield-image-to-video",
-      "description": "Convert an image to video with motion. Supports various motion styles and camera movements.",
-      "params": {
-        "image_url": "URL of the input image",
-        "prompt": "Description of the desired motion/video",
-        "duration": "Video duration in seconds (default: 5)",
-        "motion_strength": "Motion intensity (0.0-1.0)",
-        "camera_motion": "Camera movement type",
-        "wait": "Wait for completion (default: false)"
-      }
-    },
     "higgsfield-text-to-video": {
       "name": "higgsfield-text-to-video",
-      "description": "Generate video from text prompt.",
+      "description": "Generate video from text prompt using WAN v2.6.",
       "params": {
         "prompt": "Text description of the video to generate",
         "duration": "Video duration in seconds (default: 5)",
@@ -52,7 +40,7 @@
       "description": "Generate images with consistent character appearance using Soul. Great for creating multiple images of the same character.",
       "params": {
         "prompt": "Text description of the scene/pose for the character",
-        "reference_image": "URL of the reference image for character consistency",
+        "reference_image": "URL of the reference image for character consistency. Must be a PUBLIC URL (https://...) or data: URI — internal/localhost URLs are auto-resolved to data URIs (up to 10 MB).",
         "style": "Optional style preset",
         "wait": "Wait for completion (default: false)"
       }

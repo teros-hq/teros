@@ -121,38 +121,39 @@ describe('FeedbackService.ensureIndexes', () => {
     const svc = new FeedbackService(db, null)
     await svc.ensureIndexes()
 
+    // Specs come from src/db/indexes.ts (GOV-4): explicit names, no `background`
     const fbIndexes = db._cols.message_feedback.indexes
     expect(fbIndexes).toContainEqual({
       keys: { messageId: 1, userId: 1 },
-      options: { unique: true, background: true },
+      options: { name: 'messageId_1_userId_1', unique: true },
     })
     expect(fbIndexes).toContainEqual({
       keys: { conversationId: 1, createdAt: -1 },
-      options: { background: true },
+      options: { name: 'conversationId_1_createdAt_-1' },
     })
     expect(fbIndexes).toContainEqual({
       keys: { agentId: 1, createdAt: -1 },
-      options: { background: true },
+      options: { name: 'agentId_1_createdAt_-1' },
     })
 
     const actionIndexes = db._cols.message_actions.indexes
     expect(actionIndexes).toContainEqual({
       keys: { messageId: 1, createdAt: -1 },
-      options: { background: true },
+      options: { name: 'messageId_1_createdAt_-1' },
     })
     expect(actionIndexes).toContainEqual({
       keys: { conversationId: 1, createdAt: -1 },
-      options: { background: true },
+      options: { name: 'conversationId_1_createdAt_-1' },
     })
 
     const convIndexes = db._cols.conversation_feedback.indexes
     expect(convIndexes).toContainEqual({
       keys: { conversationId: 1, userId: 1 },
-      options: { unique: true, background: true },
+      options: { name: 'conversationId_1_userId_1', unique: true },
     })
     expect(convIndexes).toContainEqual({
       keys: { workspaceId: 1, createdAt: -1 },
-      options: { background: true },
+      options: { name: 'workspaceId_1_createdAt_-1' },
     })
   })
 })

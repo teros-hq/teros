@@ -1,0 +1,161 @@
+/**
+ * The wheel of a shared terminal (services/terminal/driver-lease.ts): who
+ * drives, when an agent may take over, two people typing at once, and the
+ * give-back note the agent reads once.
+ */
+
+import { describe, expect, it } from "bun:test"
+import {
+  type CrewIdentity,
+  DriverLease,
+  LeaseError,
+  parseLeaseSnapshot,
+} from "../../src/services/terminal/driver-lease"
+
+const atlas: CrewIdentity = { kind: "agent", id: "agent_atlas", name: "Atlas", avatarUrl: "/a.png" }
+const iria: CrewIdentity = { kind: "human", id: "user_iria", name: "Iria", avatarUrl: "/i.png" }
+const lucia: CrewIdentity = { kind: "human", id: "user_lucia", name: "Lucía" }
+
+function lease(start = 1_000_000) {
+  const clock = { t: start }
+  const l = new DriverLease(() => clock.t)
+  return { l, clock, tick: (ms: number) => (clock.t += ms) }
+}
+
+describe("DriverLease", () => {
+  it("starts with nobody at the wheel; an agent write takes it", () => {
+    const { l } = lease()
+    expect(l.driver.kind).toBe("none")
+    expect(l.agentMay(atlas)).toBeNull()
+    expect(l.agentInput(atlas)).toEqual(["driver"])
+    expect(l.driver).toMatchObject({
+      kind: "agent",
+      id: "agent_atlas",
+      name: "Atlas",
+      avatarUrl: "/a.png",
+    })
+    // The same agent writing again is no news.
+    expect(l.agentInput(atlas)).toEqual([])
+  })
+
+  it("a person typing becomes the driver; the agent that drove becomes the copilot", () => {
+    const { l } = lease()
+    l.agentInput(atlas)
+    expect(l.humanInput(iria)).toEqual(["watchers", "driver"])
+    expect(l.driver).toMatchObject({ kind: "human", id: "user_iria", name: "Iria" })
+    expect(l.priorAgent?.id).toBe("agent_atlas")
+  })
+
+  it("refuses an agent write while a person drives, with a clear message", () => {
+    const { l, tick } = lease()
+    l.takeWheel(iria)
+    tick(59_000)
+    const held = l.agentMay(atlas)
+    expect(held?.holder.id).toBe("user_iria")
+    expect(held?.message).toStartWith("Iria has the wheel; wait or ask them in chat")
+  })
+
+  it("lets an agent take over from a person idle for more than 60 s", () => {
+    const { l, tick } = lease()
+    l.takeWheel(iria)
+    tick(30_000)
+    l.humanInput(iria) // typing resets the idle clock
+    tick(60_000)
+    expect(l.agentMay(atlas)).not.toBeNull()
+    tick(1)
+    expect(l.agentMay(atlas)).toBeNull()
+    expect(l.agentInput(atlas)).toEqual(["driver"])
+    expect(l.driver.kind).toBe("agent")
+  })
+
+  it("two people typing within 2 s: conflict, the driver stays who it was", () => {
+    const { l, tick } = lease()
+    l.humanInput(iria)
+    tick(1_500)
+    expect(l.humanInput(lucia)).toEqual(["watchers", "conflict"])
+    expect(l.conflict).toEqual({ ids: ["user_iria", "user_lucia"], at: l.driver.since + 1_500 })
+    expect(l.driver.id).toBe("user_iria")
+    // More keys from both: same conflict, no new event.
+    tick(500)
+    expect(l.humanInput(iria)).toEqual([])
+    expect(l.humanInput(lucia)).toEqual([])
+  })
+
+  it("no conflict when the other person stopped more than 2 s ago: the new typist drives", () => {
+    const { l, tick } = lease()
+    l.humanInput(iria)
+    tick(2_001)
+    expect(l.humanInput(lucia)).toEqual(["watchers", "driver"])
+    expect(l.conflict).toBeNull()
+    expect(l.driver.id).toBe("user_lucia")
+  })
+
+  it("a conflict nobody resolves ends after 10 s without double typing", () => {
+    const { l, tick } = lease()
+    l.humanInput(iria)
+    l.humanInput(lucia)
+    tick(9_999)
+    expect(l.expire()).toBe(false)
+    tick(1)
+    expect(l.expire()).toBe(true)
+    expect(l.conflict).toBeNull()
+  })
+
+  it("yield hands the wheel to the other person and ends the conflict", () => {
+    const { l } = lease()
+    l.humanInput(iria)
+    l.humanInput(lucia)
+    expect(l.yieldTo(iria, { kind: "human", id: "user_lucia" })).toEqual(["conflict", "driver"])
+    expect(l.driver).toMatchObject({ kind: "human", id: "user_lucia", name: "Lucía" })
+    expect(l.conflict).toBeNull()
+    expect(() => l.yieldTo(iria, lucia)).toThrow(LeaseError)
+  })
+
+  it("give back: the wheel returns to the agent with the note, delivered once", () => {
+    const { l, tick } = lease()
+    l.agentInput(atlas)
+    l.takeWheel(iria)
+    tick(5_000)
+    expect(l.giveBack(iria, "  session.test fails on the cache  ")).toEqual(["driver"])
+    expect(l.driver).toMatchObject({
+      kind: "agent",
+      id: "agent_atlas",
+      note: "session.test fails on the cache",
+    })
+    expect(l.takeHandedBack("agent_other")).toBeNull()
+    expect(l.takeHandedBack("agent_atlas")).toEqual({
+      by: { id: "user_iria", name: "Iria" },
+      note: "session.test fails on the cache",
+    })
+    expect(l.takeHandedBack("agent_atlas")).toBeNull()
+  })
+
+  it("give back with no agent before: nobody drives; only the driver may give it back", () => {
+    const { l } = lease()
+    l.takeWheel(iria)
+    expect(() => l.giveBack(lucia, null)).toThrow("Iria has the wheel, not you")
+    l.giveBack(iria, "")
+    expect(l.driver).toMatchObject({ kind: "none", note: null })
+    // Any agent reads an unaddressed note.
+    expect(l.takeHandedBack("agent_x")).toEqual({
+      by: { id: "user_iria", name: "Iria" },
+      note: null,
+    })
+  })
+
+  it("survives a restart through its snapshot (idle counted from since)", () => {
+    const { l, tick } = lease()
+    l.agentInput(atlas)
+    l.takeWheel(iria)
+    const raw = JSON.stringify(l.snapshot())
+    const { l: back, clock } = lease(l.driver.since)
+    back.restore(parseLeaseSnapshot(raw))
+    expect(back.driver).toMatchObject({ kind: "human", id: "user_iria" })
+    expect(back.priorAgent?.id).toBe("agent_atlas")
+    expect(back.agentMay(atlas)).not.toBeNull()
+    clock.t += 60_001
+    expect(back.agentMay(atlas)).toBeNull()
+    expect(parseLeaseSnapshot("{broken")).toBeNull()
+    tick(0)
+  })
+})

@@ -53,7 +53,7 @@ export const respondToEvent: ToolConfig = {
     const targetCalendar = calendarId ?? "primary"
     const send = normaliseSendUpdates(sendUpdates)
 
-    const existing = await wrapCalendarCall(() =>
+    const existing = await wrapCalendarCall(context, () =>
       calendar.events.get({ calendarId: targetCalendar, eventId }),
     )
     const eventSummary = existing.data.summary ?? null
@@ -84,7 +84,7 @@ export const respondToEvent: ToolConfig = {
       })
     }
 
-    const patch = await runCalendarCall(() =>
+    const patch = await runCalendarCall(context, () =>
       calendar.events.patch({
         calendarId: targetCalendar,
         eventId,

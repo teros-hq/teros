@@ -1,15 +1,17 @@
 /**
- * StepFooter — Reusable footer with Back / Skip / Continue buttons.
+ * StepFooter — Reusable footer with Back / Skip / Continue pills.
  *
  * Rendered by OnboardingWizard OUTSIDE the ScrollView, fixed at the bottom.
  * Steps communicate footer state via setFooterConfig callback.
+ *
+ * Visual (`.stepper__nav`): ghost "Back" on the left, ghost "Skip", and the
+ * violet primary pill (44px) stretching to the right.
  */
 
-import React from 'react'
-import { useTranslation } from 'react-i18next'
-import { Button, Text, XStack } from 'tamagui'
-import { colors as semanticColors } from '../mca/primitives/colors'
-import { useColors } from '../mca/primitives/useColors'
+import React from "react"
+import { useTranslation } from "react-i18next"
+import { View } from "react-native"
+import { Btn } from "../ui/ds"
 
 export interface StepFooterConfig {
   continueLabel?: string
@@ -31,16 +33,10 @@ interface StepFooterProps {
   onContinue: () => void
 }
 
-export function StepFooter({
-  config,
-  onBack,
-  onSkip,
-  onContinue,
-}: StepFooterProps) {
+export function StepFooter({ config, onBack, onSkip, onContinue }: StepFooterProps) {
   const { t } = useTranslation()
-  const c = useColors()
   const {
-    continueLabel = t('onboarding.continueButton'),
+    continueLabel = t("onboarding.continueButton"),
     continueDisabled = false,
     showBack = false,
     showSkip = false,
@@ -48,69 +44,52 @@ export function StepFooter({
     specialCta,
   } = config
 
-  // Special CTA mode (used by DoneStep)
+  // Special CTA mode (used by DoneStep) — THE CTA, unconditional.
   if (specialCta) {
     return (
-      <Button
+      <Btn
         testID="step-footer-cta"
-        width="100%"
-        size="$5"
-        height={52}
+        variant="primary"
+        size="lg"
+        full
+        iconRight="arrow-right"
         onPress={specialCta.onPress}
-        backgroundColor={semanticColors.indigo}
-        borderColor={semanticColors.indigo}
-        borderWidth={1}
       >
-        <Text color={c.bgPage} fontSize={15} fontWeight="700">
-          {specialCta.label}
-        </Text>
-      </Button>
+        {specialCta.label}
+      </Btn>
     )
   }
 
   return (
-    <XStack gap={10} alignItems="center">
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       {showBack && onBack && (
-        <Button
-          testID="step-footer-back"
-          size="$4"
-          backgroundColor="transparent"
-          borderWidth={1}
-          borderColor={c.borderStrong}
-          onPress={onBack}
-        >
-          <Text color={c.text2} fontSize={13} fontWeight="600">{t('onboarding.backButton')}</Text>
-        </Button>
+        <Btn testID="step-footer-back" variant="ghost" size="md" icon="caret-left" onPress={onBack}>
+          {t("onboarding.backButton").replace(/^←\s*/, "")}
+        </Btn>
       )}
       {showSkip && onSkip && (
-        <Button
+        <Btn
           testID="step-footer-skip"
-          size="$4"
-          backgroundColor="transparent"
+          variant="ghost"
+          size="md"
           onPress={onSkip}
           disabled={skipDisabled}
         >
-          <Text color={c.text2} fontSize={12}>{t('onboarding.skipButton')}</Text>
-        </Button>
+          {t("onboarding.skipButton")}
+        </Btn>
       )}
-      <Button
+      <View style={{ flex: 1 }} />
+      <Btn
         testID="step-footer-continue"
-        flex={1}
-        size="$4"
+        variant="primary"
+        size="lg"
+        iconRight="arrow-right"
         disabled={continueDisabled}
         onPress={onContinue}
-        backgroundColor={continueDisabled ? c.bgInner : semanticColors.indigo}
-        borderColor={continueDisabled ? c.border : semanticColors.indigo}
-        borderWidth={1}
+        style={{ minWidth: 160 }}
       >
-        <Text
-          color={continueDisabled ? c.text3 : c.bgPage}
-          fontSize={13}
-          fontWeight="600"
-        >
-          {continueLabel}
-        </Text>
-      </Button>
-    </XStack>
+        {continueLabel.replace(/\s*→$/, "")}
+      </Btn>
+    </View>
   )
 }

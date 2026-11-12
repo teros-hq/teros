@@ -4,7 +4,7 @@
  *
  * Validates all MCA manifest.json files against the schema AND validates
  * the icon file referenced in each manifest (see Section 10 of
-
+ * docs/development/MCA-DEVELOPMENT.md for icon standards).
  *
  * Usage:
  *   bun scripts/validate-manifests.ts                    # All MCAs
@@ -111,7 +111,7 @@ Validates:
   2. Icon file: existence, PNG format, square, min 256×256, size limits,
      and placeholder detection (solid-color / near-uniform fills).
 
-
+See docs/development/MCA-DEVELOPMENT.md Section 10 for icon standards.
 `);
     process.exit(0);
   }

@@ -27,6 +27,9 @@ export function createCreateTaskHandler(
     if (!projectId || !taskInput.title) {
       throw new HandlerError('MISSING_FIELDS', 'projectId and title are required')
     }
+    if (!taskInput.instructions || taskInput.instructions.trim().length === 0) {
+      throw new HandlerError('MISSING_FIELDS', 'instructions is required — provide detailed task instructions so the assigned agent can work autonomously')
+    }
 
     const project = await boardService.getProject(projectId)
     if (!project) {
@@ -40,7 +43,7 @@ export function createCreateTaskHandler(
 
     const task = await boardService.createTask(project.boardId, ctx.userId, taskInput)
 
-    pubSubService.broadcastToTopic(`board:${project.boardId}`, { type: 'board_task_created', task })
+    pubSubService.broadcastToTopic(`board:${project.boardId}`, { type: 'board_task_created', task, boardId: project.boardId })
 
     // Emit board.task_created to subscribers
     if (boardSubscriptionService) {
@@ -53,6 +56,7 @@ export function createCreateTaskHandler(
         tags: task.tags,
         columnId: task.columnId,
         columnName: column?.name,
+        actorUserId: ctx.userId,
       }
       boardSubscriptionService.notifySubscribers(project.boardId, {
         eventType: 'board.task_created',

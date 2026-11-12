@@ -37,7 +37,7 @@ export function ListFoldersRenderer({ status, output, error, appIcon }: ToolCall
   return (
     <ToolCallCard
       status={status}
-      verb="List folders"
+      description="List folders"
       badge={badge}
       iconUri={appIcon}
       animateExpand

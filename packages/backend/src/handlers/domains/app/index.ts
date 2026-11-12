@@ -5,6 +5,7 @@
  *   app.install                   → Install an MCA from the catalog
  *   app.uninstall                 → Uninstall an installed app
  *   app.rename                    → Rename an installed app
+ *   app.set-scope                 → Change an app's scope (personal/shared, REQ-6)
  *   app.grant-access              → Grant an agent access to an app
  *   app.revoke-access             → Revoke an agent's access to an app
  *   app.list-agent-access         → List workspace agents + their access to an app
@@ -24,6 +25,7 @@
  *   app.execute-tool              → Execute a tool directly (no agent/LLM)
  *   app.list-tools                → List available tools for an app (via McaManager)
  *   app.get-tools                 → Get tools with permissions (from App.permissions)
+ *   app.get-tool-details          → Read description + inputSchema for named tools of one app
  *   app.update-tool-permission    → Update a single tool's permission
  *   app.set-all-tool-permissions  → Set all tools to the same permission
  *   app.update-permissions        → Update all permissions (deprecated, kept for compat)
@@ -42,6 +44,7 @@ import { McaService } from '../../../services/mca-service'
 import { createInstallAppHandler } from './install'
 import { createUninstallAppHandler } from './uninstall'
 import { createRenameAppHandler } from './rename'
+import { createSetScopeHandler } from './set-scope'
 import { createGrantAccessHandler } from './grant-access'
 import { createRevokeAccessHandler } from './revoke-access'
 import { createListAgentAccessHandler } from './list-agent-access'
@@ -49,6 +52,7 @@ import { createGetAuthStatusHandler } from './get-auth-status'
 import { createConfigureCredentialsHandler } from './configure-credentials'
 import { createDisconnectAuthHandler } from './disconnect-auth'
 import { createListAppsHandler } from './list'
+import { createListEventTopicsHandler } from './list-event-topics'
 import { createListCatalogHandler } from './list-catalog'
 import { createGetCatalogMcaHandler } from './get-catalog-mca'
 import { createListAllMcasHandler } from './list-all-mcas'
@@ -56,6 +60,7 @@ import { createUpdateMcaHandler } from './update-mca'
 import { createExecuteToolHandler } from './execute-tool'
 import { createListToolsHandler } from './list-tools'
 import { createGetToolsHandler } from './get-tools'
+import { createGetToolDetailsHandler } from './get-tool-details'
 import { createUpdateToolPermissionHandler } from './update-tool-permission'
 import { createSetAllToolPermissionsHandler } from './set-all-tool-permissions'
 import { createUpdatePermissionsHandler } from './update-permissions'
@@ -66,6 +71,8 @@ import { createRecordMcaHealthHandler } from './record-mca-health'
 import { createGetMcaToolSchemasHandler } from './get-mca-tool-schemas'
 import { createTestMcaToolHandler } from './test-mca-tool'
 import { createGetMcaResolvabilityHandler } from './get-mca-resolvability'
+import { createTodoSubscribeHandler } from './todo-subscribe'
+import { createTodoUnsubscribeHandler } from './todo-unsubscribe'
 
 export interface AppDomainDeps {
   db: Db
@@ -101,6 +108,7 @@ export function register(router: WsRouter, deps: AppDomainDeps): void {
   router.register('app.install', createInstallAppHandler(mcaService, pubSubService))
   router.register('app.uninstall', createUninstallAppHandler(mcaService, pubSubService))
   router.register('app.rename', createRenameAppHandler(mcaService, pubSubService))
+  router.register('app.set-scope', createSetScopeHandler(mcaService, pubSubService))
   router.register('app.grant-access', createGrantAccessHandler(mcaService))
   router.register('app.revoke-access', createRevokeAccessHandler(mcaService))
   router.register('app.list-agent-access', createListAgentAccessHandler(mcaService, db, ws))
@@ -108,6 +116,7 @@ export function register(router: WsRouter, deps: AppDomainDeps): void {
   router.register('app.configure-credentials', createConfigureCredentialsHandler(mcaService, mcaOAuth))
   router.register('app.disconnect-auth', createDisconnectAuthHandler(mcaService, mcaOAuth))
   router.register('app.list', createListAppsHandler(db))
+  router.register('app.list-event-topics', createListEventTopicsHandler(db, ws))
   router.register('app.list-catalog', createListCatalogHandler(mcaService, db))
   router.register('app.get-catalog-mca', createGetCatalogMcaHandler(mcaService, db))
   router.register('app.list-all-mcas', createListAllMcasHandler(mcaService, db))
@@ -117,14 +126,21 @@ export function register(router: WsRouter, deps: AppDomainDeps): void {
   router.register('app.get-mca-tool-schemas', createGetMcaToolSchemasHandler(mcaManager ?? null, db))
   router.register('app.test-mca-tool', createTestMcaToolHandler(mcaService, mcaManager ?? null, db, ws ?? null))
   router.register('app.get-mca-resolvability', createGetMcaResolvabilityHandler(mcaService, db, ws ?? null))
-  router.register('app.execute-tool', createExecuteToolHandler(mcaService, mcaManager ?? null, ws))
+  router.register('app.execute-tool', createExecuteToolHandler(mcaService, mcaManager ?? null, ws, pubSubService, db))
   router.register('app.list-tools', createListToolsHandler(mcaService, mcaManager ?? null, ws))
   router.register('app.get-tools', createGetToolsHandler(mcaService, mcaManager ?? null, ws))
+  router.register('app.get-tool-details', createGetToolDetailsHandler(mcaService, mcaManager ?? null, ws))
   router.register('app.update-tool-permission', createUpdateToolPermissionHandler(mcaService, mcaManager ?? null, ws, applyPermissionToPendingRequests))
   router.register('app.set-all-tool-permissions', createSetAllToolPermissionsHandler(mcaService, mcaManager ?? null, ws))
   router.register('app.update-permissions', createUpdatePermissionsHandler(mcaService, mcaManager ?? null, ws))
   router.register('app.tool-permission-response', createToolPermissionResponseHandler(handlePermissionResponse))
   if (handleFormResponse) {
     router.register('app.form-response', createFormResponseHandler(handleFormResponse))
+  }
+
+  // Todo real-time subscriptions
+  if (pubSubService) {
+    router.register('todo.subscribe', createTodoSubscribeHandler(pubSubService))
+    router.register('todo.unsubscribe', createTodoUnsubscribeHandler(pubSubService))
   }
 }

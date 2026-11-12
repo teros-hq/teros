@@ -27,6 +27,8 @@ import {
 dotenvConfig()
 
 const BASE_URL = process.env.BILLING_CANARY_URL || "http://127.0.0.1:10001"
+// /metrics is gated (IP allowlist behind TRUST_PROXY, or METRICS_TOKEN). Send the token when given.
+const METRICS_HEADERS: Record<string, string> = process.env.BILLING_CANARY_TOKEN ? { Authorization: `Bearer ${process.env.BILLING_CANARY_TOKEN}` } : {}
 
 async function main(): Promise<number> {
   initSentry()
@@ -49,7 +51,7 @@ async function main(): Promise<number> {
   // 2. SLOs — scrape /metrics and grade.
   let metricsText: string
   try {
-    const res = await fetch(`${BASE_URL}/metrics`)
+    const res = await fetch(`${BASE_URL}/metrics`, { headers: METRICS_HEADERS })
     if (!res.ok) {
       console.error(`[canary] /metrics returned ${res.status}`)
       captureMessage("billing/canary_metrics_unreachable", "error", { status: res.status })

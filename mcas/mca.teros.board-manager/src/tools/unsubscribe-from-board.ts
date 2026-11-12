@@ -20,6 +20,8 @@ export const unsubscribeFromBoard: ToolConfig = {
     if (!boardId) throw new Error('boardId is required');
 
     const channelId = (context?.execution as any)?.channelId ?? CURRENT_CHANNEL_ID;
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     if (!channelId) throw new Error('channelId not found in execution context');
 
     // Idempotent → safe to retry.
@@ -29,6 +31,7 @@ export const unsubscribeFromBoard: ToolConfig = {
           wsClient.queryConversations<any>('unsubscribe_from_board', {
             boardId,
             channelId,
+            callerAgentId,
           }),
           15_000,
           'unsubscribe_from_board',

@@ -45,7 +45,7 @@ export const listCalendars: ToolConfig = {
     }
     const maxResults = sanitizeLimit(limit, { max: 250, default: 100 })
 
-    const response = await wrapCalendarCall(() =>
+    const response = await wrapCalendarCall(context, () =>
       calendar.calendarList.list({
         maxResults,
         showHidden: showHidden ?? false,

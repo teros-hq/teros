@@ -1,6 +1,6 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { Readable } from 'stream';
-import { ALL_DRIVES, ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { ALL_DRIVES, initializeGoogleClients, withAuthRetry } from '../lib';
 import { CONTENT_TYPE_SOURCE_MIME, type DocumentContentType, GOOGLE_NATIVE_MIME } from './_mime';
 
 export const createDocument: ToolConfig = {
@@ -33,7 +33,6 @@ export const createDocument: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const {
       title,

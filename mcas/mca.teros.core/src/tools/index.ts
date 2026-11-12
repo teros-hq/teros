@@ -8,9 +8,9 @@ export { agentCreate } from './agent-create';
 export { agentDelete } from './agent-delete';
 export { agentGet } from './agent-get';
 export { agentList } from './agent-list';
-export { agentPreferredProviderSet } from './agent-preferred-provider-set';
+export { agentModelReset } from './agent-model-reset';
+export { agentModelSet } from './agent-model-set';
 export { agentProvidersGet } from './agent-providers-get';
-export { agentProvidersSet } from './agent-providers-set';
 export { agentUpdate } from './agent-update';
 export { appAccessList } from './app-access-list';
 export { appGet } from './app-get';
@@ -20,14 +20,17 @@ export { appPermissionsGet } from './app-permissions-get';
 export { appPermissionsSet } from './app-permissions-set';
 // Apps
 export { appCheckAuth } from './app-check-auth';
-export { appList } from './app-list';
+export { appCopyAuth } from './app-copy-auth';
+export { appGetSecret } from './app-get-secret';
 export { appRename } from './app-rename';
+export { appSetSecret } from './app-set-secret';
 export { appShowAuth } from './app-show-auth';
 export { appUninstall } from './app-uninstall';
 // Catalog
 export { catalogList } from './catalog-list';
 // Providers
 export { providerList } from './provider-list';
+export { providerSetDefault } from './provider-set-default';
 export { workspaceAgentList } from './workspace-agent-list';
 export { workspaceAppList } from './workspace-app-list';
 export { workspaceArchive } from './workspace-archive';

@@ -130,7 +130,10 @@ async function migrate(dryRun: boolean = false) {
 }
 
 // Run if called directly
-if (import.meta.main) {
+// Note: import.meta.main doesn't work with tsx on Node < 21 (undefined there —
+// Bun and Node >= 21 define it), so we check if this is the main module too.
+const isMain = import.meta.url === `file://${process.argv[1]}` || import.meta.main
+if (isMain) {
   const args = process.argv.slice(2)
   const dryRun = args.includes("--dry-run")
 

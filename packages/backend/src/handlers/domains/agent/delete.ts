@@ -5,7 +5,9 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { Collection, Db } from 'mongodb'
+import { DeletionService } from '../../../services/deletion-service'
 import type { PubSubService } from '../../../services/pubsub-service'
+import { canAccessAgent } from '../../../auth/workspace-access'
 
 interface Agent {
   agentId: string
@@ -30,35 +32,23 @@ export function createDeleteAgentHandler(db: Db, pubSubService?: PubSubService |
       throw new HandlerError('INVALID_REQUEST', 'Missing required field: agentId')
     }
 
-    const existingAgent = await agents.findOne({ agentId, ownerId: ctx.userId })
+    // MUW-REQ-3: any active member of the agent's workspace can archive it;
+    // global agents (superagents) only by their owner.
+    const existingAgent = await agents.findOne({ agentId })
     if (!existingAgent) {
-      throw new HandlerError('AGENT_NOT_FOUND', `Agent '${agentId}' not found or access denied`)
+      throw new HandlerError('AGENT_NOT_FOUND', `Agent '${agentId}' not found`)
+    }
+    if (!(await canAccessAgent(db, ctx.userId, agentId))) {
+      throw new HandlerError('ACCESS_DENIED', 'You do not have access to this agent')
     }
 
     const { workspaceId } = existingAgent
 
-    await agents.deleteOne({ agentId, ownerId: ctx.userId })
-    console.log(`[agent.delete] Deleted agent: ${agentId} for user ${ctx.userId}`)
-
-    // Clean up scheduler tasks bound to this agent's channels (TER-650/G7).
-    // Scheduler tasks are keyed by channel; deleting the agent leaves them
-    // referencing a gone agent → the scheduler keeps firing them (failing
-    // ownership) until the failure cap disables them. Remove them at the root.
-    const agentChannels = await db
-      .collection('channels')
-      .find({ agentId }, { projection: { channelId: 1 } })
-      .toArray()
-    const channelIds = agentChannels.map((c) => c.channelId as string).filter(Boolean)
-    if (channelIds.length > 0) {
-      const [recurring, reminders] = await Promise.all([
-        db.collection('scheduler_recurring_tasks').deleteMany({ channel_id: { $in: channelIds } }),
-        db.collection('scheduler_reminders').deleteMany({ channel_id: { $in: channelIds } }),
-      ])
-      console.log(
-        `[agent.delete] Cleaned scheduler tasks for ${channelIds.length} channels: ` +
-          `${recurring.deletedCount} recurring, ${reminders.deletedCount} reminders`,
-      )
-    }
+    // Full cascade (INF-3): the agent's channels and their content, access
+    // grants, skills, project relationships, subscriptions, Automate starters
+    // that run as it or post to its channels (TER-650/G7), task assignments.
+    const report = await new DeletionService(db).deleteAgent(agentId, ctx.userId)
+    console.log(`[agent.delete] Deleted agent: ${agentId} for user ${ctx.userId}`, report)
 
     if (pubSubService) {
       const event = { type: 'agent.deleted', agentId, workspaceId }

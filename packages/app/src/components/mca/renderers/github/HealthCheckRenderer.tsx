@@ -17,11 +17,11 @@ import {
   type KeyValueRow,
   ResourceCard,
   SuccessBlock,
-  colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
-import { GITHUB_PALETTE, GitHubToolShell, formatDuration } from './shared';
+import { GITHUB_PALETTE, GitHubToolShell, actionLabel, formatDuration } from './shared';
 
 type HealthStatus = 'ready' | 'not_ready' | 'degraded';
 
@@ -75,6 +75,7 @@ function rows(result: HealthCheckResult): KeyValueRow[] {
 }
 
 export function HealthCheckRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<HealthCheckResult>(output) : null;
   const result =
     parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'status' in (parsed as object)
@@ -92,7 +93,7 @@ export function HealthCheckRenderer({ toolName, status, output, error, duration 
     <GitHubToolShell
       toolName={toolName}
       status={status}
-      defaultExpanded={status === 'completed' && !healthy}
+      description={actionLabel(toolName, status, 'salud del MCA', title)}
     >
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && (
@@ -118,7 +119,7 @@ export function HealthCheckRenderer({ toolName, status, output, error, duration 
           {healthy && <SuccessBlock message="All checks passed." />}
           {issues.length > 0 && (
             <YStack gap={6}>
-              <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono" textTransform="uppercase">
+              <Text color={c.text2} fontSize={9} fontFamily="$mono" textTransform="uppercase">
                 issues ({issues.length})
               </Text>
               {issues.map((issue, i) => (
@@ -133,11 +134,11 @@ export function HealthCheckRenderer({ toolName, status, output, error, duration 
                   borderColor={`${issueAccent(issue.code)}33`}
                 >
                   <IconChip text={issue.code} accent={issueAccent(issue.code)} />
-                  <Text color={globalColors.primary} fontSize={10}>
+                  <Text color={c.text} fontSize={10}>
                     {issue.message}
                   </Text>
                   {issue.action && (
-                    <Text color={globalColors.secondary} fontSize={9}>
+                    <Text color={c.text2} fontSize={9}>
                       → {issue.action.description}
                       {issue.action.url ? ` (${issue.action.url})` : ''}
                     </Text>

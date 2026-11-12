@@ -5,10 +5,11 @@
  *   admin.list-users          → Paginated/searchable list of users (admin only)
  *   admin.get-user            → Get detailed user info (admin only)
  *   admin.get-user-detail     → Expensive per-user enrichment for expanded card (admin only)
- *   admin.update-user-role    → Update a user's role (super only)
- *   admin.update-user-status  → Update a user's status (admin only)
- *   admin.grant-access        → Grant platform access to a user (admin only)
- *   admin.impersonate         → Start impersonating a user (super only)
+ *   admin.update-user-role    → Update a user's role (super only, step-up required)
+ *   admin.update-user-status  → Update a user's status (admin only, step-up required)
+ *   admin.grant-access        → Grant platform access to a user (admin only, step-up required)
+ *   admin.verify-step-up      → Re-authenticate for sensitive operations (admin/super, Req 2.4.1)
+ *   admin.impersonate         → Start impersonating a user (super only, step-up required)
  *   admin.stop-impersonation  → Stop impersonating and restore admin session (super only)
  */
 
@@ -17,6 +18,7 @@ import type { Db } from 'mongodb'
 import { UserService } from '../../../auth/user-service'
 import { IdentityService } from '../../../auth/identity-service'
 import { SessionService } from '../../../auth/session-service'
+import { MFAService } from '../../../auth/mfa-service'
 
 import { createListUsersHandler } from './list-users'
 import { createGetUserHandler } from './get-user'
@@ -25,6 +27,7 @@ import { createUpdateUserRoleHandler } from './update-user-role'
 import { createUpdateUserStatusHandler } from './update-user-status'
 import { createGrantAccessHandler } from './grant-access'
 import { createImpersonateHandler, createStopImpersonationHandler } from './impersonate'
+import { createVerifyStepUpHandler } from './verify-step-up'
 import { createUpdateBillingSubscriptionHandler } from './update-billing-subscription'
 import { createAdminListPlansHandler } from './list-plans'
 import { createGetBillingAuditHandler } from './get-billing-audit'
@@ -38,6 +41,7 @@ import {
   createUpdateTerosProviderConfigHandler,
   createDeleteTerosProviderConfigHandler,
 } from './teros-provider-configs'
+import { createTerosUpstreamsHandler, createTestTerosSizeHandler } from './teros-upstreams'
 import {
   createListBillingTeamsHandler,
   createGetTeamMembersHandler,
@@ -52,6 +56,7 @@ export interface AdminDomainDeps {
   userService?: UserService | null
   identityService?: IdentityService | null
   sessionService?: SessionService | null
+  mfaService?: MFAService | null
   stripePaymentService?: import('../../../services/stripe-payment-service').StripePaymentService | null
   pubSubService?: import('../../../services/agent-hours-tracker').BillingEventPublisher | null
 }
@@ -61,14 +66,21 @@ export function register(router: WsRouter, deps: AdminDomainDeps): void {
   const userService = deps.userService ?? new UserService(db)
   const identityService = deps.identityService ?? new IdentityService(db)
   const sessionService = deps.sessionService ?? new SessionService(db)
+  const mfaService = deps.mfaService ?? new MFAService(db)
 
   // User management (admin/super only)
   router.register('admin.list-users', createListUsersHandler(userService, db))
   router.register('admin.get-user', createGetUserHandler(userService, db))
   router.register('admin.get-user-detail', createGetUserDetailHandler(userService, db))
-  router.register('admin.update-user-role', createUpdateUserRoleHandler(userService))
-  router.register('admin.update-user-status', createUpdateUserStatusHandler(userService))
-  router.register('admin.grant-access', createGrantAccessHandler(userService))
+  router.register('admin.update-user-role', createUpdateUserRoleHandler(userService, sessionService))
+  router.register('admin.update-user-status', createUpdateUserStatusHandler(userService, sessionService))
+  router.register('admin.grant-access', createGrantAccessHandler(userService, sessionService))
+
+  // Step-up authentication (Req 2.4.1) — re-verify identity before sensitive ops
+  router.register(
+    'admin.verify-step-up',
+    createVerifyStepUpHandler(userService, identityService, sessionService, mfaService),
+  )
 
   // Billing subscription management (admin only)
   router.register(
@@ -148,6 +160,9 @@ export function register(router: WsRouter, deps: AdminDomainDeps): void {
     'admin.delete-teros-provider-config',
     createDeleteTerosProviderConfigHandler(userService, db),
   )
+  // Teros upstreams + per-size test (TPROV-REQ-10/11)
+  router.register('admin.teros-upstreams', createTerosUpstreamsHandler(userService))
+  router.register('admin.test-teros-size', createTestTerosSizeHandler(userService, db))
 
   // Impersonation (super only)
   router.register(

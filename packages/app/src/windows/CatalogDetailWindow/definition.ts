@@ -6,9 +6,12 @@
  * existing window instead of stacking duplicates.
  */
 
-import { Store } from '@tamagui/lucide-icons'
-import type { WindowTypeDefinition } from '../../services/windowRegistry'
-import { CatalogDetailWindowContent } from './CatalogDetailWindowContent'
+import { Store } from "@tamagui/lucide-icons"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const CatalogDetailWindowContent = lazyWithRetry(() =>
+  import("./CatalogDetailWindowContent").then((m) => ({ default: m.CatalogDetailWindowContent })),
+)
 
 export interface CatalogDetailWindowProps {
   /** MCA to show */
@@ -18,7 +21,7 @@ export interface CatalogDetailWindowProps {
 }
 
 // A few segments that read better with custom casing than naive capitalisation.
-const SEGMENT_CASING: Record<string, string> = { ai: 'AI', api: 'API' }
+const SEGMENT_CASING: Record<string, string> = { ai: "AI", api: "API" }
 
 /**
  * Tab title from an mcaId: `mca.google.calendar` → "Google Calendar".
@@ -26,20 +29,22 @@ const SEGMENT_CASING: Record<string, string> = { ai: 'AI', api: 'API' }
  * strip the `mca.` prefix, split on separators and title-case each segment.
  */
 function titleFromMcaId(mcaId?: string): string {
-  if (!mcaId) return 'Agent App'
+  if (!mcaId) return "Agent App"
   const words = mcaId
-    .replace(/^mca\./, '')
+    .replace(/^mca\./, "")
     .split(/[.\-_]/)
     .filter(Boolean)
     .map((seg) => SEGMENT_CASING[seg.toLowerCase()] ?? seg.charAt(0).toUpperCase() + seg.slice(1))
-  return words.length ? words.join(' ') : 'Agent App'
+  return words.length ? words.join(" ") : "Agent App"
 }
 
 export const catalogDetailWindowDefinition: WindowTypeDefinition<CatalogDetailWindowProps> = {
-  type: 'catalog-detail',
-  displayName: 'Agent App Detail',
+  type: "catalog-detail",
+  audience: "user",
+  displayName: "Agent App Detail",
   icon: Store,
-  color: '#5E6AD2',
+  phIcon: "storefront",
+  color: "#5E6AD2",
   component: CatalogDetailWindowContent,
 
   defaultSize: { width: 760, height: 800 },

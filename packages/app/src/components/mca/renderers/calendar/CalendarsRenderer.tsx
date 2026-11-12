@@ -12,10 +12,10 @@ import {
   Empty,
   EntityRow,
   ErrorBlock,
-  colors as globalColors,
   IconChip,
   IconTile,
   parseOutput,
+  useColors,
 } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
 import {
@@ -57,6 +57,7 @@ export function ListCalendarsRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const parsed = output ? parseOutput<ListCalendarsOutput>(output) : null
   const list = parsed ? unwrapList<CalendarRef>(parsed, "calendars") : { items: [] }
   const calendars = list.items
@@ -92,7 +93,7 @@ export function ListCalendarsRenderer({
                     badges={calendarBadges(calendar)}
                     meta={
                       calendar.id ? (
-                        <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                        <Text color={c.text3} fontSize={9} fontFamily="$mono">
                           {shortenCalendarId(calendar.id)}
                         </Text>
                       ) : undefined

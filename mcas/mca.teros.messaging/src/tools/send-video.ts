@@ -4,13 +4,13 @@ import { resolveUrl } from '../lib';
 export const sendVideo: ToolConfig = {
   annotations: { readOnlyHint: true },
   description:
-    'Send a video to the user. The video will be playable in the chat. Supports public URLs or local file paths.',
+    'DEPRECATED - prefer the universal send-file tool (works for video and every other file type). Send a video to the user; playable in the chat. Supports public URLs or local file paths.',
   parameters: {
     type: 'object',
     properties: {
       url: {
         type: 'string',
-        description: 'Public URL of the video (use this OR filePath)',
+        description: 'Public URL of the video, objectId (obj_...) or objects URL (.../objects/obj_...) (use this OR filePath)',
       },
       filePath: {
         type: 'string',

@@ -48,13 +48,14 @@ describe('groupPendingPermissions — contiguous tool run', () => {
   it('returns empty for no messages', () => {
     const r = groupPendingPermissions([], {})
     expect(r.groups).toEqual([])
-    expect(r.groupedRequestIds.size).toBe(0)
+    expect(r.groupByFirstPendingId.size).toBe(0)
   })
 
-  it('does NOT group a single pending tool (keeps per-card UX)', () => {
+  it('[PERMW-AC-3] does NOT group a single pending tool (no header, no footer)', () => {
     const r = groupPendingPermissions(['m1'], byId(toolMsg('m1')))
     expect(r.groups).toHaveLength(0)
-    expect(r.groupedRequestIds.size).toBe(0)
+    expect(r.groupByFirstPendingId.size).toBe(0)
+    expect(r.groupByAnchorId.size).toBe(0)
   })
 
   it('groups 2 contiguous pending tools, anchoring on the last tool', () => {
@@ -62,7 +63,23 @@ describe('groupPendingPermissions — contiguous tool run', () => {
     expect(r.groups).toHaveLength(1)
     expect(r.groups[0]!.anchorMessageId).toBe('m2')
     expect(r.groups[0]!.tools.map((t) => t.requestId)).toEqual(['perm_m1', 'perm_m2'])
-    expect([...r.groupedRequestIds]).toEqual(['perm_m1', 'perm_m2'])
+  })
+
+  it('[PERMW-AC-3] the header anchors on the FIRST pending card, the footer on the last tool of the run', () => {
+    const r = groupPendingPermissions(
+      ['m1', 'm2', 'm3', 'm4'],
+      byId(
+        toolMsg('m1', { status: 'completed' }),
+        toolMsg('m2'),
+        toolMsg('m3'),
+        toolMsg('m4', { status: 'completed' }),
+      ),
+    )
+    expect(r.groups).toHaveLength(1)
+    expect(r.groups[0]!.firstPendingMessageId).toBe('m2')
+    expect(r.groups[0]!.anchorMessageId).toBe('m4')
+    expect(r.groupByFirstPendingId.get('m2')).toBe(r.groups[0])
+    expect(r.groupByAnchorId.get('m4')).toBe(r.groups[0])
   })
 
   // THE BUG (TER-375 smoke): auto-allowed tools (completed) interleaved with the
@@ -115,7 +132,7 @@ describe('groupPendingPermissions — contiguous tool run', () => {
       byId(toolMsg('m1', { status: 'completed' }), toolMsg('m2'), toolMsg('m3', { status: 'completed' })),
     )
     expect(r.groups).toHaveLength(0)
-    expect(r.groupedRequestIds.has('perm_m2')).toBe(false)
+    expect(r.groupByFirstPendingId.has('m2')).toBe(false)
   })
 
   it('propagates the irreversible flag and tool metadata', () => {
@@ -127,6 +144,35 @@ describe('groupPendingPermissions — contiguous tool run', () => {
     expect(t1!.irreversible).toBe(true)
     expect(t1!.toolName).toBe('delete-file')
     expect(t2!.irreversible).toBe(false)
+  })
+
+  it('threads input and mcaId onto the row when the tool_execution carries them', () => {
+    const r = groupPendingPermissions(
+      ['m1', 'm2'],
+      byId(toolMsg('m1', { input: { path: 'src/new.ts' }, mcaId: 'mca.teros.filesystem' }), toolMsg('m2')),
+    )
+    const [t1] = r.groups[0]!.tools
+    expect(t1!.input).toEqual({ path: 'src/new.ts' })
+    expect(t1!.mcaId).toBe('mca.teros.filesystem')
+  })
+
+  it('leaves input and mcaId undefined for a no-arg tool call (genuinely optional)', () => {
+    const r = groupPendingPermissions(
+      ['m1', 'm2'],
+      byId(toolMsg('m1', { input: undefined, mcaId: undefined }), toolMsg('m2')),
+    )
+    const [t1] = r.groups[0]!.tools
+    expect(t1!.input).toBeUndefined()
+    expect(t1!.mcaId).toBeUndefined()
+  })
+
+  // A downstream falsy-toolName crash (resolveIntent throws on a falsy
+  // toolName, with no local error boundary — see GroupedPermissionPanel
+  // review) means '' must be treated as absent, same as null/undefined.
+  it('treats an empty-string toolName as missing, defaulting to unknown', () => {
+    const r = groupPendingPermissions(['m1', 'm2'], byId(toolMsg('m1', { toolName: '' }), toolMsg('m2')))
+    const [t1] = r.groups[0]!.tools
+    expect(t1!.toolName).toBe('unknown')
   })
 
   it('skips pending messages lacking permissionRequestId (legacy) but keeps the run alive', () => {
@@ -189,5 +235,94 @@ describe('computeGroupingSignature', () => {
 
   it('returns empty string when there are no tool messages', () => {
     expect(computeGroupingSignature(['t1'], byId(textMsg('t1')))).toBe('')
+  })
+
+  it('changes when an input VALUE is corrected in place, not just its key count', () => {
+    // The panel row's digest is read off `input`. An arity-only tag left the memo
+    // cold on a same-keys correction, so the row kept showing the old value —
+    // which is precisely what a reviewer compares sibling rows on.
+    const before = computeGroupingSignature(
+      ['m1', 'm2'],
+      byId(toolMsg('m1', { input: { path: 'src/a' } }), toolMsg('m2')),
+    )
+    const after = computeGroupingSignature(
+      ['m1', 'm2'],
+      byId(toolMsg('m1', { input: { path: 'src/abc' } }), toolMsg('m2')),
+    )
+    expect(after).not.toBe(before)
+  })
+
+  it('survives an unstringifiable input instead of throwing into the chat', () => {
+    const circular: Record<string, unknown> = { path: 'src/a' }
+    circular.self = circular
+    expect(() =>
+      computeGroupingSignature(['m1', 'm2'], byId(toolMsg('m1', { input: circular }), toolMsg('m2'))),
+    ).not.toThrow()
+  })
+})
+
+// PERMB-REQ-4 fallback: rows written before PERMB 1.0.0 settled the card as
+// `completed` with the `permission_requested` marker as output and dropped the
+// pending fields. Those still count as pending, with the fields from the marker.
+function markerMsg(id: string, marker: Record<string, unknown> = {}, overrides: Record<string, any> = {}): any {
+  return toolMsg(id, {
+    status: 'completed',
+    permissionRequestId: undefined,
+    appId: undefined,
+    irreversible: undefined,
+    output: JSON.stringify({
+      status: 'permission_requested',
+      permissionRequestId: `perm_${id}`,
+      appId: 'app_fs',
+      irreversible: false,
+      ...marker,
+    }),
+    ...overrides,
+  })
+}
+
+describe('[PERMB-AC-4] v4 marker fallback', () => {
+  it('[PERMB-AC-4] groups a pending_permission card with a completed+marker card', () => {
+    const r = groupPendingPermissions(
+      ['m1', 'm2'],
+      byId(toolMsg('m1'), markerMsg('m2', { irreversible: true, appId: 'app_marker' })),
+    )
+    expect(r.groups).toHaveLength(1)
+    expect(r.groups[0].anchorMessageId).toBe('m2')
+    expect(r.groups[0].tools).toEqual([
+      expect.objectContaining({ requestId: 'perm_m1', appId: 'app_fs', irreversible: false }),
+      expect.objectContaining({ requestId: 'perm_m2', appId: 'app_marker', irreversible: true }),
+    ])
+    expect(r.groups[0].firstPendingMessageId).toBe('m1')
+  })
+
+  it('[PERMB-AC-4] ignores a completed card whose output is not the marker', () => {
+    const r = groupPendingPermissions(
+      ['m1', 'm2'],
+      byId(toolMsg('m1'), toolMsg('m2', { status: 'completed', permissionRequestId: undefined, output: '{"ok":true}' })),
+    )
+    expect(r.groups).toHaveLength(0)
+  })
+
+  it('[PERMB-AC-4] a marker card that leaves `completed` (local decision) is no longer pending', () => {
+    const r = groupPendingPermissions(
+      ['m1', 'm2'],
+      byId(toolMsg('m1'), markerMsg('m2', {}, { status: 'running' })),
+    )
+    expect(r.groups).toHaveLength(0)
+  })
+
+  it('[PERMB-AC-4] the signature changes when a marker row lands and when it is decided', () => {
+    const ids = ['m1', 'm2']
+    const before = computeGroupingSignature(
+      ids,
+      byId(toolMsg('m1'), toolMsg('m2', { status: 'running', permissionRequestId: undefined })),
+    )
+    const landed = computeGroupingSignature(ids, byId(toolMsg('m1'), markerMsg('m2')))
+    const decided = computeGroupingSignature(ids, byId(toolMsg('m1'), markerMsg('m2', {}, { status: 'running' })))
+    expect(landed).not.toBe(before)
+    expect(landed).toContain('perm_m2')
+    expect(decided).not.toBe(landed)
+    expect(decided).not.toContain('perm_m2')
   })
 })

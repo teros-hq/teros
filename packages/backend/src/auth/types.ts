@@ -38,6 +38,12 @@ export interface User {
     locale?: string
     /** Timezone (e.g., "Europe/Madrid") */
     timezone?: string
+    /**
+     * Show the agent's summary (letter prose + starter prompts) on a new
+     * conversation. Off: only the greeting. Created true; backfilled by
+     * migration 20261109_002 (CSUM-REQ-1).
+     */
+    conversationSummary: boolean
   }
 
   /** Account status */
@@ -83,6 +89,48 @@ export interface User {
    * Absent = user has never seen the changelog (all entries are "new").
    */
   lastChangelogSeen?: string
+
+  /**
+   * Consent for anonymized conversation evaluation (opt-in, default OFF).
+   * Set only by the user from Profile → "Help improve Teros"
+   * (profile.set-evaluation-consent). evaluator/* actions reject channels
+   * whose owner lacks this consent (reason no_consent) — enforced
+   * server-side, an admin cannot bypass it (task_047a4844b9103db3).
+   */
+  consent?: {
+    /** Whether anonymized copies of this user's conversations may be evaluated */
+    evaluationOptIn: boolean
+    /** When the current consent state was recorded */
+    evaluationConsentAt: Date
+    /** Version of the consent copy the user agreed to (audit, SOC 2 style) */
+    evaluationConsentVersion: string
+  }
+
+  /**
+   * Multi-Factor Authentication (MFA / TOTP) configuration.
+   * Present when the user has enrolled a TOTP authenticator.
+   * MFA is required for admin and super accounts (Req 3.3.1).
+   */
+  mfa?: {
+    /** Whether MFA is enabled and enforced for this user */
+    enabled: boolean
+    /**
+     * Legacy plaintext TOTP secret (the comment used to claim it was
+     * encrypted — it wasn't). Replaced by secretEnc; removed on first use
+     * and by migration 20261017_009 (SEC-4).
+     */
+    secret?: string
+    /** Base32 TOTP secret encrypted with the user's key (AAD mfa_totp) */
+    secretEnc?: { data: string; iv: string; tag: string }
+    /** When MFA was enabled */
+    enabledAt: Date
+    /** One-time-use backup codes (bcrypt-hashed). Used when TOTP device is lost. */
+    backupCodeHashes: string[]
+    /** How many backup codes remain (for quick UI display without decrypting) */
+    backupCodesRemaining: number
+    /** When backup codes were last regenerated */
+    backupCodesRegeneratedAt?: Date
+  }
 
   /** Timestamps */
   createdAt: Date
@@ -217,6 +265,13 @@ export interface UserSession {
     impersonatedBy?: string       // userId of the admin (e.g. "user:abc123")
     impersonatedByName?: string   // display name of the admin
     originalTokenHash?: string    // SHA-256 hash of the admin's original token
+
+    /**
+     * Step-up authentication timestamp (Req 2.4.1).
+     * Set when the user re-authenticates via admin.verify-step-up.
+     * Sensitive operations check this is recent (within STEP_UP_WINDOW_MS).
+     */
+    stepUpAt?: Date
   }
 
   /** Session expiration (30 days from creation/refresh) */
@@ -288,6 +343,10 @@ export interface UserCredentialDocument {
   encryptedData: string // JSON encrypted with credentials
   encryptionIv: string // IV for decryption (hex)
   encryptionTag: string // Auth tag for GCM (hex)
+  /** 2 = encrypted with AAD bound to (userId, appId); absent = legacy (GOV-7) */
+  encryptionFormat?: number
+  /** Incremented on every write; merge() writes conditioned on it (MOD-6) */
+  rev?: number
 
   // Timestamps
   createdAt: Date
@@ -305,8 +364,8 @@ export interface UserEncryptionKeyDocument {
   encryptedMasterKey: string // Encrypted with SYSTEM_ENCRYPTION_KEY
   keyVersion: number // For key rotation
 
-  // Salt for derivation
-  salt: string // hex
+  // Salt for derivation — never used; no longer written (GOV-7)
+  salt?: string // hex
 
   createdAt: Date
   rotatedAt?: Date
@@ -347,4 +406,16 @@ export interface NotionAuthData {
   accessToken: string
   botId: string
   workspaceId: string
+}
+
+/**
+ * ISO string for a timestamp field that SHOULD be a Date but may have been
+ * stored as a string or a number (hand-edited or migrated documents). A
+ * `undefined`/invalid value yields `undefined` instead of throwing — a
+ * malformed timestamp must never break a sign-in.
+ */
+export function toIsoString(value: unknown): string | undefined {
+  if (value == null) return undefined
+  const d = value instanceof Date ? value : new Date(value as string | number)
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString()
 }

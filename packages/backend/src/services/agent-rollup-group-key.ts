@@ -10,7 +10,7 @@
  * unchanged) but the call site now goes through a named factory + `toString`,
  * and the four dimensions can be recovered from a parsed key.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §3.5 (groupKey schema)
  */
 
 import type { AgentUsageRollupHourly, AgentUsageSession } from "../types/database.js"

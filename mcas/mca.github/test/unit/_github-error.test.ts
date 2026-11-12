@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
-import { GitHubAppNotInstalledError } from '../../src/lib/github-app-token';
-import { GitHubApiError } from '../../src/lib/github-client';
-import { GitHubUserNotAuthenticatedError } from '../../src/lib/github-user-token';
+import { GitHubApiError, GitHubInvalidInputError, GitHubTimeoutError } from '../../src/lib/github-client';
+import {
+  GitHubAppNotInstalledError,
+  GitHubUserNotAuthenticatedError,
+} from '../../src/lib/github-user-token';
 import { classifyGitHubError } from '../../src/tools/_github-error';
 
 function err(opts: {
@@ -24,11 +26,12 @@ function err(opts: {
 }
 
 describe('classifyGitHubError', () => {
-  it('maps 401 to AUTH_EXPIRED with install URL action', () => {
+  it('maps 401 to AUTH_EXPIRED with a reconnect-in-Teros action', () => {
     const c = classifyGitHubError(err({ status: 401, message: 'Bad credentials' }));
     expect(c.code).toBe('AUTH_EXPIRED');
     expect(c.message).toBe('Bad credentials');
-    expect(c.action.url).toContain('/apps/teros/installations/new');
+    expect(c.action.url).toBeUndefined();
+    expect(c.action.description).toContain('Apps → GitHub');
   });
 
   it('maps GitHubAppNotInstalledError to APP_NOT_INSTALLED with install URL', () => {
@@ -36,16 +39,16 @@ describe('classifyGitHubError', () => {
       new GitHubAppNotInstalledError('https://github.com/apps/teros/installations/new'),
     );
     expect(c.code).toBe('APP_NOT_INSTALLED');
-    expect(c.action.url).toBe('https://github.com/apps/teros/installations/new');
+    expect(c.action.url).toContain('/apps/teros/installations/new');
   });
 
-  it('maps GitHubUserNotAuthenticatedError to USER_NOT_AUTHENTICATED with reconnect URL', () => {
+  it('maps GitHubUserNotAuthenticatedError to USER_NOT_AUTHENTICATED with the Teros connect step', () => {
     const c = classifyGitHubError(
       new GitHubUserNotAuthenticatedError('https://github.com/apps/teros/installations/new'),
     );
     expect(c.code).toBe('USER_NOT_AUTHENTICATED');
-    expect(c.action.url).toBe('https://github.com/apps/teros/installations/new');
-    expect(c.action.description).toMatch(/reconecta/i);
+    expect(c.action.url).toBeUndefined();
+    expect(c.action.description).toContain('Apps → GitHub → Connect');
   });
 
   it('maps 403 with "resource not accessible by integration" to INSUFFICIENT_PERMISSIONS', () => {
@@ -66,7 +69,7 @@ describe('classifyGitHubError', () => {
   it('maps 403 + scope literal to PERMISSION_DENIED', () => {
     const c = classifyGitHubError(err({ status: 403, message: "Resource not accessible by personal access token's scopes" }));
     expect(c.code).toBe('PERMISSION_DENIED');
-    expect(c.action.description).toMatch(/scope/);
+    expect(c.action.description).toMatch(/lacks a permission/);
   });
 
   it('maps 403 + rate-limit literal to RATE_LIMITED', () => {
@@ -124,10 +127,26 @@ describe('classifyGitHubError', () => {
     expect(c.code).toBe('NETWORK_ERROR');
   });
 
+  it('classifies GitHubTimeoutError as TIMEOUT (status 0, before the generic GitHubApiError branch)', () => {
+    const c = classifyGitHubError(new GitHubTimeoutError(30_000, 'https://api.github.com/user'));
+    expect(c.code).toBe('TIMEOUT');
+    expect(c.status).toBe(0);
+    expect(c.message).toContain('GitHub API timeout after 30000ms');
+    expect(c.action.description).toMatch(/did not respond in time/i);
+  });
+
   it('classifies arbitrary Error as UNKNOWN preserving the literal', () => {
     const c = classifyGitHubError(new Error('boom'));
     expect(c.code).toBe('UNKNOWN');
     expect(c.message).toBe('boom');
+  });
+
+  it('maps GitHubInvalidInputError to VALIDATION with a fix-the-input action', () => {
+    const c = classifyGitHubError(new GitHubInvalidInputError('Invalid owner "../../user"'));
+    expect(c.code).toBe('VALIDATION');
+    expect(c.status).toBe(400);
+    expect(c.message).toContain('[GITHUB_INVALID_INPUT]');
+    expect(c.action.description).toMatch(/failed validation before reaching GitHub/i);
   });
 
   it('preserves documentation_url', () => {

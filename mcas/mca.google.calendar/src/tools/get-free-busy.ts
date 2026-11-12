@@ -45,7 +45,7 @@ export const getFreeBusy: ToolConfig = {
     }
     const ids = calendarIds && calendarIds.length > 0 ? calendarIds : ["primary"]
 
-    const response = await wrapCalendarCall(() =>
+    const response = await wrapCalendarCall(context, () =>
       calendar.freebusy.query({
         requestBody: {
           timeMin: startDate,

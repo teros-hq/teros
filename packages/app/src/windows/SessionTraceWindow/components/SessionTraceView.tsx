@@ -1,39 +1,26 @@
 /**
- * SessionTraceView — the F2 drill-down of one turn: a session header, the LLM
- * calls and tool executions interleaved in chronological order (each LLM call
- * expandable to its message text), and the direct subagent sessions. This is
- * what lets a turn be inspected inside Teros instead of opening Latitude.
+ * SessionTraceView — the F2 drill-down of one turn: a session header card, the
+ * Stat tiles, the LLM calls and tool executions interleaved in chronological
+ * order as an `LGroup` of rows (each expandable to its message text / detail),
+ * and the direct subagent sessions. This is what lets a turn be inspected
+ * inside Teros instead of opening Latitude.
  *
  * Pure presentation: it takes an assembled `SessionTrace` and renders it.
  * Message text uses `<MarkdownContent>` (gotcha: not raw <Text>). Accessibility:
  * statuses are colour + glyph + text, never colour alone.
  */
 
-import {
-  Activity,
-  AlertTriangle,
-  ArrowRight,
-  Ban,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  CornerDownRight,
-  ExternalLink,
-  GitBranch,
-  ListTree,
-  Loader,
-  MessageSquare,
-  Wrench,
-  XCircle,
-} from "@tamagui/lucide-icons"
 import { seriesColor } from "@teros/shared"
 import { useState } from "react"
-import { Linking, Platform } from "react-native"
-import { Separator, Text, XStack, YStack } from "tamagui"
+import { Linking, Platform, Pressable, View } from "react-native"
 import { MarkdownContent } from "../../../components/chat/bubbles/MarkdownContent"
-import { tokens } from "../../../components/monitoring/colors"
 import { useColors } from "../../../components/mca/primitives/useColors"
-import { indicators } from "../../../components/mca/primitives/colors"
+import { Badge, Dot } from "../../../components/ui/ds/Badge"
+import { Card, LGroup, LRow, Stat, Stats } from "../../../components/ui/ds/Card"
+import { Ph } from "../../../components/ui/ds/Icon"
+import { SectionLabel } from "../../../components/ui/ds/Page"
+import { T } from "../../../components/ui/ds/Text"
+import { Tile } from "../../../components/ui/ds/Tile"
 import type {
   LatitudeSignalBadge,
   SessionTrace,
@@ -52,39 +39,20 @@ import {
   formatTokens,
   sessionStatusLevel,
   shortModel,
-  STATUS_COLORS,
+  STATUS_TONE,
+  statusColor,
+  statusFill,
   type TraceStatusLevel,
   toolStatusLevel,
 } from "../format"
 
-/** One cell of the turn-header stat grid (design's 7-up strip). */
-function StatCell({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+function StatusBadge({ level, text }: { level: TraceStatusLevel; text: string }) {
   return (
-    <YStack flex={1} minWidth={104} gap={3} paddingVertical={10} paddingHorizontal={12} backgroundColor={tokens.bgCard}>
-      <Text fontSize={10} fontWeight="600" letterSpacing={0.5} textTransform="uppercase" color={tokens.textTertiary} numberOfLines={1}>
-        {label}
-      </Text>
-      <Text fontFamily="$mono" fontSize={15} fontWeight="600" color={color ?? tokens.text} numberOfLines={1}>
-        {value}
-      </Text>
-      {sub ? (
-        <Text fontSize={10} color={tokens.textMuted} numberOfLines={1}>
-          {sub}
-        </Text>
-      ) : null}
-    </YStack>
-  )
-}
-
-function StatusBadge({ level, text }: { level: ReturnType<typeof toolStatusLevel>; text: string }) {
-  const color = STATUS_COLORS[level]
-  return (
-    <XStack ai="center" gap={5} aria-label={`Status: ${text}`}>
-      <YStack width={8} height={8} borderRadius={4} backgroundColor={color} />
-      <Text fontSize={12} fontWeight="600" color={color}>
+    <View {...({ "aria-label": `Status: ${text}` } as any)}>
+      <Badge tone={STATUS_TONE[level]} dot pill>
         {text}
-      </Text>
-    </XStack>
+      </Badge>
+    </View>
   )
 }
 
@@ -94,11 +62,11 @@ function StatusBadge({ level, text }: { level: ReturnType<typeof toolStatusLevel
  * links into Latitude. The backend sends only structural data (name/priority/
  * link); the phrase is composed here. Absent signal → nothing rendered.
  */
-const SIGNAL_PRIORITY_COLOR: Record<string, string> = {
-  urgent: STATUS_COLORS.bad,
-  high: STATUS_COLORS.bad,
-  medium: STATUS_COLORS.warn,
-  low: STATUS_COLORS.muted,
+const SIGNAL_PRIORITY_LEVEL: Record<string, TraceStatusLevel> = {
+  urgent: "bad",
+  high: "bad",
+  medium: "warn",
+  low: "muted",
 }
 
 function openSignal(url: string) {
@@ -111,46 +79,55 @@ function openSignal(url: string) {
 }
 
 function SignalBadge({ signal }: { signal: LatitudeSignalBadge }) {
-  const accent =
-    (signal.priority && SIGNAL_PRIORITY_COLOR[signal.priority.toLowerCase()]) || STATUS_COLORS.warn
+  const c = useColors()
+  const [hover, setHover] = useState(false)
+  const level = (signal.priority && SIGNAL_PRIORITY_LEVEL[signal.priority.toLowerCase()]) || "warn"
+  const accent = statusColor(c, level)
   const label = `Known Latitude signal: ${signal.name}${
     signal.priority ? ` (${signal.priority} priority)` : ""
   }. Opens in Latitude.`
   return (
-    <XStack
-      ai="center"
-      gap={10}
-      padding={12}
-      borderRadius={10}
-      backgroundColor="rgba(242,153,74,0.08)"
-      borderColor="rgba(242,153,74,0.28)"
-      borderWidth={1}
-      borderLeftWidth={3}
-      borderLeftColor={accent}
-      cursor="pointer"
-      hoverStyle={{ backgroundColor: "rgba(242,153,74,0.14)" }}
+    <Pressable
       onPress={() => openSignal(signal.deepLinkUrl)}
-      aria-label={label}
-      role="link"
+      accessibilityRole="link"
+      {...({ "aria-label": label, role: "link" } as any)}
+      {...(Platform.OS === "web"
+        ? { onHoverIn: () => setHover(true), onHoverOut: () => setHover(false) }
+        : {})}
+      style={[
+        {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+          padding: 14,
+          borderRadius: 16,
+          backgroundColor: c.tint.a.bg,
+          borderWidth: 1,
+          borderColor: hover ? c.tint.a.bd : "transparent",
+          borderLeftWidth: 3,
+          borderLeftColor: statusFill(c, level),
+        },
+        Platform.OS === "web"
+          ? ({ cursor: "pointer", transition: "border-color 0.2s" } as any)
+          : null,
+      ]}
     >
-      <Activity size={16} color={accent} />
-      <YStack gap={2} flex={1}>
-        <XStack ai="center" gap={8} flexWrap="wrap">
-          <Text fontSize={11} color="$gray9" textTransform="uppercase" letterSpacing={0.4}>
+      <Ph name="pulse" size={16} color={accent} />
+      <View style={{ gap: 2, flex: 1 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <T step="xs" tone="text3">
             Known signal
-          </Text>
+          </T>
           {signal.priority ? (
-            <Text fontSize={11} fontWeight="700" color={accent} textTransform="uppercase">
+            <Badge tone={STATUS_TONE[level]} sm pill>
               {signal.priority}
-            </Text>
+            </Badge>
           ) : null}
-        </XStack>
-        <Text fontSize={13} fontWeight="600" color="$gray12">
-          {signal.name}
-        </Text>
-      </YStack>
-      <ExternalLink size={14} color="$gray9" />
-    </XStack>
+        </View>
+        <T step="sm">{signal.name}</T>
+      </View>
+      <Ph name="arrow-square-out" size={14} color={c.text3} />
+    </Pressable>
   )
 }
 
@@ -174,100 +151,114 @@ function TraceHeader({
     (!!session.actualModel && session.actualModel !== session.modelId) ||
     (!!session.actualProvider && session.actualProvider !== session.provider)
   const level = sessionStatusLevel(session.status)
-  const StatusIcon = LEVEL_ICON[level]
   const channel = session.channelId ? session.channelId.replace(/^ch_(demo_)?/, "") : ""
   return (
-    <YStack gap={14} padding={16} borderRadius={12} backgroundColor={tokens.bgInner} borderColor={tokens.border} borderWidth={1}>
-      <XStack ai="flex-start" jc="space-between" gap={12} flexWrap="wrap">
-        <YStack gap={6} minWidth={0} flex={1}>
-          <XStack ai="center" gap={10} flexWrap="wrap">
-            <MessageSquare size={16} color={tokens.accent} />
-            <Text fontSize={17} fontWeight="660" color={tokens.text}>
-              {agentName ?? session.agentId}
-            </Text>
-            {channel ? (
-              <Text fontFamily="$mono" fontSize={12} color={tokens.textTertiary}>
-                #{channel}
-              </Text>
-            ) : null}
-          </XStack>
-          {userName || workspaceName ? (
-            <Text fontSize={12} color={tokens.textTertiary} numberOfLines={1}>
-              {[userName, workspaceName].filter(Boolean).join(" · ")}
-            </Text>
-          ) : null}
-          <XStack ai="center" gap={8} flexWrap="wrap">
-            {requestedDiffers ? (
-              <>
-                <Text fontSize={12} color={tokens.textTertiary}>
-                  requested
-                </Text>
-                <Text fontFamily="$mono" fontSize={12} color={tokens.textMuted} textDecorationLine="line-through">
-                  {session.provider}·{shortModel(session.modelId)}
-                </Text>
-                <ArrowRight size={13} color={tokens.textMuted} />
-                <Text fontSize={12} color={tokens.textTertiary}>
-                  served
-                </Text>
-              </>
-            ) : null}
-            <XStack ai="center" gap={6}>
-              <YStack width={9} height={9} borderRadius={3} backgroundColor={seriesColor(`${servedProvider}::${servedModel}`)} />
-              <Text fontFamily="$mono" fontSize={12} fontWeight="560" color={tokens.text}>
-                {servedProvider}·{shortModel(servedModel)}
-              </Text>
-            </XStack>
-            {session.fallbackUsed ? (
-              <XStack ai="center" gap={5} paddingVertical={2} paddingHorizontal={8} borderRadius={9999} backgroundColor="rgba(245,158,11,0.12)" borderWidth={1} borderColor="rgba(245,158,11,0.25)">
-                <GitBranch size={12} color={tokens.warning} />
-                <Text fontFamily="$mono" fontSize={11} fontWeight="600" color={tokens.warning}>
-                  fallback
-                </Text>
-              </XStack>
-            ) : null}
-          </XStack>
-        </YStack>
-        <XStack ai="center" gap={7} paddingVertical={6} paddingHorizontal={12} borderRadius={9999} backgroundColor={`${STATUS_COLORS[level]}1A`} borderWidth={1} borderColor={`${STATUS_COLORS[level]}3D`}>
-          <StatusIcon size={13} color={STATUS_COLORS[level]} />
-          <Text fontSize={13} fontWeight="600" color={STATUS_COLORS[level]}>
-            {session.status}
-          </Text>
-          {session.stopReason ? (
-            <Text fontFamily="$mono" fontSize={11} color={tokens.textTertiary} paddingLeft={5}>
-              {session.stopReason}
-            </Text>
-          ) : null}
-        </XStack>
-      </XStack>
-
-      <XStack flexWrap="wrap" gap={1} borderRadius={8} overflow="hidden" borderWidth={1} borderColor={tokens.border} backgroundColor={tokens.border}>
-        <StatCell label="TTFT" value={formatMs(session.ttftMs)} sub="to first token" />
-        <StatCell label="Duration" value={formatMs(session.durationMs)} sub="wall clock" />
-        <StatCell label="Tokens" value={formatTokens(session.totalTokens)} />
-        <StatCell label="Cost" value={formatCost(session.costUsd)} />
-        <StatCell label="LLM calls" value={String(session.llmCallCount)} />
-        <StatCell label="Tools" value={String(session.toolCallCount)} />
-        <StatCell label="Stop reason" value={session.stopReason ?? "—"} color={session.status === "completed" ? STATUS_COLORS.ok : undefined} />
-      </XStack>
-
-      {session.status === "errored" && session.errorMessage ? (
-        <XStack
-          ai="center"
-          gap={6}
-          padding={8}
-          borderRadius={8}
-          backgroundColor={indicators.irreversible.bg}
-          borderColor={indicators.irreversible.border}
-          borderWidth={1}
+    <View style={{ gap: 16 }}>
+      <Card pad>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
         >
-          <AlertTriangle size={14} color={STATUS_COLORS.bad} />
-          <Text fontSize={12} color={STATUS_COLORS.bad}>
-            {session.errorKind ? `[${session.errorKind}] ` : ""}
-            {session.errorMessage}
-          </Text>
-        </XStack>
-      ) : null}
-    </YStack>
+          <View style={{ gap: 6, minWidth: 0, flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <Tile xs icon="chat-circle" />
+              <T step="xl">{agentName ?? session.agentId}</T>
+              {channel ? (
+                <T step="code" tone="text3">
+                  #{channel}
+                </T>
+              ) : null}
+            </View>
+            {userName || workspaceName ? (
+              <T step="sm" tone="text3" numberOfLines={1}>
+                {[userName, workspaceName].filter(Boolean).join(" · ")}
+              </T>
+            ) : null}
+            <T step="code" tone="text3" selectable>
+              {session.sessionUsageId}
+            </T>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {requestedDiffers ? (
+                <>
+                  <T step="12" tone="text3">
+                    requested
+                  </T>
+                  <T step="code" tone="text3" style={{ textDecorationLine: "line-through" }}>
+                    {session.provider}·{shortModel(session.modelId)}
+                  </T>
+                  <Ph name="arrow-right" size={13} color={c.text3} />
+                  <T step="12" tone="text3">
+                    served
+                  </T>
+                </>
+              ) : null}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Dot color={seriesColor(`${servedProvider}::${servedModel}`)} size={8} />
+                <T step="code">
+                  {servedProvider}·{shortModel(servedModel)}
+                </T>
+              </View>
+              {session.fallbackUsed ? (
+                <Badge tone="a" icon="git-branch" mono pill>
+                  fallback
+                </Badge>
+              ) : null}
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Badge tone={STATUS_TONE[level]} dot pill lg>
+              {session.status}
+            </Badge>
+            {session.stopReason ? (
+              <T step="code" tone="text3">
+                {session.stopReason}
+              </T>
+            ) : null}
+          </View>
+        </View>
+
+        {session.status === "errored" && session.errorMessage ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              padding: 10,
+              marginTop: 14,
+              borderRadius: 10,
+              backgroundColor: c.tint.r.bg,
+              borderWidth: 1,
+              borderColor: c.tint.r.bd,
+            }}
+          >
+            <Ph name="warning" size={14} color={c.tint.r.tx} />
+            <T step="12" color={c.tint.r.tx} style={{ flex: 1 }}>
+              {session.errorKind ? `[${session.errorKind}] ` : ""}
+              {session.errorMessage}
+            </T>
+          </View>
+        ) : null}
+      </Card>
+
+      <Stats cols={4}>
+        <Stat label="TTFT" v={formatMs(session.ttftMs)} sub="to first token" />
+        <Stat label="Duration" v={formatMs(session.durationMs)} sub="wall clock" />
+        <Stat label="Tokens" v={formatTokens(session.totalTokens)} />
+        <Stat label="Cost" v={formatCost(session.costUsd)} />
+        <Stat label="LLM calls" v={String(session.llmCallCount)} />
+        <Stat label="Tools" v={String(session.toolCallCount)} />
+        <Stat
+          label="Stop reason"
+          v={session.stopReason ?? "—"}
+          accent={session.status === "completed"}
+        />
+      </Stats>
+    </View>
   )
 }
 
@@ -275,41 +266,29 @@ function TraceHeader({
 function MessageBody({ message }: { message: TraceMessage }) {
   const c = useColors()
   return (
-    <YStack
-      gap={8}
-      marginTop={8}
-      padding={10}
-      borderRadius={8}
-      backgroundColor={c.bgInner}
+    <View
+      style={{ gap: 8, marginTop: 8, padding: 12, borderRadius: 10, backgroundColor: c.bgStep }}
     >
       {message.text != null && message.text !== "" ? (
         <MarkdownContent text={message.text} />
       ) : message.contentType === "text" ? (
-        <Text fontSize={12} color="$gray9">
+        <T step="12" tone="text3">
           (empty message)
-        </Text>
+        </T>
       ) : (
-        <Text fontSize={11} color="$gray9">
+        <T step="12" tone="text3">
           {message.contentType} content (not text)
-        </Text>
+        </T>
       )}
-    </YStack>
+    </View>
   )
 }
 
 /* ── Timeline (design F2): LLM calls & tools on one time axis, bar = duration ── */
 
-const COL = { time: 52, icon: 26, main: 196, status: 58 } as const
-const ROW_GAP = 10
+const COL = { time: 56, icon: 28, main: 200, status: 96 } as const
+const ROW_GAP = 12
 const TRACK_H = 22
-
-const LEVEL_ICON: Record<TraceStatusLevel, typeof Check> = {
-  ok: Check,
-  bad: XCircle,
-  warn: AlertTriangle,
-  muted: Ban,
-  info: Loader,
-}
 
 interface TimelineRowData {
   key: string
@@ -376,32 +355,49 @@ export function buildTimeline(events: TraceEvent[], session: TraceSession) {
 function TimelineAxis({ ticks }: { ticks: { pct: number; label: string }[] }) {
   const last = ticks.length - 1
   return (
-    <XStack ai="center" gap={ROW_GAP} paddingHorizontal={6} paddingBottom={4} aria-hidden>
-      <YStack width={COL.time} />
-      <YStack width={COL.icon} />
-      <YStack width={COL.main} />
-      <YStack flex={1} minWidth={64} height={12} position="relative">
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: ROW_GAP,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+      }}
+      {...({ "aria-hidden": true } as any)}
+    >
+      <View style={{ width: COL.time }} />
+      <View style={{ width: COL.icon }} />
+      <View style={{ width: COL.main }} />
+      <View style={{ flex: 1, minWidth: 64, height: 12, position: "relative" }}>
         {ticks.map((t, i) => (
-          <Text
+          <T
             key={t.pct}
-            position="absolute"
-            left={`${t.pct}%`}
-            x={i === 0 ? 0 : i === last ? "-100%" : "-50%"}
-            fontSize={9}
-            fontFamily="$mono"
-            color={tokens.textMuted}
+            step="codenote"
+            tone="text3"
+            style={[
+              { position: "absolute", left: `${t.pct}%` },
+              Platform.OS === "web"
+                ? ({
+                    transform:
+                      i === 0 ? "none" : i === last ? "translateX(-100%)" : "translateX(-50%)",
+                  } as any)
+                : null,
+            ]}
           >
             {t.label}
-          </Text>
+          </T>
         ))}
-      </YStack>
-      <YStack width={COL.status} />
-    </XStack>
+      </View>
+      <View style={{ width: COL.status }} />
+    </View>
   )
 }
 
 function llmMeta(call: TraceLlmCall): string {
-  const parts = [`${formatTokens(call.promptTokens)}→${formatTokens(call.completionTokens)} tok`, formatCost(call.costTotal)]
+  const parts = [
+    `${formatTokens(call.promptTokens)}→${formatTokens(call.completionTokens)} tok`,
+    formatCost(call.costTotal),
+  ]
   if (call.step != null) parts.push(`step ${call.step}`)
   return parts.join(" · ")
 }
@@ -417,163 +413,195 @@ function toolMeta(tool: TraceToolCall): string {
 
 /** One timeline row: time · type-icon · label/meta · duration bar · status. Expandable. */
 function TimelineRow({ row }: { row: TimelineRowData }) {
+  const c = useColors()
   const [open, setOpen] = useState(false)
   const e = row.event
 
-  const level: TraceStatusLevel = e.kind === "llm" ? "ok" : toolStatusLevel(e.tool.status)
-  const barColor = e.kind === "llm" ? tokens.accent : STATUS_COLORS[level]
-  const TypeIcon = e.kind === "llm" ? MessageSquare : Wrench
-  const StatusIcon = e.kind === "llm" ? MessageSquare : LEVEL_ICON[level]
+  const level: TraceStatusLevel = e.kind === "llm" ? "info" : toolStatusLevel(e.tool.status)
+  const barColor = e.kind === "llm" ? c.accent : statusFill(c, level)
+  const tileTone =
+    e.kind === "llm"
+      ? "accent"
+      : level === "ok"
+        ? "mint"
+        : level === "warn"
+          ? "amber"
+          : level === "bad"
+            ? "pink"
+            : "muted"
 
   const label =
-    e.kind === "llm" ? `${e.llm.actualProvider || e.llm.provider}·${shortModel(e.llm.modelId)}` : e.tool.toolName
+    e.kind === "llm"
+      ? `${e.llm.actualProvider || e.llm.provider}·${shortModel(e.llm.modelId)}`
+      : e.tool.toolName
   const meta = e.kind === "llm" ? llmMeta(e.llm) : toolMeta(e.tool)
   const feedback = e.kind === "llm" ? e.llm.feedback : null
 
   // Expandable when there is something more to show than the compact row.
   const expandable =
-    e.kind === "llm" || (e.kind === "tool" && (!!e.tool.errorMessage || e.tool.inputSizeBytes != null || e.tool.outputSizeBytes != null))
+    e.kind === "llm" ||
+    (e.kind === "tool" &&
+      (!!e.tool.errorMessage || e.tool.inputSizeBytes != null || e.tool.outputSizeBytes != null))
 
   const end = row.leftPct + row.wPct
   const durAtRight = end > 78 // flip the duration label inside the track when the bar runs long
-  const Caret = open ? ChevronDown : ChevronRight
 
   return (
-    <YStack borderBottomWidth={1} borderBottomColor={tokens.border}>
-      <XStack
-        ai="center"
+    <View>
+      <LRow
         gap={ROW_GAP}
-        paddingVertical={9}
-        paddingHorizontal={6}
-        borderRadius={6}
-        cursor={expandable ? "pointer" : "default"}
-        hoverStyle={expandable ? { backgroundColor: tokens.bgHover } : undefined}
+        padV={10}
         onPress={expandable ? () => setOpen((v) => !v) : undefined}
-        aria-label={`${label} — ${meta}`}
+        {...({ "aria-label": `${label} — ${meta}` } as any)}
       >
-        <Text width={COL.time} textAlign="right" fontFamily="$mono" fontSize={11} color={tokens.textTertiary}>
+        <T step="code" tone="text3" style={{ width: COL.time, textAlign: "right" }}>
           +{(row.startMs / 1000).toFixed(2)}s
-        </Text>
+        </T>
 
-        <YStack
-          width={COL.icon}
-          height={COL.icon}
-          ai="center"
-          jc="center"
-          borderRadius={7}
-          backgroundColor={`${barColor}26`}
-        >
-          <TypeIcon size={14} color={barColor} />
-        </YStack>
+        <Tile xs tone={tileTone} icon={e.kind === "llm" ? "chat-circle" : "wrench"} />
 
-        <YStack width={COL.main} gap={1} minWidth={0}>
-          <Text fontSize={13} fontWeight="600" color={tokens.text} numberOfLines={1}>
+        <View style={{ width: COL.main, gap: 1, minWidth: 0 }}>
+          <T step="sm" numberOfLines={1}>
             {label}
-          </Text>
-          <XStack ai="center" gap={6}>
-            <Text fontFamily="$mono" fontSize={10.5} color={tokens.textTertiary} numberOfLines={1} flexShrink={1}>
+          </T>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <T step="code" tone="text3" numberOfLines={1} style={{ flexShrink: 1, fontSize: 10.5 }}>
               {meta}
-            </Text>
+            </T>
             {feedback ? (
-              <Text fontSize={10.5} color={feedback.rating === "up" ? STATUS_COLORS.ok : STATUS_COLORS.bad} numberOfLines={1}>
+              <T
+                step="12"
+                color={feedback.rating === "up" ? c.tint.g.tx : c.tint.r.tx}
+                numberOfLines={1}
+              >
                 {feedback.rating === "up" ? "👍" : "👎"}
                 {feedback.comment ? ` "${feedback.comment}"` : ""}
-              </Text>
+              </T>
             ) : null}
-          </XStack>
-        </YStack>
+          </View>
+        </View>
 
-        <YStack flex={1} minWidth={64} height={TRACK_H} position="relative">
-          <YStack position="absolute" top={TRACK_H / 2} left={0} right={0} height={1} backgroundColor={tokens.border} />
-          <YStack
-            position="absolute"
-            top={(TRACK_H - 12) / 2}
-            left={`${row.leftPct}%`}
-            width={`${row.wPct}%`}
-            height={12}
-            borderRadius={4}
-            backgroundColor={barColor}
+        <View style={{ flex: 1, minWidth: 64, height: TRACK_H, position: "relative" }}>
+          <View
+            style={{
+              position: "absolute",
+              top: TRACK_H / 2,
+              left: 0,
+              right: 0,
+              height: 1,
+              backgroundColor: c.border,
+            }}
           />
-          <Text
-            position="absolute"
-            top={3}
-            left={durAtRight ? undefined : `${end}%`}
-            right={durAtRight ? 2 : undefined}
-            x={durAtRight ? 0 : 6}
-            fontFamily="$mono"
-            fontSize={10}
-            color={tokens.textTertiary}
+          <View
+            style={{
+              position: "absolute",
+              top: (TRACK_H - 6) / 2,
+              left: `${row.leftPct}%`,
+              width: `${row.wPct}%`,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: barColor,
+            }}
+          />
+          <T
+            step="code"
+            tone="text3"
             numberOfLines={1}
+            style={[
+              { position: "absolute", top: 3, fontSize: 10 },
+              durAtRight ? { right: 2 } : { left: `${end}%`, paddingLeft: 6 },
+            ]}
           >
             {formatMs(row.durMs)}
-          </Text>
-        </YStack>
+          </T>
+        </View>
 
-        <XStack width={COL.status} ai="center" jc="flex-end" gap={5}>
-          <StatusIcon size={14} color={barColor} aria-label={e.kind === "tool" ? `Status: ${e.tool.status}` : "LLM call"} />
-          {expandable ? <Caret size={13} color={tokens.textMuted} /> : null}
-        </XStack>
-      </XStack>
+        <View
+          style={{
+            width: COL.status,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            gap: 6,
+          }}
+        >
+          {e.kind === "tool" ? (
+            <StatusBadge level={level} text={e.tool.status} />
+          ) : (
+            <Badge tone="i" sm pill icon="chat-circle">
+              LLM
+            </Badge>
+          )}
+          {expandable ? (
+            <Ph name={open ? "caret-down" : "caret-right"} size={12} color={c.text3} />
+          ) : null}
+        </View>
+      </LRow>
 
       {open && expandable ? (
-        <YStack
-          marginLeft={96}
-          marginRight={6}
-          marginBottom={10}
-          padding={10}
-          borderRadius={6}
-          backgroundColor={tokens.bgDark}
-          borderWidth={1}
-          borderColor={tokens.border}
-          borderLeftWidth={2}
-          borderLeftColor={barColor}
-          gap={6}
+        <View
+          style={{
+            marginLeft: 16 + COL.time + ROW_GAP + COL.icon + ROW_GAP,
+            marginRight: 16,
+            marginBottom: 12,
+            padding: 12,
+            borderRadius: 10,
+            backgroundColor: c.nest,
+            borderLeftWidth: 2,
+            borderLeftColor: barColor,
+            gap: 6,
+          }}
         >
           {e.kind === "llm" ? (
             <>
-              <XStack gap={16} flexWrap="wrap">
-                {e.llm.ttftMs != null ? <Detail label="TTFT" value={formatMs(e.llm.ttftMs)} /> : null}
-                {e.llm.latencyMs != null ? <Detail label="Latency" value={formatMs(e.llm.latencyMs)} /> : null}
+              <View style={{ flexDirection: "row", gap: 16, flexWrap: "wrap" }}>
+                {e.llm.ttftMs != null ? (
+                  <Detail label="TTFT" value={formatMs(e.llm.ttftMs)} />
+                ) : null}
+                {e.llm.latencyMs != null ? (
+                  <Detail label="Latency" value={formatMs(e.llm.latencyMs)} />
+                ) : null}
                 {e.llm.stopReason ? <Detail label="Stop" value={e.llm.stopReason} /> : null}
-              </XStack>
+              </View>
               {e.llm.message ? (
                 <MessageBody message={e.llm.message} />
               ) : (
-                <Text fontSize={12} color={tokens.textTertiary}>
+                <T step="12" tone="text3">
                   Message {e.llm.messageId} not found (may have been compacted or pruned).
-                </Text>
+                </T>
               )}
             </>
           ) : (
             <>
               {e.tool.status === "error" && e.tool.errorMessage ? (
-                <Text fontSize={11.5} color={STATUS_COLORS.bad}>
+                <T step="12" color={c.tint.r.tx}>
                   {e.tool.errorMessage}
-                </Text>
+                </T>
               ) : null}
               {e.tool.inputSizeBytes != null || e.tool.outputSizeBytes != null ? (
-                <Text fontFamily="$mono" fontSize={11.5} color={tokens.textSecondary}>
-                  {formatBytes(e.tool.inputSizeBytes)} in · {formatBytes(e.tool.outputSizeBytes)} out
-                </Text>
+                <T step="code" tone="text2">
+                  {formatBytes(e.tool.inputSizeBytes)} in · {formatBytes(e.tool.outputSizeBytes)}{" "}
+                  out
+                </T>
               ) : null}
             </>
           )}
-        </YStack>
+        </View>
       ) : null}
-    </YStack>
+    </View>
   )
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
-    <XStack gap={5} ai="baseline">
-      <Text fontSize={10} textTransform="uppercase" letterSpacing={0.4} color={tokens.textMuted}>
+    <View style={{ flexDirection: "row", gap: 6, alignItems: "baseline" }}>
+      <T step="codenote" tone="text3">
         {label}
-      </Text>
-      <Text fontFamily="$mono" fontSize={12} color={tokens.textSecondary}>
+      </T>
+      <T step="code" tone="text2">
         {value}
-      </Text>
-    </XStack>
+      </T>
+    </View>
   )
 }
 
@@ -587,41 +615,21 @@ function ChildRow({
   const c = useColors()
   const clickable = !!onOpen
   return (
-    <XStack
-      ai="center"
-      gap={10}
-      padding={10}
-      borderRadius={8}
-      backgroundColor={c.bgInner}
-      borderColor={c.border}
-      borderWidth={1}
-      cursor={clickable ? "pointer" : undefined}
-      hoverStyle={clickable ? { backgroundColor: c.bgCardHover } : undefined}
+    <LRow
       onPress={clickable ? () => onOpen?.(child.sessionUsageId) : undefined}
-      aria-label={clickable ? `Open subagent trace ${child.sessionUsageId}` : undefined}
+      {...(clickable
+        ? ({ "aria-label": `Open subagent trace ${child.sessionUsageId}` } as any)
+        : {})}
     >
-      <CornerDownRight size={14} color="$gray9" />
-      <Text fontSize={12} fontWeight="600" color="$gray12">
-        {child.agentName ?? child.agentId}
-      </Text>
+      <Ph name="arrow-elbow-down-right" size={14} color={c.text3} />
+      <T step="sm">{child.agentName ?? child.agentId}</T>
       <StatusBadge level={sessionStatusLevel(child.status)} text={child.status} />
-      <XStack flex={1} />
-      <Text fontSize={11} color="$gray10">
+      <View style={{ flex: 1 }} />
+      <T step="code" tone="text3">
         {formatTokens(child.totalTokens)} tok · {formatCost(child.costUsd)}
-      </Text>
-      {clickable ? <ChevronRight size={14} color="$gray9" /> : null}
-    </XStack>
-  )
-}
-
-function SectionTitle({ icon: Icon, title }: { icon: typeof ListTree; title: string }) {
-  return (
-    <XStack ai="center" gap={8}>
-      <Icon size={15} color="$blue10" />
-      <Text fontSize={13} fontWeight="600" color="$gray12">
-        {title}
-      </Text>
-    </XStack>
+      </T>
+      {clickable ? <Ph name="caret-right" size={14} color={c.text3} /> : null}
+    </LRow>
   )
 }
 
@@ -632,43 +640,50 @@ export function SessionTraceView({
   trace: SessionTrace
   onOpenChild?: (sessionUsageId: string) => void
 }) {
-  const c = useColors()
   const timeline = buildTimeline(trace.events, trace.session)
   return (
-    <YStack gap={16}>
+    <View style={{ gap: 16 }}>
       {trace.latitudeSignal ? <SignalBadge signal={trace.latitudeSignal} /> : null}
-      <TraceHeader session={trace.session} agentName={trace.agentName} userName={trace.userName} workspaceName={trace.workspaceName} />
+      <TraceHeader
+        session={trace.session}
+        agentName={trace.agentName}
+        userName={trace.userName}
+        workspaceName={trace.workspaceName}
+      />
 
-      <YStack gap={8}>
-        <XStack ai="baseline" jc="space-between" gap={12} flexWrap="wrap">
-          <SectionTitle icon={ListTree} title={`Timeline · ${trace.events.length} events`} />
-          <Text fontSize={11} color={tokens.textTertiary}>
-            bar length = duration · click a row to expand
-          </Text>
-        </XStack>
+      <View>
+        <SectionLabel
+          label={`Timeline · ${trace.events.length} events`}
+          right={
+            <T step="12" tone="text3">
+              bar length = duration · click a row to expand
+            </T>
+          }
+        />
         {trace.events.length === 0 ? (
-          <Text fontSize={13} color="$gray10" padding={12}>
+          <T step="sm" tone="text3" style={{ paddingHorizontal: 4 }}>
             No LLM calls or tool executions recorded for this turn.
-          </Text>
+          </T>
         ) : (
-          <YStack>
+          <LGroup>
             <TimelineAxis ticks={timeline.ticks} />
             {timeline.rows.map((r) => (
               <TimelineRow key={r.key} row={r} />
             ))}
-          </YStack>
+          </LGroup>
         )}
-      </YStack>
+      </View>
 
       {trace.children.length > 0 ? (
-        <YStack gap={8}>
-          <Separator borderColor={c.borderStrong} />
-          <SectionTitle icon={GitBranch} title={`Subagents · ${trace.children.length}`} />
-          {trace.children.map((c) => (
-            <ChildRow key={c.sessionUsageId} child={c} onOpen={onOpenChild} />
-          ))}
-        </YStack>
+        <View>
+          <SectionLabel label={`Subagents · ${trace.children.length}`} />
+          <LGroup>
+            {trace.children.map((ch) => (
+              <ChildRow key={ch.sessionUsageId} child={ch} onOpen={onOpenChild} />
+            ))}
+          </LGroup>
+        </View>
       ) : null}
-    </YStack>
+    </View>
   )
 }

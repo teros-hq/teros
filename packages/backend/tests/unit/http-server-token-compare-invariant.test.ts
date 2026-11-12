@@ -32,12 +32,13 @@ describe("http-server token-compare invariant (SEC-6/M3)", () => {
     )
   })
 
-  it("the internal-token guard (/api/event, /api/mca-event) uses timingSafeStringEqual", () => {
+  it("the internal-token guard (/api/mca-event) uses timingSafeStringEqual", () => {
     const matches = source().match(
       /timingSafeStringEqual\(authHeader, `Bearer \$\{mcaSecret\.internalToken\}`\)/g,
     )
-    // Two call sites: handleEventRoute and handleMcaEventRoute.
-    expect(matches?.length).toBe(2)
+    // One call site: handleMcaEventRoute (/api/event + handleEventRoute were removed
+    // with the legacy scheduler, c550f85bd).
+    expect(matches?.length).toBe(1)
   })
 
   it("the feedback-token guard (/api/feedback/submit) uses timingSafeStringEqual", () => {

@@ -31,6 +31,14 @@ import { Linking, Platform } from 'react-native'
 import { Button, Input, Text, XStack, YStack } from 'tamagui'
 import { colors as semanticColors } from '../mca/primitives/colors'
 import { useColors } from '../mca/primitives/useColors'
+import { useEdition } from '../../config/edition'
+
+// ── Edition gate (TER-EDITION) ────────────────────────────────────────────────
+// Local Ollama is self-hosted-only: the daemon would run on the shared cloud
+// backend, which nobody owns. The edition comes from the backend at runtime
+// (ONB-REQ-1, `useEdition`), not from the bundle; the entry is marked
+// `selfHostedOnly` and filtered when the list renders. The backend rejects
+// provider.add 'ollama' in cloud regardless (defense in depth).
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -50,7 +58,26 @@ function copyToClipboard(text: string) {
 
 // ── PROVIDER_TYPES ────────────────────────────────────────────────────────────
 
-export const PROVIDER_TYPES = [
+export interface ProviderTypeInfo {
+  id: string
+  name: string
+  description: string
+  color: string
+  placeholder: string
+  authType: 'apiKey' | 'oauth' | 'url' | 'none' | 'openai-compatible'
+  oauthMethod?: 'callback-url' | 'device-flow'
+  /**
+   * Hidden entries stay in this array — ProvidersWindowContent resolves the
+   * metadata (name, color) of ALREADY-CONNECTED providers via .find() — but
+   * they are not offered in the add-provider selection list, so no NEW
+   * connections can be started from the UI.
+   */
+  hidden?: boolean
+  /** Only offered on the self-hosted edition (TER-EDITION). */
+  selfHostedOnly?: boolean
+}
+
+export const PROVIDER_TYPES: ProviderTypeInfo[] = [
   {
     id: 'anthropic',
     name: 'Anthropic',
@@ -60,6 +87,12 @@ export const PROVIDER_TYPES = [
     authType: 'apiKey' as const,
   },
   {
+    // @fixme nira - 2026.10.30 : hidden per Pablo's 2026-10-30 decision (ToS risk —
+    // anthropic.com/legal/consumer-terms "automated or non-human means", and
+    // code.claude.com/docs/en/legal-and-compliance prohibits Claude.ai login in
+    // third-party apps). Do NOT remove the entry: existing connections resolve
+    // their metadata through this array. Full removal is a future step if ToS
+    // or priority demands it — see docs/providers/20261030_oauth-subscriptions-hidden.md
     id: 'anthropic-oauth',
     name: 'Claude Pro/Max',
     description: 'Use your Claude Pro or Max subscription (OAuth)',
@@ -67,8 +100,14 @@ export const PROVIDER_TYPES = [
     placeholder: '',
     authType: 'oauth' as const,
     oauthMethod: 'callback-url' as const,
+    hidden: true,
   },
   {
+    // @fixme nira - 2026.10.30 : hidden per Pablo's 2026-10-30 decision (ToS gray
+    // zone — openai.com/policies/sign-in-with-chatgpt-terms supports the flow
+    // only for the user's own use). Do NOT remove the entry: existing connections
+    // resolve their metadata through this array. Full removal is a future step
+    // if ToS or priority demands it — see docs/providers/20261030_oauth-subscriptions-hidden.md
     id: 'openai-codex-oauth',
     name: 'ChatGPT Pro/Plus (Codex)',
     description: 'Use your ChatGPT Pro or Plus subscription for Codex models',
@@ -76,6 +115,7 @@ export const PROVIDER_TYPES = [
     placeholder: '',
     authType: 'oauth' as const,
     oauthMethod: 'device-flow' as const,
+    hidden: true,
   },
   {
     id: 'openai',
@@ -124,6 +164,10 @@ export const PROVIDER_TYPES = [
     color: '#F97316',
     placeholder: 'http://localhost:11434',
     authType: 'url' as const,
+    // TER-EDITION: local Ollama is self-hosted-only. Hidden in cloud builds
+    // (metadata still resolves for already-connected records); the backend
+    // rejects provider.add 'ollama' in cloud regardless (defense in depth).
+    selfHostedOnly: true,
   },
   {
     id: 'ollama-cloud',
@@ -163,6 +207,14 @@ export const PROVIDER_TYPES = [
     description: 'Kimi K2.6, DeepSeek V4 Pro, Qwen 3.5 & more open models (user secret)',
     color: '#0F6FFF',
     placeholder: 'tgp_v1_...',
+    authType: 'apiKey' as const,
+  },
+  {
+    id: 'helmcode',
+    name: 'Helmcode',
+    description: 'Inferencia privada en la UE — GLM 5.3, DeepSeek V4 Flash, Qwen3.6, Gemma 4 (BYOK)',
+    color: '#4934E1',
+    placeholder: 'tu-api-key-de-helmcode',
     authType: 'apiKey' as const,
   },
   {
@@ -432,6 +484,7 @@ export function AddProviderForm({
 }: AddProviderFormProps) {
   const { t } = useTranslation()
   const c = useColors()
+  const edition = useEdition()
   const [selectedType, setSelectedType] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -521,7 +574,9 @@ export function AddProviderForm({
       {!selectedType ? (
         <YStack gap="$2">
           <Text fontSize="$2" color={c.text2}>{t('onboarding.selectProviderType')}</Text>
-          {PROVIDER_TYPES.map((type) => (
+          {/* hidden:true entries (subscription OAuth, ToS-driven) are excluded —
+              existing connections keep working, new ones cannot be started */}
+          {PROVIDER_TYPES.filter((type) => !type.hidden && !(type.selfHostedOnly && edition === 'cloud')).map((type) => (
             <XStack
               key={type.id}
               padding="$3"

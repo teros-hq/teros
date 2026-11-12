@@ -1,0 +1,198 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.email",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies transport configuration (mode, which secrets are present — never their values) and, when MAIL_ACCOUNT is configured, a live JMAP session with the derived or explicit password.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "session-info",
+      "description": "Identity of this email instance: mailbox (MAIL_ACCOUNT), JMAP accountId, username, apiUrl, transport mode and password source (derived/user). First call to diagnose connection or credentials.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-folders",
+      "description": "Folders of this mailbox (Inbox, Sent, Drafts, Trash, …) with role, total emails and unread count. Use the returned roles as 'folder' in list-messages.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-messages",
+      "description": "List messages of a folder, most recent first, without bodies (use read-message for the content). Returns { total, offset, messages: [{ id, from, to, subject, receivedAt, seen, flagged, draft, size }] }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "description": "Role ('inbox', 'sent', 'drafts', 'trash', 'junk') or exact folder name. Default 'inbox'."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Messages to return (default 20, max 50)."
+          },
+          "offset": {
+            "type": "number",
+            "description": "Skip this many for pagination (default 0)."
+          },
+          "unreadOnly": {
+            "type": "boolean",
+            "description": "Only unread messages (default false)."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "read-message",
+      "description": "Read a message in full: headers (from/to/cc/replyTo), subject, date and body (text and HTML when present). Does not change the read state (that is mark-read).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "Email id (the one returned by list-messages)."
+          }
+        },
+        "required": [
+          "messageId"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "send",
+      "description": "Send an email from this instance's mailbox (the sender is ALWAYS the configured MAIL_ACCOUNT — never a tool parameter). Draft + submit in one JMAP request; the message is stored in Sent. Confirm with the user before sending to external recipients.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "description": "Recipient address or list of addresses.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "subject": {
+            "type": "string",
+            "description": "Subject."
+          },
+          "text": {
+            "type": "string",
+            "description": "Plain-text body (required; the text/plain part)."
+          },
+          "html": {
+            "type": "string",
+            "description": "Optional HTML body (alternative text/html part)."
+          },
+          "fromName": {
+            "type": "string",
+            "description": "Display name of the sender. Default: MAIL_FROM_NAME, else the JMAP identity name."
+          }
+        },
+        "required": [
+          "to",
+          "subject",
+          "text"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "mark-read",
+      "description": "Mark messages as read or unread. Accepts a list (1..100) so a single confirmation covers the batch. Returns { updated, notUpdated }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Email ids to mark (from list-messages)."
+          },
+          "seen": {
+            "type": "boolean",
+            "description": "true = read (default), false = unread."
+          }
+        },
+        "required": [
+          "messageIds"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "destroy",
+      "description": "DESTROY messages permanently — irreversible, they do NOT pass through Trash. Use only with explicit user confirmation. Returns { destroyed, notDestroyed }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Email ids to destroy (from list-messages)."
+          }
+        },
+        "required": [
+          "messageIds"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "irreversible": true
+      }
+    }
+  ]
+}

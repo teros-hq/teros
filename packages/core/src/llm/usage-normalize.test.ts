@@ -29,8 +29,9 @@ describe("uncachedInputTokens (A2.1 — boundary normalization)", () => {
 })
 
 describe("no cost double-count once inputTokens excludes cached (A2.1)", () => {
-  // Fireworks/Kimi (the default managed path): $0.95/M input, $0.19/M cacheRead
-  // (owned rule in model-pricing.ts). A 1M-token prompt with 900k cached.
+  // Fireworks/Kimi (the default managed path): $0.95/M input, $0.16/M cacheRead
+  // (the generic Kimi rule in model-pricing.ts, corrected from the invoices).
+  // A 1M-token prompt with 900k cached.
   const provider = "teros"
   const modelId = "accounts/fireworks/models/kimi-k2p6"
 
@@ -46,8 +47,8 @@ describe("no cost double-count once inputTokens excludes cached (A2.1)", () => {
       cachedReadTokens: cached,
       cachedWriteTokens: 0,
     })
-    // Correct: 100k non-cached × $0.95/M + 900k cached × $0.19/M = $0.095 + $0.171
-    expect(cost).toBeCloseTo(0.095 + 0.171, 6)
+    // Correct: 100k non-cached × $0.95/M + 900k cached × $0.16/M = $0.095 + $0.144
+    expect(cost).toBeCloseTo(0.095 + 0.144, 6)
   })
 
   it("the pre-fix shape (inputTokens = full prompt) would have over-charged ~4×", () => {
