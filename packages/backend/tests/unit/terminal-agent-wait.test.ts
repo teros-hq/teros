@@ -29,6 +29,7 @@ function makeHost(screenLines: string[] = ["$ "]) {
   const sinks = new Map<string, { data(t: string): void; exit(c: number): void }>()
   const host: any = {
     appId: "app_fakehost01",
+    key: "app_fakehost01",
     container: "teros-term-fake",
     workspaceId: "work_1",
     onAttr: null,

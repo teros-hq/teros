@@ -149,7 +149,7 @@ describe('useTtsPlayer — FIFO order + sentence framing', () => {
 
   it('decodes ONE complete mp3 per sentence — never a partial chunk', async () => {
     const mock = makeMockContext()
-    vi.stubGlobal('AudioContext', vi.fn(() => mock.ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return mock.ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
 
@@ -175,7 +175,7 @@ describe('useTtsPlayer — FIFO order + sentence framing', () => {
 
   it('strict FIFO: one source at a time, chained via onended', async () => {
     const mock = makeMockContext()
-    vi.stubGlobal('AudioContext', vi.fn(() => mock.ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return mock.ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
 
@@ -207,7 +207,7 @@ describe('useTtsPlayer — FIFO order + sentence framing', () => {
 
   it('speaking_ended flushes the LAST sentence (no next ID3 to close it)', async () => {
     const mock = makeMockContext()
-    vi.stubGlobal('AudioContext', vi.fn(() => mock.ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return mock.ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
 
@@ -236,7 +236,7 @@ describe('useTtsPlayer — interrupt + marks → activity', () => {
 
   it('stop() kills the in-flight source, empties the queue, drops decodes', async () => {
     const mock = makeMockContext()
-    vi.stubGlobal('AudioContext', vi.fn(() => mock.ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return mock.ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
     let ended = false
@@ -284,7 +284,7 @@ describe('useTtsPlayer — interrupt + marks → activity', () => {
       pendingOk = ok
       return undefined
     })
-    vi.stubGlobal('AudioContext', vi.fn(() => mock.ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return mock.ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
 
@@ -310,7 +310,7 @@ describe('useTtsPlayer — interrupt + marks → activity', () => {
 
   it('onPlaybackEnded fires when the queue DRAINS after speaking_ended', async () => {
     const mock = makeMockContext()
-    vi.stubGlobal('AudioContext', vi.fn(() => mock.ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return mock.ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
     let endedCount = 0
@@ -355,7 +355,7 @@ describe('useTtsPlayer — interrupt + marks → activity', () => {
       pendingOk = ok
       return undefined
     })
-    vi.stubGlobal('AudioContext', vi.fn(() => mock.ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return mock.ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
     let endedCount = 0
@@ -386,7 +386,7 @@ describe('useTtsPlayer — interrupt + marks → activity', () => {
 
   it('speaking_started re-arms the drain edge for the next turn', async () => {
     const mock = makeMockContext()
-    vi.stubGlobal('AudioContext', vi.fn(() => mock.ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return mock.ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
     let endedCount = 0
@@ -422,7 +422,7 @@ describe('useTtsPlayer — interrupt + marks → activity', () => {
 
   it('a corrupt sentence is skipped — the turn keeps flowing', async () => {
     const mock = makeMockContext()
-    vi.stubGlobal('AudioContext', vi.fn(() => mock.ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return mock.ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
 
@@ -485,7 +485,7 @@ describe('useTtsPlayer — degradation + mute', () => {
 
   it('mute while speaking is a cut (the legacy ceremony)', async () => {
     const mock = makeMockContext()
-    vi.stubGlobal('AudioContext', vi.fn(() => mock.ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return mock.ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
     let ended = false

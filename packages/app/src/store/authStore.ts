@@ -16,6 +16,7 @@
 
 import { createSessionStore } from './session/createSessionStore'
 import { destroySession } from './session/SessionManager'
+import { suppressAutologinAfterSignOut } from "../lib/dev-autologin"
 import { storage, STORAGE_KEYS, shouldPersistSessionToken } from "../services/storage"
 
 /**
@@ -234,6 +235,8 @@ export const useAuthStore = createSessionStore<AuthState>('auth', (set, get) => 
   // registered as 'auth'), calls storage.clearAll(), tears down the transport,
   // and clears Sentry.
   logout: async () => {
+    // Signing out against an auto-login backend must not sign straight back in (ALOGIN-REQ-7)
+    suppressAutologinAfterSignOut()
     await destroySession()
   },
 

@@ -36,10 +36,13 @@ export interface PaneLabels {
   restart: string
   close: string
   denied: string
+  failed: string
   jump: string
   /** Read-only pane: who drives, and the way out. */
   readOnly: string
   takeWheel: string
+  watchOnly: string
+  asleep: string
 }
 
 export const DEFAULT_LABELS: PaneLabels = {
@@ -50,9 +53,23 @@ export const DEFAULT_LABELS: PaneLabels = {
   restart: "Restart",
   close: "Close",
   denied: "You don't have access to this session",
+  failed: "This session couldn't wake up. Try again in a moment.",
   jump: "Jump to the bottom",
   readOnly: "{{name}} has the wheel — view only",
   takeWheel: "Take the wheel",
+  watchOnly: "This is someone's personal terminal — view only",
+  asleep: "Asleep: only its person can wake it",
+}
+
+const ACCESS_REFUSALS = new Set([
+  "FORBIDDEN",
+  "FORBIDDEN_TERMINAL",
+  "FORBIDDEN_WORKSPACE",
+  "FORBIDDEN_WORKSPACE_ROLE",
+])
+
+export function paneStateForError(code: string): "denied" | "failed" {
+  return ACCESS_REFUSALS.has(code) ? "denied" : "failed"
 }
 
 export interface SessionSummary {
@@ -110,7 +127,7 @@ export type PageMessage =
   | { type: "need_ticket" }
   | {
       type: "status"
-      conn: "connecting" | "live" | "offline" | "ended" | "denied"
+      conn: "connecting" | "live" | "offline" | "ended" | "denied" | "failed"
       detail?: string
     }
   | { type: "state"; session: SessionSummary | null; typing: Typist | null; watchers: string[] }
@@ -122,7 +139,7 @@ export type PageMessage =
   /** A window shortcut typed in the terminal (switch sessions, wheel, float, rail side). */
   | {
       type: "shortcut"
-      action: "prev-session" | "next-session" | "take-wheel" | "float" | "rail-left" | "rail-right"
+      action: "prev-session" | "next-session" | "take-wheel" | "go-session" | "float" | "rail-left" | "rail-right"
     }
   /** A pane-state button: start the session again / take it off screen. */
   | { type: "action"; action: "restart" | "close" }
@@ -142,4 +159,12 @@ export function parseMessage<T>(raw: unknown): T | null {
   } catch {
     return null
   }
+}
+
+export function isViewOnly(code: string): boolean {
+  return code === "TERMINAL_VIEW_ONLY"
+}
+
+export function isAsleep(code: string): boolean {
+  return code === "TERMINAL_ASLEEP"
 }

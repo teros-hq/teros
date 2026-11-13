@@ -37,14 +37,14 @@
  * to the pane.
  */
 
-import type { TerminalWatcher } from "@teros/shared"
+import type { Principal, TerminalWatcher } from "@teros/shared"
 import { randomBytes } from "crypto"
 import type { IncomingMessage } from "http"
 import type { Db } from "mongodb"
 import type { Duplex } from "stream"
 import { WebSocket, WebSocketServer } from "ws"
 import type { PtyManager, SessionInfo } from "../pty-manager"
-import { checkTerminalAccess } from "./terminal-access"
+import { checkTerminalAccess, mayReachSession, terminalPrincipal } from "./terminal-access"
 
 const TICKET_TTL_MS = 60_000
 const BATCH_MS = 8
@@ -92,6 +92,7 @@ interface Attachment {
   syncing: Array<{ data: string; seq: number }> | null
   cols: number
   rows: number
+  principal: Principal
 }
 
 interface Viewer {
@@ -254,6 +255,14 @@ export class TerminalStreamServer {
     }, FLOOD_FRAME_MS)
   }
 
+  dropViewers(terminalId: string, mayStay: (userId: string) => boolean): void {
+    for (const v of [...(this.byTerminal.get(terminalId) ?? [])]) {
+      if (mayStay(v.userId)) continue
+      this.sendText(v, JSON.stringify({ t: "err", id: terminalId, code: "FORBIDDEN_TERMINAL" }))
+      this.detach(v, terminalId)
+    }
+  }
+
   /** The session ended: tell its viewers and drop their attachments. */
   notifyExit(terminalId: string, exitCode: number, reason?: string): void {
     const viewers = this.byTerminal.get(terminalId)
@@ -333,26 +342,28 @@ export class TerminalStreamServer {
         // auto-focused pane "types" without anyone touching a key. They are
         // not keystrokes — never written, never wheel-moving.
         if (msg.d === "\x1b[I" || msg.d === "\x1b[O") return
-        // Viewing is read-only: while someone else holds the wheel, the
-        // viewer's keys are not sent to the pane. The wheel moves only by
-        // taking it (the button), or by typing when nobody holds it.
+        if (this.viewOnly(a)) {
+          this.sendText(
+            viewer,
+            JSON.stringify({
+              t: "err",
+              id,
+              code: "TERMINAL_VIEW_ONLY",
+              msg: "This is someone's personal terminal: you can watch it, your keys were not sent.",
+            }),
+          )
+          return
+        }
         const driver = this.ptyManager.driver?.(id)
-        if (
-          driver &&
-          driver.kind !== "none" &&
-          !(driver.kind === "human" && driver.id === viewer.userId)
-        ) {
-          const who = driver.name || (driver.kind === "agent" ? "The agent" : "Someone")
+        if (driver?.kind === "agent") {
+          const who = driver.name || "The agent"
           this.sendText(
             viewer,
             JSON.stringify({
               t: "err",
               id,
               code: "WHEEL_HELD",
-              msg:
-                driver.kind === "agent"
-                  ? `${who} has the wheel — your keys were not sent. Press "Take the wheel" to drive.`
-                  : `${who} has the wheel — your keys were not sent.`,
+              msg: `${who} is typing in this session: your keys were not sent. Switch "Agent off" to type.`,
             }),
           )
           return
@@ -382,7 +393,8 @@ export class TerminalStreamServer {
         // spectator (someone else at the wheel) never resizes the pane.
         const driver = this.ptyManager.driver?.(id)
         const spectator =
-          !!driver && driver.kind !== "none" && !(driver.kind === "human" && driver.id === viewer.userId)
+          this.viewOnly(a) ||
+          (!!driver && driver.kind !== "none" && !(driver.kind === "human" && driver.id === viewer.userId))
         if (!spectator && (!last || last.kind === "agent" || last.id === viewer.userId))
           this.applySize(id, a.cols, a.rows)
         return
@@ -414,9 +426,30 @@ export class TerminalStreamServer {
       this.ptyManager,
       { userId: viewer.userId, bridge: false },
       terminalId,
+      "see",
     )
     if (denial) {
       this.sendText(viewer, JSON.stringify({ t: "err", id: terminalId, code: denial }))
+      return
+    }
+    const workspaceId = this.ptyManager.ownerOf(terminalId) ?? ""
+    const principal = await terminalPrincipal(
+      this.db,
+      { userId: viewer.userId, bridge: false },
+      workspaceId,
+    )
+    const before = this.ptyManager.describe(terminalId)
+    const asleep = !!before?.lifecycle && before.lifecycle !== "awake"
+    if (asleep && before && !mayReachSession(before, workspaceId, principal, "use")) {
+      this.sendText(
+        viewer,
+        JSON.stringify({
+          t: "err",
+          id: terminalId,
+          code: "TERMINAL_ASLEEP",
+          msg: "This terminal is asleep: only its person can wake it",
+        }),
+      )
       return
     }
     // A person opening a frozen or sleeping session wakes it (pty-manager.ts lifecycle).
@@ -436,6 +469,11 @@ export class TerminalStreamServer {
       )
       return
     }
+    const still = this.ptyManager.describe(terminalId)
+    if (!still || !mayReachSession(still, workspaceId, principal, "see")) {
+      this.sendText(viewer, JSON.stringify({ t: "err", id: terminalId, code: "FORBIDDEN_TERMINAL" }))
+      return
+    }
     this.detach(viewer, terminalId)
     const a: Attachment = {
       terminalId,
@@ -450,6 +488,7 @@ export class TerminalStreamServer {
       syncing: null,
       cols,
       rows,
+      principal,
     }
     a.unsubscribe = this.ptyManager.onOutput(terminalId, (data, seq) =>
       this.output(viewer, a, data, seq),
@@ -469,9 +508,8 @@ export class TerminalStreamServer {
     const last = this.ptyManager.lastInput(terminalId)
     const driver = this.ptyManager.driver?.(terminalId)
     const spectator =
-      !!driver &&
-      driver.kind !== "none" &&
-      !(driver.kind === "human" && driver.id === viewer.userId)
+      this.viewOnly(a) ||
+      (!!driver && driver.kind !== "none" && !(driver.kind === "human" && driver.id === viewer.userId))
     if (
       !spectator &&
       (!last ||
@@ -488,6 +526,7 @@ export class TerminalStreamServer {
         t: "attached",
         id: terminalId,
         session: this.crewSession(terminalId, session),
+        viewOnly: this.viewOnly(a),
         woke,
         typing: this.ptyManager.lastInput(terminalId),
         watchers: this.watchers(terminalId),
@@ -498,6 +537,13 @@ export class TerminalStreamServer {
     // A new face among the watchers: the workspace's lists and the other viewers.
     if (newWatcher) this.ptyManager.announce?.(terminalId, "watchers")
     else for (const other of set) if (other !== viewer) this.notifyState(terminalId, session)
+  }
+
+  private viewOnly(a: Attachment): boolean {
+    const session = this.ptyManager.describe(a.terminalId)
+    const workspaceId = this.ptyManager.ownerOf(a.terminalId)
+    if (!session || !workspaceId) return true
+    return !mayReachSession(session, workspaceId, a.principal, "use")
   }
 
   private detach(viewer: Viewer, terminalId: string): void {

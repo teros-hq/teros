@@ -125,7 +125,13 @@ export interface WindowTypeDefinition<TProps = Record<string, any>> {
     canMinimize?: boolean
     canMaximize?: boolean
     canClose?: boolean
+    canFloat?: boolean
   }
+}
+
+export function canFloatWindowType(type: string): boolean {
+  const definition = windowRegistry.get(type)
+  return !!definition && definition.capabilities?.canFloat !== false
 }
 
 // ============================================

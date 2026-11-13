@@ -44,23 +44,17 @@
  * not keep a machine running.
  */
 
-import { execSync } from "child_process"
-import * as pty from "node-pty"
 import type {
+  Space,
   TerminalConflict,
   TerminalDriver,
   TerminalHandedBack,
   TerminalWatcher,
+  TerminalWheelRequest,
 } from "@teros/shared"
+import { execSync } from "child_process"
+import * as pty from "node-pty"
 import type { PubSubService } from "./pubsub-service"
-import {
-  type CrewIdentity,
-  DriverLease,
-  type DriverLeaseOptions,
-  type LeaseChange,
-  parseLeaseSnapshot,
-  type WheelHeld,
-} from "./terminal/driver-lease"
 import {
   AGENT_COMMANDS,
   detectBlocked,
@@ -69,8 +63,17 @@ import {
   type HeuristicState,
   nextHeuristicState,
 } from "./terminal/agent-heuristics"
+import {
+  type CrewIdentity,
+  DriverLease,
+  type DriverLeaseOptions,
+  type LeaseChange,
+  parseLeaseSnapshot,
+  type WheelHeld,
+} from "./terminal/driver-lease"
 import { bracketedPasteChange, type RenderedScreen, replaceControls } from "./terminal/snapshot"
 import type { TermHost, TermHostManager, TermWindow, TermWindowMeta } from "./terminal/term-host"
+import { hostPersonOf, spaceOfSession, termHostKey } from "./terminal/term-host"
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -104,6 +107,7 @@ export const SNAPSHOT_HISTORY_LINES = 5000
 
 /** Lines of tmux history an adopted session's read buffer is seeded with after a backend restart. */
 const ADOPT_SEED_LINES = 1000
+const RESUME_MARKER = "resumed after sleep"
 
 /** Sustained output above this (bytes/s) puts a session in flood mode. */
 const FLOOD_BYTES_PER_SEC = 2 * 1024 * 1024
@@ -174,6 +178,7 @@ export interface SessionMeta {
   appId?: string
   /** How a coding agent in it signs in (chip text: "via Teros", "API key ····abcd"), never a secret. */
   auth?: string
+  space?: Space
 }
 
 export interface PtySession {
@@ -203,6 +208,7 @@ export interface SleepRecord {
   title: string
   kind: string
   createdBy: string
+  space?: Space
   createdAt: Date
   /** Chip text of the coding agent's sign-in ("API key ····abcd"), never a secret. */
   auth: string
@@ -255,6 +261,8 @@ export interface ResumeInfo {
   notRestored: string | null
   /** One sentence for people and agents. */
   message: string
+  cwd?: string
+  sameDir?: boolean
 }
 
 /** Lifecycle tunables (tests use small values). */
@@ -281,6 +289,8 @@ export interface LifecycleStats {
 interface SessionRuntime {
   /** Circular buffer of raw (pre-strip) output lines. */
   buffer: string[]
+  replaySkip?: number
+  replayMarkers: number
   /** Absolute index of buffer[0] in the session's line sequence; > 0 once old lines were dropped. */
   bufferStartLine: number
   /** Approximate size of the retained buffer in bytes. */
@@ -466,6 +476,12 @@ export interface SessionInfo {
   driver: TerminalDriver
   /** Two people typing at once, null otherwise. */
   conflict: TerminalConflict | null
+  wheelRequest: TerminalWheelRequest | null
+  priorAgent: TerminalWheelRequest["agent"] | null
+  agentControl: boolean
+  watchable: boolean
+  space: Space
+  openedBy: "person" | "agent"
 }
 
 /** Detailed status for one session (getStatus()). */
@@ -532,6 +548,12 @@ export function stripAnsi(input: string): string {
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
+
+function openedLease(createdBy: string, options: DriverLeaseOptions | undefined): DriverLease {
+  const lease = new DriverLease(Date.now, options)
+  lease.agentControl = createdBy.startsWith("agent:")
+  return lease
+}
 
 // ── Manager ──────────────────────────────────────────────────────────────────
 
@@ -698,11 +720,11 @@ export class PtyManager {
     const windows = await host.listWindows()
     if (wasPaused) {
       const since = Number(await host.serverOption("@teros_paused_at"))
-      this.frozenBefore.set(host.appId, since > 0 ? since : Date.now())
+      this.frozenBefore.set(host.key, since > 0 ? since : Date.now())
     }
     const live = new Set(windows.map((w) => w.terminalId))
     for (const session of [...this.sessions.values()]) {
-      if (session.tmux?.host.appId === host.appId && !live.has(session.terminalId)) {
+      if (session.tmux?.host.key === host.key && !live.has(session.terminalId)) {
         this._exitSession(session.terminalId, 0, "host_lost")
       }
     }
@@ -732,9 +754,10 @@ export class PtyManager {
         {
           title: win.title,
           kind: win.kind,
-          createdBy: win.createdBy,
+          createdBy: host.person ?? win.createdBy,
           appId: win.appId,
           auth: win.auth,
+          space: host.person ? "personal" : "shared",
         },
         false,
       )
@@ -815,10 +838,10 @@ export class PtyManager {
     }
     host.onUnpause = (ms) => {
       // Unpaused to be saved to sleep: not a wake.
-      if (this.hibernating.has(host.appId)) return
-      this.frozenBefore.delete(host.appId)
+      if (this.hibernating.has(host.key)) return
+      this.frozenBefore.delete(host.key)
       this._countWake("frozen", ms)
-      const sessions = this._sessionsOf(host.appId)
+      const sessions = this._sessionsOf(host.key)
       console.log(
         `[PtyManager] terminal host ${host.container} unfrozen in ${ms} ms (${sessions.length} session(s)) · ${this._statsLine()}`,
       )
@@ -829,7 +852,7 @@ export class PtyManager {
       // Reconnect and reconcile: windows still there are re-bound, the rest exit.
       // (A host freezing or saving its sessions to sleep is not lost.)
       setTimeout(() => {
-        if (host.paused || this.hibernating.has(host.appId)) return
+        if (host.paused || this.hibernating.has(host.key)) return
         if (![...this.sessions.values()].some((s) => s.tmux?.host === host)) return
         this._adoptHost(host).catch((err) => {
           console.warn(`[PtyManager] terminal host ${host.container} is gone: ${String(err)}`)
@@ -883,6 +906,8 @@ export class PtyManager {
   ): Promise<void> {
     const sleeping = this.sessions.get(terminalId)
     if (sleeping && !sleeping.sleep) return
+    if (host.person !== undefined && (host.person ?? null) !== hostPersonOf(meta))
+      throw new Error(`terminal ${terminalId} belongs to another space than ${host.container}`)
     this._wireHost(host)
     const { resumed, ...windowOpts } = opts
     const windowMeta: TermWindowMeta = {
@@ -894,6 +919,7 @@ export class PtyManager {
       createdBy: meta.createdBy,
       createdAt: sleeping?.createdAt.getTime() ?? Date.now(),
       auth: meta.auth,
+      space: spaceOfSession(meta),
     }
     const win = await host.createWindow(windowMeta, { cols, rows, ...windowOpts })
     const current = this.sessions.get(terminalId)
@@ -921,7 +947,7 @@ export class PtyManager {
     session.cols = cols
     session.rows = rows
     this._bindPane(terminalId, handle, host, win)
-    this.hostEmptySince.delete(host.appId)
+    this.hostEmptySince.delete(host.key)
     this._changed(session, "created")
     console.log(`[PtyManager] terminal ${terminalId} → ${host.container} ${win.windowId}`)
   }
@@ -947,6 +973,9 @@ export class PtyManager {
     session.ptyProcess = handle
     session.containerId = host.container
     session.tmux = { host, windowId: win.windowId, paneId: win.paneId }
+    const replayed = resumed && session.buffer.length > 0 ? (session.sleep?.history.split("\n") ?? []) : null
+    session.replaySkip = replayed ? replayed.length + 4 : 0
+    session.replayMarkers = replayed ? replayed.filter((l) => l.includes(RESUME_MARKER)).length + 1 : 0
     session.sleep = null
     session.agentSession = sleptAgentSession
     session.resumed = resumed
@@ -960,7 +989,7 @@ export class PtyManager {
     this.linePending.delete(session.terminalId)
     this._touchActivity(session)
     this._bindPane(session.terminalId, handle, host, win)
-    this.hostEmptySince.delete(host.appId)
+    this.hostEmptySince.delete(host.key)
     // The new window carries the driver on (next backend restart).
     this._persistLease(session)
     this._changed(session, "wake")
@@ -1113,6 +1142,11 @@ export class PtyManager {
     return changed && lease.length === 0
   }
 
+  panePid(terminalId: string): number | null {
+    const session = this.sessions.get(terminalId)
+    return session?.tmux && session.ptyProcess.pid > 0 ? session.ptyProcess.pid : null
+  }
+
   // ── Terminal crew: the wheel ──────────────────────────────────────────────
 
   /** Who drives a session, null when there is no session. */
@@ -1120,9 +1154,60 @@ export class PtyManager {
     return this.sessions.get(terminalId)?.lease.driver ?? null
   }
 
+  busyPerson(terminalId: string, exceptId: string): CrewIdentity | null {
+    return this.sessions.get(terminalId)?.lease.busyPerson(exceptId) ?? null
+  }
+
   /** May this agent type now? Null when it may, else who holds the wheel (and what to tell the agent). */
   agentMayWrite(terminalId: string, agent: CrewIdentity): WheelHeld | null {
-    return this.sessions.get(terminalId)?.lease.agentMay(agent) ?? null
+    const session = this.sessions.get(terminalId)
+    if (!session) return null
+    return session.lease.agentMay(agent, !session.meta.createdBy.startsWith("agent:"))
+  }
+
+  requestWheel(
+    terminalId: string,
+    agent: CrewIdentity,
+    reason: string | null,
+    openerAnswers = false,
+  ): boolean {
+    const session = this.sessions.get(terminalId)
+    if (!session) return false
+    this._leaseChanged(session, session.lease.askWheel(agent, reason, openerAnswers))
+    return true
+  }
+
+  answerWheel(terminalId: string, approve: boolean, agentId?: string): CrewIdentity | null {
+    const session = this.sessions.get(terminalId)
+    if (!session) return null
+    const { agent, changes } = session.lease.answerWheel(approve, agentId)
+    if (approve)
+      session.lastInput = { kind: "agent", id: agent.id, name: agent.name, at: Date.now() }
+    this._leaseChanged(session, changes)
+    return agent
+  }
+
+  releaseWheel(terminalId: string, agent: CrewIdentity): boolean {
+    const session = this.sessions.get(terminalId)
+    if (!session) return false
+    const changes = session.lease.release(agent)
+    this._leaseChanged(session, changes)
+    return changes.length > 0
+  }
+
+  setAgentControl(terminalId: string, who: CrewIdentity, enabled: boolean): CrewIdentity | null {
+    const session = this.sessions.get(terminalId)
+    if (!session) return null
+    const asking = enabled ? session.lease.request?.agent : null
+    this._leaseChanged(session, session.lease.setAgentControl(who, enabled))
+    return asking ? { kind: "agent", ...asking } : null
+  }
+
+  setWatchable(terminalId: string, watchable: boolean): boolean {
+    const session = this.sessions.get(terminalId)
+    if (!session) return false
+    this._leaseChanged(session, session.lease.setWatchable(watchable))
+    return true
   }
 
   /** A person takes the wheel (the agent that drove becomes the copilot). False without a session. */
@@ -1212,13 +1297,15 @@ export class PtyManager {
   /** Announce what a lease change touched; persist the driver; schedule the end of a conflict. */
   private _leaseChanged(session: ManagedSession, changes: LeaseChange[]): void {
     if (!changes.length) return
-    if (changes.includes("driver")) this._persistLease(session)
+    if (changes.some((c) => c === "driver" || c === "control" || c === "watchable"))
+      this._persistLease(session)
     if (changes.includes("conflict")) {
       if (session.conflictTimer) clearTimeout(session.conflictTimer)
       session.conflictTimer = null
       this._scheduleConflictEnd(session)
     }
-    for (const reason of new Set(changes)) this._changed(session, reason)
+    for (const reason of new Set(changes))
+      this._changed(session, reason === "request" ? "wheel_request" : reason)
   }
 
   private _scheduleConflictEnd(session: ManagedSession): void {
@@ -1337,6 +1424,8 @@ export class PtyManager {
     cols: number,
     rows: number,
     ownerWorkspaceId?: string,
+    createdBy = "",
+    space?: Space,
   ): void {
     if (this.sessions.has(terminalId)) {
       console.log(`[PtyManager] session ${terminalId} already exists, reusing`)
@@ -1361,7 +1450,10 @@ export class PtyManager {
       env: { ...process.env, ...dockerEnv, TERM: "xterm-256color" },
     })
 
-    this._setupAndStore(terminalId, ptyProcess, containerId, ownerWorkspaceId)
+    this._setupAndStore(terminalId, ptyProcess, containerId, ownerWorkspaceId, {
+      createdBy,
+      space,
+    })
     const session = this.sessions.get(terminalId)
     if (session) {
       session.cols = cols
@@ -1459,9 +1551,10 @@ export class PtyManager {
       wakers: new Set(),
       sleep: null,
       resumed: null,
-      lease: new DriverLease(Date.now, this.leaseOptions),
+      lease: openedLease(meta?.createdBy ?? "", this.leaseOptions),
       agentWatchers: new Map(),
       conflictTimer: null,
+      replayMarkers: 0,
     })
     // Host sessions announce themselves once their pane is attached (persistent, real size).
     if (announce) this._changed({ terminalId, ownerWorkspaceId }, "created")
@@ -1669,8 +1762,10 @@ export class PtyManager {
     if (inflight) return inflight
     const session = this.sessions.get(terminalId)
     if (!session) return Promise.resolve(null)
-    const appId = session.tmux?.host.appId ?? session.sleep?.appId
-    const hibernation = appId ? this.hibernating.get(appId) : undefined
+    const hostKey =
+      session.tmux?.host.key ??
+      (session.sleep ? termHostKey(session.sleep.appId, hostPersonOf(session.sleep)) : undefined)
+    const hibernation = hostKey ? this.hibernating.get(hostKey) : undefined
     if (!hibernation && !session.sleep && !session.tmux?.host.paused) return Promise.resolve(null)
     const p = (async (): Promise<WakeResult | null> => {
       // Being saved to sleep right now: let that finish, then wake it from sleep.
@@ -1680,13 +1775,14 @@ export class PtyManager {
       if (session.sleep) {
         if (!this.waker) throw new Error("this server cannot wake sleeping terminals")
         const record = session.sleep
-        this.wakingHosts.set(record.appId, (this.wakingHosts.get(record.appId) ?? 0) + 1)
+        const wakingKey = termHostKey(record.appId, hostPersonOf(record))
+        this.wakingHosts.set(wakingKey, (this.wakingHosts.get(wakingKey) ?? 0) + 1)
         try {
           await this.waker(record, by)
         } finally {
-          const left = (this.wakingHosts.get(record.appId) ?? 1) - 1
-          if (left > 0) this.wakingHosts.set(record.appId, left)
-          else this.wakingHosts.delete(record.appId)
+          const left = (this.wakingHosts.get(wakingKey) ?? 1) - 1
+          if (left > 0) this.wakingHosts.set(wakingKey, left)
+          else this.wakingHosts.delete(wakingKey)
         }
         if (session.sleep) throw new Error(`terminal ${terminalId} did not wake`)
         await this.sleepStore?.remove(terminalId).catch((err) => {
@@ -1752,14 +1848,14 @@ export class PtyManager {
 
   /** Live (not sleeping) sessions of a terminal host. */
   private _sessionsOf(appId: string): ManagedSession[] {
-    return [...this.sessions.values()].filter((s) => s.tmux?.host.appId === appId)
+    return [...this.sessions.values()].filter((s) => s.tmux?.host.key === appId)
   }
 
   /** Every session of the host has been idle FREEZE_AFTER: `docker pause` it. */
   private async _freeze(host: TermHost, sessions: ManagedSession[], now: number): Promise<void> {
-    this.freezing.add(host.appId)
+    this.freezing.add(host.key)
     try {
-      await host.pause(this.frozenBefore.get(host.appId) ?? now)
+      await host.pause(this.frozenBefore.get(host.key) ?? now)
       this.counters.freezes++
       console.log(
         `[PtyManager] froze ${host.container} (${sessions.length} idle session(s)) · ${this._statsLine()}`,
@@ -1768,20 +1864,20 @@ export class PtyManager {
     } catch (err) {
       console.warn(`[PtyManager] could not freeze ${host.container}: ${String(err)}`)
     } finally {
-      this.freezing.delete(host.appId)
+      this.freezing.delete(host.key)
     }
   }
 
   /** Frozen HIBERNATE_AFTER: save every session of the host, then remove its container. */
   private _hibernate(host: TermHost): Promise<void> {
-    const running = this.hibernating.get(host.appId)
+    const running = this.hibernating.get(host.key)
     if (running) return running
     const p = this._hibernateNow(host)
       .catch((err) => {
         console.warn(`[PtyManager] could not hibernate ${host.container}: ${String(err)}`)
       })
-      .finally(() => this.hibernating.delete(host.appId))
-    this.hibernating.set(host.appId, p)
+      .finally(() => this.hibernating.delete(host.key))
+    this.hibernating.set(host.key, p)
     return p
   }
 
@@ -1790,7 +1886,7 @@ export class PtyManager {
     const termHosts = this.termHosts
     // Without a store, frozen is as deep as a session sleeps.
     if (!store || !termHosts) return
-    const sessions = this._sessionsOf(host.appId)
+    const sessions = this._sessionsOf(host.key)
     // Reading the panes needs tmux running (onUnpause ignores it: not a wake).
     await host.unpause()
     const sleptAt = new Date()
@@ -1810,6 +1906,7 @@ export class PtyManager {
         title: s.meta.title,
         kind: s.meta.kind,
         createdBy: s.meta.createdBy,
+        space: spaceOfSession(s.meta),
         createdAt: s.createdAt,
         auth: s.meta.auth ?? "",
         cwd: info.cwd,
@@ -1834,7 +1931,7 @@ export class PtyManager {
     // (Output alone doesn't count — a TUI repaints when it is unpaused; and
     // a tool call or attach meanwhile waits for this hibernation in
     // ensureAwake, then wakes the session from sleep.)
-    const now = this._sessionsOf(host.appId)
+    const now = this._sessionsOf(host.key)
     if (
       now.length !== sessions.length ||
       sessions.some((s) => s.outputListeners.size > 0 || s.waiters.size + s.wakers.size > 0)
@@ -1850,9 +1947,9 @@ export class PtyManager {
       if (record) this._toSleep(s, record)
     }
     this.counters.hibernations++
-    this.frozenBefore.delete(host.appId)
-    this.hostEmptySince.delete(host.appId)
-    await termHosts.remove(host.appId, "hibernated")
+    this.frozenBefore.delete(host.key)
+    this.hostEmptySince.delete(host.key)
+    await termHosts.remove(host.key, "hibernated")
     console.log(
       `[PtyManager] hibernated ${host.container}: ${records.length} session(s) saved · ${this._statsLine()}`,
     )
@@ -1897,9 +1994,9 @@ export class PtyManager {
       this._setupAndStore(
         r.terminalId,
         new SleepingPty(),
-        termHosts.containerName(r.appId),
+        termHosts.containerName(r.appId, hostPersonOf(r)),
         r.workspaceId,
-        { title: r.title, kind: r.kind, createdBy: r.createdBy, appId: r.appId, auth: r.auth },
+        { title: r.title, kind: r.kind, createdBy: r.createdBy, appId: r.appId, auth: r.auth, space: r.space },
         false,
       )
       const s = this.sessions.get(r.terminalId)!
@@ -1958,6 +2055,12 @@ export class PtyManager {
       lastInput: s.lastInput,
       driver: { ...s.lease.driver },
       conflict: s.lease.conflict,
+      wheelRequest: s.lease.request,
+      agentControl: s.lease.agentControl,
+      watchable: s.lease.watchable,
+      space: spaceOfSession(s.meta),
+      openedBy: s.meta.createdBy.startsWith("agent:") ? ("agent" as const) : ("person" as const),
+      priorAgent: priorAgentOf(s.lease.priorAgent),
     }
   }
 
@@ -2144,6 +2247,11 @@ export class PtyManager {
     this.linePending.set(terminalId, remainder)
 
     for (const line of parts) {
+      if (session.replaySkip) {
+        session.replaySkip--
+        if (!stripAnsi(line).includes(RESUME_MARKER) || --session.replayMarkers > 0) continue
+        session.replaySkip = 0
+      }
       this._appendLine(session, line)
     }
 
@@ -2254,7 +2362,7 @@ export class PtyManager {
       session.outputListeners.clear()
       if (session.flood) clearInterval(session.flood.timer)
       if (session.conflictTimer) clearTimeout(session.conflictTimer)
-      if (session.tmux) this.hostEmptySince.set(session.tmux.host.appId, Date.now())
+      if (session.tmux) this.hostEmptySince.set(session.tmux.host.key, Date.now())
     }
     this.linePending.delete(terminalId)
     const existed = this.sessions.delete(terminalId)
@@ -2272,7 +2380,7 @@ export class PtyManager {
   private _lifecycleSweep(now = Date.now()): void {
     if (this.termHosts) {
       for (const host of this.termHosts.all()) {
-        const id = host.appId
+        const id = host.key
         if (this.hibernating.has(id) || this.wakingHosts.has(id) || this.freezing.has(id)) continue
         const sessions = this._sessionsOf(id)
         if (!sessions.length) continue // empty hosts: _removeIdleHosts
@@ -2298,6 +2406,8 @@ export class PtyManager {
       }
     }
     this._removeIdleHosts(now)
+    for (const session of this.sessions.values())
+      if (session.lease.expireRequest()) this._changed(session, "wheel_request")
     // Drop stale pending-line entries for sessions that no longer exist.
     if (this.linePending.size > 0) {
       for (const terminalId of this.linePending.keys()) {
@@ -2319,7 +2429,7 @@ export class PtyManager {
       for (const session of [...this.sessions.values()]) {
         if (!session.tmux || !session.command || !AGENT_COMMANDS.has(session.command)) continue
         // Looking at a frozen host would unpause it (nothing changes in there anyway).
-        if (session.tmux.host.paused || this.hibernating.has(session.tmux.host.appId)) continue
+        if (session.tmux.host.paused || this.hibernating.has(session.tmux.host.key)) continue
         // Claude Code's login screen shows before any hook can run: always watched.
         const loginWatch = session.command === "claude"
         const hooked = session.hookAgent === session.command
@@ -2371,18 +2481,18 @@ export class PtyManager {
   private _removeIdleHosts(now: number): void {
     if (!this.termHosts) return
     const inUse = new Set<string>([...this.wakingHosts.keys(), ...this.hibernating.keys()])
-    for (const s of this.sessions.values()) if (s.tmux) inUse.add(s.tmux.host.appId)
+    for (const s of this.sessions.values()) if (s.tmux) inUse.add(s.tmux.host.key)
     for (const host of this.termHosts.all()) {
-      if (inUse.has(host.appId)) {
-        this.hostEmptySince.delete(host.appId)
+      if (inUse.has(host.key)) {
+        this.hostEmptySince.delete(host.key)
         continue
       }
-      const since = this.hostEmptySince.get(host.appId)
+      const since = this.hostEmptySince.get(host.key)
       if (since === undefined) {
-        this.hostEmptySince.set(host.appId, now)
+        this.hostEmptySince.set(host.key, now)
       } else if (now - since >= HOST_IDLE_MS) {
-        this.hostEmptySince.delete(host.appId)
-        void this.termHosts.remove(host.appId).catch(() => {})
+        this.hostEmptySince.delete(host.key)
+        void this.termHosts.remove(host.key).catch(() => {})
       }
     }
   }
@@ -2501,6 +2611,10 @@ const SHELLS = new Set(["bash", "sh", "zsh", "fish", "dash", "-bash", "login"])
 
 function isShell(command: string): boolean {
   return SHELLS.has(command)
+}
+
+function priorAgentOf(agent: CrewIdentity | null): TerminalWheelRequest["agent"] | null {
+  return agent ? { id: agent.id, name: agent.name, avatarUrl: agent.avatarUrl ?? null } : null
 }
 
 const AGENT_STATES: readonly AgentStateName[] = ["working", "blocked", "done", "idle"]

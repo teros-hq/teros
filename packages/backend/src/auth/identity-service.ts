@@ -6,6 +6,7 @@
  */
 
 import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import { type Collection, type Db, ObjectId } from 'mongodb';
 import type {
@@ -68,6 +69,53 @@ export class IdentityService {
 
     await this.identities.insertOne(identity);
     return identity;
+  }
+
+  /**
+   * Provision a password identity whose password nobody knows.
+   *
+   * Accounts created through an OAuth provider have no password identity, so
+   * the reset flow cannot reach them: `requestPasswordReset` looks the identity
+   * up by `type: 'password'` and falls back to a decoy when it is missing. The
+   * user asks for a code, is told one was sent, and never receives it.
+   *
+   * Creating the identity with a password built from random bytes that are
+   * hashed and discarded gives the reset flow something to update. There is no
+   * temporary password to leak: the plaintext never exists outside this call,
+   * and `completePasswordReset` overwrites the hash with the one the user
+   * chooses. Until then the account keeps signing in through its OAuth provider.
+   *
+   * @todo alice - 2026.11.13 : once the reset completes, mark the email verified.
+   * Proving control of the mailbox is what the reset already proves, and a
+   * Microsoft sign-up stores emailVerified=false (auth-handler.ts), so those
+   * accounts stay unproven forever otherwise. Not needed for the fix to work.
+   */
+  async provisionUnusablePasswordIdentity(userId: string, email: string): Promise<UserIdentity> {
+    const normalizedEmail = email.toLowerCase();
+    const passwordHash = await bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_ROUNDS);
+    const now = new Date();
+
+    // upsert: two concurrent reset requests for the same email must not race
+    // into a duplicate-key rejection on type_1_providerUserId_1.
+    const identity = await this.identities.findOneAndUpdate(
+      { type: 'password', providerUserId: normalizedEmail },
+      {
+        $set: {
+          userId,
+          email: normalizedEmail,
+          'data.passwordHash': passwordHash,
+          'data.failedAttempts': 0,
+          'data.lockedUntil': null,
+          'data.lastPasswordChangeAt': now,
+          status: 'active',
+          updatedAt: now,
+        },
+        $setOnInsert: { createdAt: now },
+      },
+      { upsert: true, returnDocument: 'after' },
+    );
+
+    return identity as UserIdentity;
   }
 
   /**

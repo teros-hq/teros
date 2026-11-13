@@ -196,7 +196,10 @@ test.describe("avatares @avatars @agents", () => {
       expect(up.ok(), `upload responde 2xx (status ${up.status()})`).toBe(true)
       const body = (await up.json()) as { success?: boolean; url?: string }
       expect(body.success, "respuesta success").toBe(true)
-      expect(body.url, "url devuelta absoluta y .gif").toMatch(/^https?:\/\/.+\.gif$/)
+      // El avatar subido es un object de plataforma (OBJ-REQ-4): la URL es la del object.
+      expect(body.url, "url devuelta: la del object").toMatch(
+        /^https?:\/\/.+\/objects\/obj_[a-f0-9]{16}$/,
+      )
 
       // Persiste resuelto en el boundary de lectura.
       const listed = await evalTeros(
@@ -205,11 +208,13 @@ test.describe("avatares @avatars @agents", () => {
           (await window.teros.agent.listAgents(wid)).agents.find((a) => a.agentId === id)?.avatarUrl,
         { wid, id: agentId },
       )
-      expect(listed, "avatarUrl persiste resuelto y .gif").toMatch(/^https?:\/\/.+\.gif$/)
+      expect(listed, "avatarUrl persiste resuelto a la URL del object").toMatch(
+        /^https?:\/\/.+\/objects\/obj_[a-f0-9]{16}$/,
+      )
 
-      // El static serve lo entrega como image/gif (no octet-stream, no 404).
+      // El object se sirve como image/gif (no octet-stream, no 404).
       // GET contra el backend REAL (conn.base) usando solo el path: la URL resuelta
-      // lleva config.static.baseUrl, que puede apuntar a un host no alcanzable por el
+      // lleva la URL pública del backend, que puede apuntar a un host no alcanzable por el
       // runner (en CI STATIC_BASE_URL=:3000 ≠ el puerto del backend → ECONNREFUSED).
       const servedUrl = `${conn.base}${new URL(listed as string).pathname}`
       const served = await terosPage.request.get(servedUrl)

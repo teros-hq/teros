@@ -61,20 +61,40 @@ export async function connectWsClient(): Promise<void> {
   await connecting
 }
 
-/** The Teros agent the current tool call serves (its seat in the user's Terminal window). */
-const acting = new AsyncLocalStorage<string | undefined>()
+interface Acting {
+  agentId?: string
+  handedBack?: HandedBack
+}
+const acting = new AsyncLocalStorage<Acting>()
 
-/** Run a tool handler on behalf of this agent: its backend calls carry `agentId`. */
-export function actingFor<T>(agentId: string | undefined, fn: () => T): T {
-  return acting.run(agentId, fn)
+export function noteHandedBack(result: unknown): void {
+  const handedBack = (result as { handedBack?: HandedBack } | null)?.handedBack
+  const store = acting.getStore()
+  if (handedBack && store) store.handedBack = handedBack
+}
+
+type ToolReply = ReturnType<typeof reply>
+
+export async function runTool<R>(agentId: string | undefined, fn: () => Promise<R> | R): Promise<R> {
+  const store: Acting = { agentId }
+  const res = await acting.run(store, fn)
+  const handedBack = store.handedBack
+  const answer = res as Partial<ToolReply> | null
+  const first = answer?.content?.[0]
+  if (!handedBack || !answer?.content || first?.type !== "text") return res
+  const note = controlNote({ handedBack })
+  if (first.text.includes(note.trim())) return res
+  return {
+    ...answer,
+    content: [{ ...first, text: note + first.text }, ...answer.content.slice(1)],
+    structuredContent: { ...answer.structuredContent, handedBack },
+  } as R
 }
 
 /**
  * Call a backend WsRouter action via the admin_request bridge.
  * Handler errors arrive as Error with `.code` set to the HandlerError code
  * (e.g. TERMINAL_NOT_FOUND, FORBIDDEN_TERMINAL, WAIT_TIMEOUT, WHEEL_HELD).
- * Terminal calls say which agent they act for (the backend checks it against
- * the app's grants): its name and face go on the seat when it drives.
  */
 export async function backendAction<T = unknown>(
   action: string,
@@ -82,15 +102,16 @@ export async function backendAction<T = unknown>(
   timeoutMs = 30_000,
 ): Promise<T> {
   await connectWsClient()
-  const agentId = acting.getStore()
+  const agentId = acting.getStore()?.agentId
   const withAgent =
     agentId && action.startsWith("terminal.") && params.agentId === undefined
       ? { ...params, agentId }
       : params
-  return getWsClient().adminRequest<T>(action, withAgent, timeoutMs)
+  const result = await getWsClient().adminRequest<T>(action, withAgent, timeoutMs)
+  noteHandedBack(result)
+  return result
 }
 
-/** Who holds the wheel of a session (terminal crew). */
 export interface Driver {
   kind: "agent" | "human" | "none"
   id?: string
@@ -99,26 +120,87 @@ export interface Driver {
   note?: string | null
 }
 
-/** A person's give-back note, delivered once. */
 export interface HandedBack {
   by: { id: string; name: string }
   note: string | null
 }
 
-/**
- * What the agent must know about the wheel, as a lead sentence ("" when
- * nothing): a person gave it back (with their note — read the screen to see
- * what they did), or a person holds it now (don't type; wait or ask).
- */
-export function wheelNote(r: { driver?: Driver | null; handedBack?: HandedBack | null }): string {
+export const CONTROL_LABELS = {
+  on: "Agent",
+  off: "Agent off",
+  allow: "Allow",
+  keepOff: "Keep off",
+}
+
+export function controlButtons(): string {
+  return `"${CONTROL_LABELS.allow}" / "${CONTROL_LABELS.keepOff}"`
+}
+
+export function controlNote(r: { driver?: Driver | null; handedBack?: HandedBack | null }): string {
   if (r.handedBack) {
-    const said = r.handedBack.note ? ` Their note: "${r.handedBack.note}".` : " They left no note."
-    return `${r.handedBack.by.name} gave you the wheel back.${said} Look at the screen to see what they did before you go on.\n`
+    const said = r.handedBack.note ? ` Their note: "${r.handedBack.note}".` : ""
+    return `${r.handedBack.by.name} switched "${CONTROL_LABELS.on}" on again: you may type.${said} Look at the screen to see what they did before you go on.\n`
   }
   if (r.driver?.kind === "human") {
-    return `${r.driver.name || "The user"} has the wheel (since ${clock(r.driver.since)}): don't type into this session; wait (terminal-wait returns when they give it back) or ask them in chat.\n`
+    return `${r.driver.name || "A person"} is typing in this session (since ${clock(r.driver.since)}): your keys are refused until they have typed nothing for 60 s. Ask for control with terminal-request-control (they get ${controlButtons()}), or wait: terminal-wait returns when control changes.\n`
   }
   return ""
+}
+
+export type ControlOutcome = "granted" | "approved" | "denied" | "pending" | "ended" | "busy"
+
+export function controlRequestText(
+  outcome: ControlOutcome,
+  terminalId: string,
+  opts: { by?: string | null } = {},
+): string {
+  const by = opts.by || "The person"
+  switch (outcome) {
+    case "granted":
+      return `You have control of ${terminalId}: nobody was typing in it. Go on (terminal-prompt, terminal-run, terminal-write).`
+    case "approved":
+      return `${by} allowed it: you have control of ${terminalId}. Look at the screen, then go on (terminal-prompt, terminal-run, terminal-write).`
+    case "denied":
+      return `${by} kept it off. Don't type into ${terminalId}; tell them in chat what you need, or open your own session with terminal-create.`
+    case "ended":
+      return `Session ${terminalId} ended before anyone answered.`
+    case "busy":
+      return `${opts.by || "Another agent"} already asked for control of ${terminalId} and is waiting for the person's answer. Your request was not sent: wait (terminal-wait returns when control changes), or tell the person in chat what you need.`
+    default:
+      return `Your request is on their screen (${controlButtons()} in the chat and in that session's Terminal window); nobody has answered yet. Call terminal-request-control again to keep waiting, or do something else meanwhile.`
+  }
+}
+
+export function refusedWriteText(message: string): string {
+  return `${message.trim()} Nothing was typed.`
+}
+
+export function noAccessText(terminalId: string): string {
+  return (
+    `You can't reach session ${terminalId}. A session a person opens, their personal terminal or a shared one, is closed to agents ` +
+    `while its switch reads "${CONTROL_LABELS.off}": ask the person to switch it to "${CONTROL_LABELS.on}" in ` +
+    "that session's Terminal window (the switch in its toolbar), then call the tool again. Sessions of other " +
+    "workspaces are never reachable. Nothing was read or typed."
+  )
+}
+
+export function releaseControlText(r: {
+  released: boolean
+  terminalId: string
+  driver?: Driver | null
+}): string {
+  if (r.released)
+    return (
+      `You let go of ${r.terminalId}: you are not typing in it any more. Tell the person, in their words: to type, they ` +
+      `switch it to "${CONTROL_LABELS.off}" in that session's Terminal window; when they switch it back to "${CONTROL_LABELS.on}" ` +
+      "you may type again. Don't type there again until they do, or until you ask with terminal-request-control."
+    )
+  const d = r.driver
+  const who =
+    d?.kind === "human" || d?.kind === "agent"
+      ? `${d.name || (d.kind === "human" ? "A person" : "Another agent")} has control`
+      : "nobody has control"
+  return `You weren't the one typing in ${r.terminalId} (${who}); nothing changed.`
 }
 
 function clock(ms: number): string {
@@ -288,10 +370,13 @@ export function statusLine(s: {
   command?: string | null
   agentState?: AgentStateInfo | null
   needsAuth?: string | null
+  space?: "personal" | "shared"
 }): string {
   const parts = [s.terminalId]
+  if (s.space === "shared") parts.push("shared terminal (the workspace's machine)")
+  if (s.space === "personal") parts.push("a person's personal terminal")
   if (s.command) parts.push(`running ${s.command}`)
-  if (s.needsAuth) parts.push(`${agentName(s.needsAuth)} needs to sign in`)
+  if (s.needsAuth) parts.push(`${agentName(s.needsAuth)} shows its login screen`)
   else if (s.agentState) {
     const msg = s.agentState.message ? ` (${s.agentState.message})` : ""
     parts.push(`agent ${s.agentState.state}${msg}`)
@@ -299,36 +384,70 @@ export function statusLine(s: {
   return parts.join(" · ")
 }
 
-/** The person's coding-agent sign-in as an agent may know it (backend `agentAuth`): never the secret. */
-export interface AgentAuthInfo {
-  agent: string
-  signedIn: boolean
-  mode: "teros" | "subscription" | "apiKey" | null
-  /** Shared with this workspace's agents: only then do sessions an agent opens get it. */
-  shared: boolean
+export function needsLoginText(agent: string | null | undefined, terminalId: string): string {
+  const name = agentName(agent)
+  const stop = `${name} shows its login screen in ${terminalId}. Stop here: don't type into it, and never ask for or type a credential.`
+  if (agent !== "claude")
+    return `${stop} Tell the user: Teros does not handle that sign-in; a person can open ${name} in their own Terminal and sign in there by themselves.`
+  return (
+    `${stop} Tell the user: a Claude Code session an agent opens runs on the API key of the workspace owner's ` +
+    "Anthropic provider in Teros, and there is none, so the workspace owner needs to add an Anthropic API-key " +
+    "provider (Providers window); after that, close this session with terminal-destroy and open a new one. Or a " +
+    "person can open Claude Code in their own Terminal and sign in there by themselves. Teros never asks for, " +
+    "stores or shares that sign-in."
+  )
 }
 
-const AUTH_MODES: Record<string, string> = {
-  subscription: "Claude account (Pro/Max subscription)",
-  apiKey: "API key",
-  teros: "Teros provider",
+export interface ListedSession {
+  terminalId: string
+  title?: string
+  kind?: string
+  command?: string | null
+  agentState?: AgentStateInfo | null
+  needsAuth?: string | null
+  createdBy?: string
+  openedBy?: "person" | "agent"
+  agentControl?: boolean
+  space?: "personal" | "shared"
+  watchable?: boolean
+  driver?: Driver | null
+  conflict?: unknown
+  watchers?: Array<{ id: string; kind: "human" | "agent"; name: string }>
+  lifecycle?: string | null
+  sleptAt?: string | null
 }
 
-/**
- * One sentence on whether the sessions an agent opens get the person's
- * sign-in, and the next step when they don't ("" when unknown).
- */
-export function agentAuthNote(a: AgentAuthInfo | null | undefined): string {
-  if (!a) return ""
-  const name = agentName(a.agent)
-  const never = "Never ask for or type the credential itself."
-  if (a.signedIn && a.shared) {
-    return `${name} signs in with the user's own ${AUTH_MODES[a.mode ?? ""] ?? "sign-in"}, shared with this workspace's agents.`
-  }
-  if (a.signedIn) {
-    return `The user has a ${name} sign-in but has not shared it with this workspace's agents, so your ${name} sessions open without it. Next: ask them to turn on "Share with this workspace's agents" in their Terminal window (a ${name} session's menu → "${name} sign-in"). ${never}`
-  }
-  return `The user has no ${name} sign-in in Teros yet, so your ${name} sessions open without it. Next: ask them to open their Terminal window → new session → ${name}, pick ${a.agent === "claude" ? "Sign in with Claude (Pro/Max), API key or Use Teros" : "how it signs in"}, and leave "Share with this workspace's agents" on. ${never}`
+export function sessionLabel(s: { title?: string; command?: string | null; kind?: string }): string {
+  if (s.title) return s.title
+  if (s.command && s.command !== "bash") return s.command
+  return s.kind === "agent" ? "Agent shell" : "Shell"
+}
+
+export function sessionLine(s: ListedSession, now = Date.now()): string {
+  const parts = [`${s.terminalId}  "${sessionLabel(s)}"`]
+  if (s.command) parts.push(s.command)
+  if (s.needsAuth) parts.push(`${agentName(s.needsAuth)} shows its login screen`)
+  else if (s.agentState)
+    parts.push(`agent ${s.agentState.state}${s.agentState.message ? ` (${s.agentState.message})` : ""}`)
+  const byAgent = s.openedBy
+    ? s.openedBy === "agent"
+    : String(s.createdBy ?? "").startsWith("agent:")
+  const personal = s.space ? s.space === "personal" : !byAgent
+  parts.push(
+    personal
+      ? `personal terminal of a person (their own machine and logins${s.watchable ? "; the workspace may watch it" : ""})`
+      : `shared terminal (the workspace's machine; its members see it), opened by ${byAgent ? "an agent" : "a person"}`,
+  )
+  if (s.agentControl !== undefined)
+    parts.push(s.agentControl ? `"${CONTROL_LABELS.on}" on` : `"${CONTROL_LABELS.off}"`)
+  if (s.driver?.kind === "human") parts.push(`${s.driver.name || "a person"} is typing`)
+  else if (s.driver?.kind === "agent") parts.push(`${s.driver.name || "an agent"} types`)
+  if (s.conflict) parts.push("two people are typing at once")
+  const people = (s.watchers ?? []).filter((w) => w.kind === "human").map((w) => w.name)
+  if (people.length) parts.push(`watched by ${people.join(", ")}`)
+  const sleep = lifecycleLabel(s, now)
+  if (sleep) parts.push(sleep)
+  return `- ${parts.join(" · ")}`
 }
 
 /** Wrap a text answer for the LLM plus the same data for scripts. */
@@ -343,6 +462,8 @@ export interface ResumeInfo {
   agent: string | null
   notRestored: string | null
   message: string
+  cwd?: string
+  sameDir?: boolean
 }
 
 /** The sentence a tool's answer starts with when it had to wake the session ("" when it was awake). */
@@ -350,8 +471,12 @@ export function wokeNote(woke: string | null | undefined, resumed?: ResumeInfo |
   if (woke === "frozen") return "The session was frozen (idle); it was woken first. "
   if (woke !== "sleeping") return ""
   const what = resumed?.message ?? "Resumed after sleep."
+  const where =
+    resumed?.sameDir === false
+      ? `a fresh machine, back in ${resumed.cwd || "/workspace"}: its old directory was not kept`
+      : `a fresh machine in the same directory${resumed?.cwd ? ` (${resumed.cwd})` : ""}`
   return (
-    "The session was asleep; it was woken first (a fresh machine in the same directory: its old " +
+    `The session was asleep; it was woken first (${where}; its old ` +
     `output is printed above the "resumed after sleep" line). ${what} `
   )
 }

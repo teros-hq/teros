@@ -1,3 +1,7 @@
+import { existsSync } from "fs";
+import { join } from "path";
+import { fileURLToPath } from "url";
+
 // src/core/detect.ts
 var PDF_MAGIC = Buffer.from("%PDF");
 var PNG_MAGIC = Buffer.from([137, 80, 78, 71]);
@@ -373,25 +377,27 @@ var TesseractPool = class {
   busy = /* @__PURE__ */ new Set();
   initPromise = null;
   async init() {
-    const { createWorker } = await import("tesseract.js");
     const os = await import("os");
     const n = Math.max(1, Math.min(this.opts.workers ?? 2, os.cpus().length - 1));
-    const langs = this.opts.languages.join("+");
-    this.workers = await Promise.all(
-      Array.from(
-        { length: n },
-        () => createWorker(langs, 1, {
-          cachePath: this.opts.cachePath,
-          logger: () => {
-          },
-          errorHandler: () => {
-          }
-        })
-      )
+    // [teros local patch — see README] bounded start; a partial start is torn down.
+    const started = await Promise.allSettled(
+      Array.from({ length: n }, () => startTesseractWorker(this.opts.languages, this.opts.cachePath))
     );
+    const failed = started.find((s) => s.status === "rejected");
+    if (failed) {
+      await Promise.all(started.filter((s) => s.status === "fulfilled").map((s) => s.value.terminate().catch(() => {})));
+      throw failed.reason;
+    }
+    this.workers = started.map((s) => s.value);
   }
   async acquire() {
-    if (!this.initPromise) this.initPromise = this.init();
+    // [teros local patch — see README] a failed start is not cached: the next call starts again.
+    if (!this.initPromise) {
+      this.initPromise = this.init().catch((error) => {
+        this.initPromise = null;
+        throw error;
+      });
+    }
     await this.initPromise;
     const free = this.workers.find((w) => !this.busy.has(w));
     if (free) {
@@ -455,6 +461,50 @@ var TesseractPool = class {
 var DEFAULT_CACHE = "node_modules/.cache/teros-ocr";
 var RETRY_THRESHOLD = 70;
 
+// [teros local patch — see README] Offline language data + bounded start.
+// tesseract.js downloads <lang>.traineddata from cdn.jsdelivr.net on first use.
+// When that download cannot finish, createWorker never settles (errors go to
+// errorHandler), so every OCR / orientation call hung forever. spa and eng ship
+// with this MCA (tessdata/, 4.0.0_best_int — what tesseract.js fetches for
+// OEM 1) and are read from disk; any other language still downloads. Either
+// way the start is bounded: past WORKER_START_TIMEOUT_MS it fails with an error.
+var BUNDLED_LANG_DIR = fileURLToPath(new URL("../../../tessdata/", import.meta.url));
+var WORKER_START_TIMEOUT_MS = 30000;
+async function startTesseractWorker(languages, cachePath) {
+  const { createWorker } = await import("tesseract.js");
+  const langs = Array.isArray(languages) ? languages : String(languages).split("+");
+  const bundled = langs.every((l) => existsSync(join(BUNDLED_LANG_DIR, `${l}.traineddata.gz`)));
+  const pending = createWorker(langs, 1, {
+    ...bundled ? { langPath: BUNDLED_LANG_DIR } : {},
+    cachePath,
+    logger: () => {
+    },
+    errorHandler: () => {
+    }
+  });
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(
+        new OcrError(
+          `The OCR engine did not start within ${WORKER_START_TIMEOUT_MS / 1e3}s (language data ${langs.join("+")}: ${bundled ? "bundled" : "downloaded from cdn.jsdelivr.net"}).`,
+          "ENGINE_FAILURE"
+        )
+      ),
+      WORKER_START_TIMEOUT_MS
+    );
+  });
+  try {
+    return await Promise.race([pending, timeout]);
+  } catch (error) {
+    pending.then((w) => w.terminate()).catch(() => {
+    });
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // [teros local patch — see README] Automatic orientation for rotated scans
 // (ID cards, sideways/upside-down pages). EXIF only covers camera photos; a
 // rotated scan carries no orientation, so tesseract reads garbage at low
@@ -498,14 +548,7 @@ async function detectRotation(png, pool, uprightConfidence) {
 // (ROTATION_MARGIN). (Text-line geometry is no signal: on a sideways page
 // tesseract still reports horizontal "lines" of garbage.)
 async function createOrientationDetector(options = {}) {
-  const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker(options.languages ?? ["spa", "eng"], 1, {
-    cachePath: options.cachePath ?? DEFAULT_CACHE,
-    logger: () => {
-    },
-    errorHandler: () => {
-    }
-  });
+  const worker = await startTesseractWorker(options.languages ?? ["spa", "eng"], options.cachePath ?? DEFAULT_CACHE);
   const confidenceOf = async (png) => {
     const { data } = await worker.recognize(png, {}, { text: true });
     return data.text.trim() ? data.confidence : 0;

@@ -4,12 +4,32 @@
  * Inspired by i3/dwm/awesome:
  * - Tree-based split layout (horizontal/vertical)
  * - Each leaf node is a "container" with tabs
- * - No floating windows, everything is tiling
  */
 
 import { create } from "zustand"
 import { STORAGE_KEYS, storage, persistedDriver, getCurrentWorkspaceId } from "../services/storage"
-import { windowRegistry } from "../services/windowRegistry"
+import { canFloatWindowType, windowRegistry } from "../services/windowRegistry"
+import {
+  clampRect,
+  type FloatRect,
+  type Floats,
+  fitFloats as fitFloatRects,
+  sanitizeFloats,
+} from "./floatGeometry"
+import {
+  adoptOrphans,
+  dockedWindowIds,
+  dockIn,
+  floatOut,
+  floatsSupported,
+  followDesktop,
+  isOnScreen,
+  minimizeIn,
+  openFloating,
+  raiseFloat,
+  viewport,
+  withoutFloat,
+} from "./tilingFloats"
 import { getResolvedFlag, useFeatureFlagsStore } from "./featureFlagsStore"
 import { preloadWindowChunks } from "../lib/preloadWindowChunks"
 import { getTerosClient } from "../services/terosClientSingleton"
@@ -106,6 +126,12 @@ export interface OpenWindowOptions {
    * the identical window if it already exists) — the double-click gesture.
    */
   pin?: boolean
+  float?: boolean
+}
+
+export interface FloatWindowOptions {
+  at?: { x: number; y: number } | null
+  rect?: FloatRect
 }
 
 /** A virtual desktop (workspace) */
@@ -124,6 +150,7 @@ export interface SerializedWorkspaceState {
   activeDesktopIndex: number
   maxDesktops: number
   nextId: number
+  floats?: Floats
 }
 
 // ============================================
@@ -146,6 +173,10 @@ interface TilingState extends TilingDerivedState {
 
   /** All windows (global, indexed by ID) */
   windows: Record<string, TilingWindow>
+
+  floats: Floats
+
+  floatSheetId: string | null
 
   /** Active desktop index (0-based) */
   activeDesktopIndex: number
@@ -378,6 +409,12 @@ interface TilingActions {
 
   setWindowNotification: (windowId: string, has: boolean, count?: number) => void
   clearWindowNotification: (windowId: string) => void
+
+  floatWindow: (windowId: string, options?: FloatWindowOptions) => boolean
+  dockWindow: (windowId: string, options?: { activate?: boolean }) => void
+  minimizeFloat: (windowId: string, minimized: boolean) => void
+  setFloatRect: (windowId: string, rect: FloatRect) => void
+  fitFloats: () => void
 
   // ========================================
   // HELPERS
@@ -918,6 +955,8 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   // Initial state
   desktops: createEmptyDesktops(DEFAULT_MAX_DESKTOPS),
   windows: {},
+  floats: {},
+  floatSheetId: null,
   activeDesktopIndex: 0,
   maxDesktops: DEFAULT_MAX_DESKTOPS,
   nextId: 1,
@@ -1027,7 +1066,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
     let nextId = state.nextId
 
     const removedWindowIds = Object.values(state.windows)
-      .filter((w) => w.desktopIndex === index)
+      .filter((w) => w.desktopIndex === index && !state.floats[w.id])
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((w) => w.id)
 
@@ -1103,7 +1142,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
   moveWindowToDesktop: (windowId, targetDesktopIndex) => {
     const state = get()
     const window = state.windows[windowId]
-    if (!window) return
+    if (!window || state.floats[windowId]) return
     if (targetDesktopIndex < 0 || targetDesktopIndex >= state.desktops.length) return
     if (window.desktopIndex === targetDesktopIndex) return
 
@@ -1378,6 +1417,32 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
           return newPropsMatch && existingPropsMatch
         })
 
+    const floating = options.float && floatsSupported()
+    if (existingWindow && (state.floats[existingWindow.id] || floating)) {
+      if (!get().floatWindow(existingWindow.id)) get().focusWindow(existingWindow.id)
+      return existingWindow.id
+    }
+
+    if (floating && canFloatWindowType(type)) {
+      const id = generateId("win", state.nextId)
+      const desktopIndex = clampDesktopIndex(state.activeDesktopIndex, state.desktops.length)
+      const floated: TilingWindow = {
+        id,
+        type,
+        props,
+        containerId: "",
+        desktopIndex,
+        hasNotification: false,
+        history: [{ type, props }],
+        historyIndex: 0,
+      }
+      set({
+        ...openFloating(state, floated, undefined, viewport()),
+        floatSheetId: state.compactShell ? id : state.floatSheetId,
+      })
+      return id
+    }
+
     if (existingWindow) {
       // If in different desktop, switch to it
       if (existingWindow.desktopIndex !== state.activeDesktopIndex) {
@@ -1520,6 +1585,17 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
     const window = state.windows[windowId]
     if (!window) return
 
+    if (state.floats[windowId]) {
+      const remaining = { ...state.windows }
+      delete remaining[windowId]
+      set({
+        windows: remaining,
+        floats: withoutFloat(state.floats, windowId),
+        floatSheetId: state.floatSheetId === windowId ? null : state.floatSheetId,
+      })
+      return
+    }
+
     const desktop = state.desktops[window.desktopIndex]
     if (!desktop.layout) return
 
@@ -1597,6 +1673,21 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
     const state = get()
     const window = state.windows[windowId]
     if (!window) return
+
+    if (state.floats[windowId]) {
+      if (!floatsSupported()) {
+        get().dockWindow(windowId)
+        return
+      }
+      if (state.compactShell) {
+        set({ floatSheetId: windowId })
+      } else {
+        const floats = raiseFloat(state.floats, windowId)
+        if (floats !== state.floats) set({ floats })
+      }
+      get().clearWindowNotification(windowId)
+      return
+    }
 
     const desktop = state.desktops[window.desktopIndex]
     if (!desktop.layout) return
@@ -2424,6 +2515,55 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
     })
   },
 
+  floatWindow: (windowId, options) => {
+    const state = get()
+    const window = state.windows[windowId]
+    if (!window) return false
+    if (state.floats[windowId]) {
+      get().focusWindow(windowId)
+      return true
+    }
+    if (!floatsSupported() || !canFloatWindowType(window.type)) return false
+    const next = floatOut(state, windowId, options, viewport())
+    if (!next) return false
+    set({ ...next, floatSheetId: state.compactShell ? windowId : state.floatSheetId })
+    get().clearWindowNotification(windowId)
+    return true
+  },
+
+  dockWindow: (windowId, options) => {
+    const state = get()
+    const next = dockIn(state, windowId, options?.activate ?? true)
+    if (!next) return
+    set({ ...next, floatSheetId: state.floatSheetId === windowId ? null : state.floatSheetId })
+  },
+
+  minimizeFloat: (windowId, minimized) => {
+    const state = get()
+    if (!state.floats[windowId]) return
+    if (state.compactShell) {
+      if (!minimized) get().focusWindow(windowId)
+      else if (state.floatSheetId === windowId) set({ floatSheetId: null })
+      return
+    }
+    const floats = minimizeIn(state.floats, windowId, minimized)
+    if (floats === state.floats) return
+    set({ floats })
+    get().clearWindowNotification(windowId)
+  },
+
+  setFloatRect: (windowId, rect) => {
+    const entry = get().floats[windowId]
+    if (!entry) return
+    set({ floats: { ...get().floats, [windowId]: { ...entry, ...clampRect(rect, viewport()) } } })
+  },
+
+  fitFloats: () => {
+    const floats = fitFloatRects(get().floats, viewport())
+    if (floats !== get().floats) set({ floats })
+  },
+
+
   // ========================================
   // HELPERS
   // ========================================
@@ -2512,12 +2652,28 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
         ? Math.max(0, Math.min(savedIndex, sanitizedDesktops.length - 1))
         : Math.max(0, Math.min(saved.activeDesktopIndex ?? 0, sanitizedDesktops.length - 1))
 
-      set({
+      const adopted = adoptOrphans({
         desktops: sanitizedDesktops,
         windows: validWindows,
+        floats: sanitizeFloats(
+          saved.floats,
+          validWindowIds,
+          dockedWindowIds(sanitizedDesktops),
+          viewport(),
+          { clamp: !get().compactShell },
+        ),
+        activeDesktopIndex,
+        nextId: saved.nextId,
+      })
+
+      set({
+        desktops: adopted.desktops,
+        windows: followDesktop(adopted.windows, adopted.floats, activeDesktopIndex),
+        floats: adopted.floats,
+        floatSheetId: null,
         activeDesktopIndex,
         maxDesktops: saved.maxDesktops ?? DEFAULT_MAX_DESKTOPS,
-        nextId: saved.nextId,
+        nextId: adopted.nextId,
         ...completeRestore(),
       })
 
@@ -2553,6 +2709,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
         activeDesktopIndex: state.activeDesktopIndex,
         maxDesktops: state.maxDesktops,
         nextId: state.nextId,
+        floats: state.floats,
       })
     } catch (error) {
       console.error("[TilingStore] Failed to persist layout:", error)
@@ -2563,6 +2720,8 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get): 
     set({
       desktops: createEmptyDesktops(DEFAULT_MAX_DESKTOPS),
       windows: {},
+      floats: {},
+      floatSheetId: null,
       activeDesktopIndex: 0,
       maxDesktops: DEFAULT_MAX_DESKTOPS,
       nextId: 1,
@@ -2768,10 +2927,20 @@ export const selectActiveContainerId = (state: TilingState): string | null => {
   return desktop?.activeContainerId ?? null
 }
 
+export const isWindowOnScreen = (state: TilingState, windowId: string): boolean =>
+  isOnScreen(state, windowId)
+
 // ── Session lifecycle registration ──────────────────────────────────────────
 // @todo nira - 2026-05-20: migrate to createSessionStore once circular deps resolved
 
 import { storeRegistry } from './session/StoreRegistry'
+
+useTilingStore.subscribe((state, previous) => {
+  if (state.activeDesktopIndex === previous.activeDesktopIndex && state.floats === previous.floats)
+    return
+  const windows = followDesktop(state.windows, state.floats, state.activeDesktopIndex)
+  if (windows !== state.windows) useTilingStore.setState({ windows })
+})
 
 storeRegistry.register('tiling', {
   resetSession: () => {

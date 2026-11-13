@@ -38,22 +38,27 @@ describe("tabHibernation", () => {
     expect(isAwake("b", again)).toBe(true)
   })
 
-  it("[TABH-AC-3] exempt tabs stay awake; voice-bound chat and browser are exempt, nothing else", () => {
+  it("[TABH-AC-3] exempt tabs stay awake; voice-bound chat, browser and terminal are exempt, nothing else", () => {
     const windows = [
       { id: "voice", type: "chat", props: { channelId: "ch1" } },
       { id: "other", type: "chat", props: { channelId: "ch2" } },
       { id: "web", type: "browser", props: {} },
       { id: "term", type: "terminal", props: {} },
+      { id: "board", type: "board", props: {} },
     ]
     const live = exemptIds(windows, { channelId: "ch1", presence: "on" })
-    expect([...live].sort()).toEqual(["voice", "web"])
+    expect([...live].sort()).toEqual(["term", "voice", "web"])
     expect([...exemptIds(windows, { channelId: "ch1", presence: "connecting" })].sort()).toEqual([
+      "term",
       "voice",
       "web",
     ])
-    expect([...exemptIds(windows, { channelId: "ch1", presence: "off" })]).toEqual(["web"])
+    expect([...exemptIds(windows, { channelId: "ch1", presence: "off" })].sort()).toEqual([
+      "term",
+      "web",
+    ])
 
     const input = base({ tabIds: windows.map((w) => w.id), activeId: null, exempt: live })
-    expect(awakeIds(input)).toEqual(["voice", "web"])
+    expect(awakeIds(input)).toEqual(["voice", "web", "term"])
   })
 })

@@ -2,8 +2,8 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.teros.terminal",
   "name": "Terminal",
-  "version": "1.3.1",
-  "description": "Drive terminals the user watches: open Claude Code (or Codex/opencode) and give it tasks, or run shell commands. terminal-create agent=\"claude\" starts Claude Code with the user's sign-in; terminal-prompt sends a task and waits for its turn to end; terminal-run runs a command and returns its output; terminal-wait waits for a state; terminal-screen shows the screen. The user can take the wheel and give it back. Requires the Bash app (mca.teros.bash).",
+  "version": "2.1.0",
+  "description": "Drive terminals the user watches: open Claude Code (or Codex/opencode) and give it tasks, or run shell commands. terminal-create agent=\"claude\" starts Claude Code on the workspace owner's Anthropic API key; terminal-prompt sends a task and waits for its turn to end; terminal-run runs a command and returns its output; terminal-wait waits for a state; terminal-screen shows the screen. Each session has its own window with an \"Agent\" / \"Agent off\" switch. Requires the Bash app (mca.teros.bash).",
   "type": "utility",
   "icon": "icon.png",
   "category": "development",
@@ -54,9 +54,34 @@
   ],
   "changelog": [
     {
-      "version": "1.3.1",
-      "date": "2026-10-21",
-      "notes": "terminal-create (with agent=…) and terminal-list say whether the user's coding-agent sign-in reaches the agent's sessions: signed in and shared with this workspace's agents, signed in but not shared, or not signed in, with the next step to ask the user for (never the credential itself). Same data as structuredContent.agentAuth."
+      "version": "2.1.0",
+      "date": "2026-11-10",
+      "notes": "Two spaces: a terminal is either a person's personal terminal (their own machine, home and logins) or a shared terminal in the workspace's machine, which every member with write access sees and types in. A person can open a shared terminal only where the workspace's Bash app is shared; the sessions an agent opens are always shared and do not depend on that. terminal-list says which space each session is in. Both kinds stay closed to agents while they read \"Agent off\". A person can let the workspace watch their personal terminal; that is view only for the others and does not open it to agents."
+    },
+    {
+      "version": "2.0.0",
+      "date": "2026-11-10",
+      "notes": "Terminal windows: each session has its own Terminal window and one \"Agent\" / \"Agent off\" switch, on in the sessions an agent opens and off in the sessions a person opens. The two tools for asking for a session and letting go of it are now terminal-request-control and terminal-release-control; the person answers a request with \"Allow\" / \"Keep off\". A session a person opens is private to them and closed to agents until they switch it to \"Agent\"; the sessions agents open are visible to the workspace's members. Teros no longer handles any Claude sign-in and the tool that asked for one is gone: the Claude Code sessions an agent opens run on the API key of the workspace owner's Anthropic provider, and on a login screen the agent stops and tells the user."
+    },
+    {
+      "version": "1.7.0",
+      "date": "2026-11-03",
+      "notes": "A woken session's note says 'same directory' only when its old directory came back (otherwise: back in /workspace). A request for a session is answered only by the person typing in it, or else by whoever opened it; the chat card keeps how the request ended, also after a reload. Tool descriptions say sessions wake in the same directory while it still exists. The tools that ask for a session and let go of it are marked safe writes, not read-only: they still run without an approval."
+    },
+    {
+      "version": "1.6.0",
+      "date": "2026-10-28",
+      "notes": "The agent can let go of a session when asked and is told what the person clicks. A note the person leaves now reaches the agent on any tool (run, write…). A second agent asking while a request is pending hears 'busy'. A refused write ends with one next step; closing an unknown id is an error."
+    },
+    {
+      "version": "1.5.0",
+      "date": "2026-10-26",
+      "notes": "In a session a person is using, the agent asks before typing and the person answers in the chat and the Terminal window. Refused writes and a wait ended by a person typing name the asking tool as the next step."
+    },
+    {
+      "version": "1.4.0",
+      "date": "2026-10-26",
+      "notes": "The bridge only reaches this workspace's sessions."
     },
     {
       "version": "1.3.0",

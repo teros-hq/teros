@@ -27,7 +27,6 @@ import { NavbarShell } from "../../src/components/navbarV2/NavbarShell"
 import { WhatsNewModal } from "../../src/components/WhatsNewModal"
 import { TerminalNeedsWatcher } from "../../src/components/needsYou/TerminalNeedsWatcher"
 import { TerminalAttention } from "../../src/windows/TerminalWindow/TerminalAttention"
-import { FloatingTerminalLayer } from "../../src/windows/TerminalWindow/floating"
 import { useWhatsNewModal } from "../../src/hooks/useWhatsNewModal"
 import { useBillingRealtimeSync } from "../../src/hooks/billing/useBillingRealtimeSync"
 import { useUiSync } from "../../src/services/uiSync"
@@ -37,6 +36,7 @@ import { captureInviteParams } from "../../src/lib/inviteParams"
 import { PendingInvitationsBanner } from "../../src/components/workspace/PendingInvitations"
 import { DesktopUrlSync } from "../../src/components/workspace/DesktopUrlSync"
 import { TilingLayout } from "../../src/components/workspace/TilingLayout"
+import { FloatingWindowLayer } from "../../src/components/workspace/floating/FloatingWindowLayer"
 import { useLayoutRestoreGate } from "../../src/components/workspace/useLayoutRestoreGate"
 import { useColors } from "../../src/components/mca/primitives/useColors"
 import { useAuthStore } from "../../src/store/authStore"
@@ -87,6 +87,7 @@ export default function WorkspaceLayout() {
 
   const desktops = useTilingStore((state) => state.desktops)
   const windows = useTilingStore((state) => state.windows)
+  const floats = useTilingStore((state) => state.floats)
   const persistToStorage = useTilingStore((state) => state.persistToStorage)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFirstRender = useRef(true)
@@ -182,7 +183,7 @@ export default function WorkspaceLayout() {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [desktops, windows, workspaceLoaded])
+  }, [desktops, windows, floats, workspaceLoaded])
 
   // Unread badges of chat windows — one store-level watcher (TABH-REQ-5), so
   // hibernated tabs still raise theirs.
@@ -305,9 +306,7 @@ export default function WorkspaceLayout() {
               lives, the orb floats over the WHOLE app (draggable, closable).
               Inside the provider: it reads the session context. Renders
               nothing while there is no session (presence off + flag off). */}
-          {/* Floating terminals (dragged out of a Terminal window's crew rail):
-              a layer above the tiling system, not part of it. */}
-          <FloatingTerminalLayer />
+          <FloatingWindowLayer />
           <VoiceOrbOverlay />
         </VoiceSessionProvider>
       </WorkspaceContext.Provider>

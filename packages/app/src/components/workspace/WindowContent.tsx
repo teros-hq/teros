@@ -9,6 +9,7 @@ import { useColors } from "../mca/primitives/useColors"
 import { Btn, T, Tile } from "../ui/ds"
 import { windowRegistry } from "../../services/windowRegistry"
 import { FullscreenLoader } from "../../components/ui"
+import { WindowCloseConfirm } from "./WindowCloseConfirm"
 
 interface WindowLike {
   id: string
@@ -52,21 +53,24 @@ export function WindowContent({ window }: Props) {
   const retryKey = `${resetKey}::${retryCount}`
 
   return (
-    <ErrorBoundary
-      resetKey={retryKey}
-      fallback={(error) => (
-        <WindowError
-          message={t("errors.windowContentLoadFailed")}
-          error={error}
-          onRetry={() => setRetryCount((c) => c + 1)}
-          retryLabel={t("errors.retryLoad")}
-        />
-      )}
-    >
-      <Suspense fallback={<WindowLoading />}>
-        <Component key={retryCount} {...window.props} windowId={window.id} />
-      </Suspense>
-    </ErrorBoundary>
+    <>
+      <WindowCloseConfirm windowId={window.id} />
+      <ErrorBoundary
+        resetKey={retryKey}
+        fallback={(error) => (
+          <WindowError
+            message={t("errors.windowContentLoadFailed")}
+            error={error}
+            onRetry={() => setRetryCount((c) => c + 1)}
+            retryLabel={t("errors.retryLoad")}
+          />
+        )}
+      >
+        <Suspense fallback={<WindowLoading />}>
+          <Component key={retryCount} {...window.props} windowId={window.id} />
+        </Suspense>
+      </ErrorBoundary>
+    </>
   )
 }
 

@@ -8,6 +8,35 @@ All notable changes to Teros are documented in this file.
 
 ---
 
+## v1.4.8 - Objetos de plataforma, sign-in que solo muestra lo configurado y recuperación de contraseña para cuentas OAuth
+
+> Ventana 2026-11-12 → 2026-11-13. Tag `v1.4.8`.
+
+### Objetos
+
+- [x] **Objetos de plataforma (OBJ)**: un objeto pertenece a un workspace o a un usuario y se sirve por su propia URL, con transformaciones de imagen en la misma URL (OBJ-REQ-1, OBJ-REQ-2, OBJ-REQ-3, OBJ-REQ-7). Spec en `docs/specs/`.
+- [x] **El avatar de un agente es un objeto**: lo subido se resuelve a la URL del objeto y se pide en variantes de tamaño; deja de escribirse nada en el directorio estático (OBJ-REQ-4, OBJ-REQ-5, OBJ-REQ-6). Los objetos de un agente desaparecen con él.
+- [x] **Migración de avatares al arrancar**: los avatares que vivían en el directorio estático pasan a ser objetos; un fichero que falta se sustituye por el avatar por defecto (OBJ-REQ-8, OBJ-REQ-9).
+
+### Autenticación
+
+- [x] **La recuperación de contraseña llega a las cuentas que solo entran por OAuth**: una cuenta creada con Microsoft (o cualquier proveedor) no tenía identidad `password`, así que `requestPasswordReset` no la encontraba y caía en el challenge señuelo. Al usuario se le decía "te hemos enviado un código" y **no se enviaba nada**. Ahora, cuando el email es de un usuario real y no suspendido pero no hay identidad de contraseña, se provisiona una con una contraseña que nadie puede teclear (32 bytes aleatorios hasheados y descartados, sin credencial temporal que filtrar) y el flujo sigue normal; el usuario elige su primera contraseña y hasta entonces sigue entrando por su proveedor. Una cuenta suspendida se queda en el señuelo, para que un baneo no se levante por autoservicio. De paso arregla la otra mitad: `changePassword` actualizaba por `(userId, type: 'password')` sin upsert, así que el reset habría fallado con "Could not update password" aunque el código hubiera llegado.
+- [x] **El backend dice qué métodos de acceso tiene configurados (SIGNM 1.0.0)**: `GET /api/auth-methods` informa de si Google, GitHub y Microsoft se inicializaron al arrancar (SIGNM-REQ-1..3).
+- [x] **Las pantallas de acceso dibujan solo lo que el backend ofrece**: sin proveedores configurados, quedan email y contraseña a secas; con uno o varios, solo esos botones (SIGNM-REQ-4..7).
+
+### Infraestructura
+
+- [x] **`docker/logs.sh` sigue los servicios por defecto (SHLOG 1.0.0)**: sin argumentos sigue backend, container-agent y frontend; las bases de datos solo cuando se nombran. Las líneas del health-probe de MongoDB enterraban todo lo demás (SHLOG-REQ-1, SHLOG-REQ-2).
+- [x] **El formulario de proveedores dibuja el glifo de marca de cada proveedor** en vez de una nube genérica; los tipos sin glifo conservan un icono de reserva.
+- [x] **OCR y pdf-to-images giran sin descargar datos de idioma**: spa y eng van empaquetados, el arranque está acotado y ningún trabajo se queda en `processing`.
+
+### Correcciones
+
+- [x] **La tarjeta de acceso mantiene su separación sobre el botón de email** cuando no se dibuja ningún proveedor (SIGNM-REQ-6).
+- [x] **Security batch 1 y 2**: 35 paquetes transitivos vulnerables re-resueltos dentro de su rango semver y `undici` parcheado bajo discord.js y el cliente de Qdrant (239 → 68 avisos abiertos); fuera `nodemailer` sin uso, bcrypt 6 (elimina tar 6), vitest 4, OpenTelemetry 2.9, uuid 11, file-type 21 y esbuild 0.25 en los bundles (68 → 19 avisos abiertos, ningún crítico).
+
+---
+
 ## v1.4.7 - Onboarding v2, imágenes de release, recuperación de contraseña de verdad y bundle web a la mitad
 
 > Ventana 2026-11-08 → 2026-11-12. Tag `v1.4.7`.

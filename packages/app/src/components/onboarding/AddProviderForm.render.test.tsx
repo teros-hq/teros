@@ -57,3 +57,12 @@ describe('AddProviderForm — hidden subscription OAuth providers', () => {
     }
   })
 })
+
+describe('AddProviderForm — brand glyphs', () => {
+  it('draws the brand glyph of a known provider type in the selection list', () => {
+    const { container } = renderForm()
+    // The OpenAI mark is an inline SVG path (ProviderIcons); the generic cloud is not.
+    const paths = Array.from(container.querySelectorAll('svg path')).map((p) => p.getAttribute('d') ?? '')
+    expect(paths.some((d) => d.startsWith('M22.282 9.821'))).toBe(true)
+  })
+})

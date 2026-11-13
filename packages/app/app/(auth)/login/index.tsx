@@ -2,21 +2,20 @@ import { useRouter } from "expo-router"
 import React, { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { View } from "react-native"
-import { GoogleIcon, MicrosoftIcon } from "../../../src/components/SocialIcons"
 import { useAuthStore } from "../../../src/store/authStore"
 import { getTerosClient } from "../../../src/services/terosClientSingleton"
 import { useColors } from "../../../src/components/mca/primitives/useColors"
-import { Btn, Ph, T } from "../../../src/components/ui/ds"
+import { Btn, T } from "../../../src/components/ui/ds"
 import {
   AuthBrand,
-  AuthDivider,
   AuthHelp,
   AuthShell,
   AuthSwitch,
   AuthTitle,
-  ProviderBtn,
 } from "../../../src/components/auth/AuthShell"
 import { useSocialAuth } from "../../../src/components/auth/useSocialAuth"
+import { SocialSignIn } from "../../../src/components/auth/SocialSignIn"
+import { useSignInMethods } from "../../../src/components/auth/useSignInMethods"
 import { useDevAutologin } from "../../../src/components/auth/useDevAutologin"
 import { wsUrl } from "../../../src/config/runtime"
 
@@ -48,6 +47,7 @@ export default function Login() {
   }, [client, checkingAuth])
 
   const social = useSocialAuth()
+  const signInMethods = useSignInMethods()
   // Local dev backend with TEROS_DEV_AUTOLOGIN=1: straight in, no form. Inert in prod.
   const devAutologin = useDevAutologin(!checkingAuth)
 
@@ -65,32 +65,14 @@ export default function Login() {
         })}
       />
 
-      {/* Providers — Google full width, GitHub / Microsoft half width (all live) */}
-      <View style={{ gap: 8, marginTop: 24 }}>
-        <ProviderBtn
-          full
-          icon={<GoogleIcon size={18} />}
-          label={t("auth.continueWithGoogle")}
-          onPress={social.google}
-          testID="login-google"
-        />
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <ProviderBtn
-            icon={<Ph name="github-logo" size={17} color={c.text2} />}
-            label="GitHub"
-            onPress={social.github}
-            testID="login-github"
-          />
-          <ProviderBtn
-            icon={<MicrosoftIcon size={15} />}
-            label="Microsoft"
-            onPress={social.microsoft}
-            testID="login-microsoft"
-          />
-        </View>
-      </View>
-
-      <AuthDivider label={t("auth.orWithEmail", { defaultValue: "or with your email" })} />
+      {/* Providers the backend offers, then the divider; nothing when it offers none (SIGNM) */}
+      <SocialSignIn
+        methods={signInMethods}
+        onPress={social}
+        testIDPrefix="login"
+        marginTop={24}
+        emptyGap={24}
+      />
 
       {/* Email path — the visible strings are pinned by the smoke tests */}
       <Btn

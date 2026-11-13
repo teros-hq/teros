@@ -63,6 +63,7 @@ function makeHost(appId = "app_fakehost01") {
   let n = 0
   const host: any = {
     appId,
+    key: appId,
     container: `teros-term-fake-${appId}`,
     workspaceId: "work_1",
     onAttr: null,
@@ -470,6 +471,72 @@ describe("frozen → sleeping (hibernation)", () => {
     expect(manager.read("t_claude").lines).toContain("● Done.")
   })
 
+  it("after a wake, the replayed scrollback isn't logged a second time: the old output once, the marker, the new output (006)", async () => {
+    const { manager, termHosts } = await hibernated()
+    manager.useWaker(async (record) => {
+      const host = await (manager.termHostManager as any).ensure(record.appId)
+      await manager.createInHost(
+        host,
+        record.terminalId,
+        record.cols,
+        record.rows,
+        record.workspaceId,
+        { title: record.title, kind: record.kind, createdBy: record.createdBy },
+        { cwd: record.cwd, resumed: { agent: null, notRestored: null, message: "Resumed." } },
+      )
+    })
+    await manager.ensureAwake("t_claude", { userId: "u2" })
+    const pane = (manager as any).sessions.get("t_claude").tmux.paneId
+    const host = await (termHosts as any).ensure("app_fakehost01")
+    host.emit(pane, "\x1b[2m> fix the login bug\r\n● Done.\r\n")
+    host.emit(pane, "\x1b[0m\r\n\x1b[2m— resumed after sleep —\x1b[0m\r\n$ echo after\r\nafter\r\n")
+    const lines = manager.read("t_claude", { lines: 50 }).lines
+    expect(lines.filter((l) => l.includes("● Done."))).toHaveLength(1)
+    expect(lines.some((l) => l.includes("resumed after sleep"))).toBe(true)
+    expect(lines).toContain("after")
+  })
+
+  it("a second wake logs the replay once too: the earlier marker in the old output doesn't stop the skipping (006)", async () => {
+    const { manager, termHosts } = await hibernated()
+    manager.useWaker(async (record) => {
+      const host = await (manager.termHostManager as any).ensure(record.appId)
+      await manager.createInHost(
+        host,
+        record.terminalId,
+        record.cols,
+        record.rows,
+        record.workspaceId,
+        { title: record.title, kind: record.kind, createdBy: record.createdBy },
+        { cwd: record.cwd, resumed: { agent: null, notRestored: null, message: "Resumed." } },
+      )
+    })
+    const wake = async (replay: string[], after: string) => {
+      await manager.ensureAwake("t_claude", { userId: "u2" })
+      const session = (manager as any).sessions.get("t_claude")
+      const host = await (termHosts as any).ensure("app_fakehost01")
+      host.emit(session.tmux.paneId, `\x1b[2m${replay.join("\r\n")}\r\n`)
+      host.emit(session.tmux.paneId, `\x1b[0m\r\n\x1b[2m— resumed after sleep —\x1b[0m\r\n${after}\r\n`)
+      host.panes.get(session.tmux.paneId).history = [...replay, "— resumed after sleep —", ...after.split("\r\n")]
+      return host
+    }
+    await wake(["> fix the login bug", "● Done."], "$ echo between\r\nbetween")
+    const t1 = Date.now()
+    idleSince(manager, t1)
+    sweep(manager, t1 + FREEZE)
+    await flush()
+    sweep(manager, t1 + FREEZE + HIBERNATE)
+    await (manager as any).hibernating.get("app_fakehost01")
+    expect(manager.describe("t_claude")?.lifecycle).toBe("sleeping")
+    await wake(
+      ["> fix the login bug", "● Done.", "— resumed after sleep —", "$ echo between", "between"],
+      "$ echo after\r\nafter",
+    )
+    const lines = manager.read("t_claude", { lines: 80 }).lines
+    expect(lines.filter((l) => l.includes("● Done."))).toHaveLength(1)
+    expect(lines.filter((l) => l === "between")).toHaveLength(1)
+    expect(lines).toContain("after")
+  })
+
   it("a wake that doesn't bring the session back fails loudly and leaves it asleep", async () => {
     const { manager } = await hibernated()
     manager.useWaker(async () => {})
@@ -544,6 +611,32 @@ describe("frozen → sleeping (hibernation)", () => {
     await manager.rename("t_shell", "prod logs")
     expect(store.docs.get("t_shell")?.title).toBe("prod logs")
     expect(manager.describe("t_shell")?.title).toBe("prod logs")
+  })
+})
+
+describe("a session's process in its host", () => {
+  it("panePid is the pane's process, for reading its environment; null for an unknown session", async () => {
+    const { manager } = await setup()
+    expect(manager.panePid("t_claude")).toBe(102)
+    expect(manager.panePid("t_unknown")).toBeNull()
+  })
+})
+
+describe("a wheel request nobody answers", () => {
+  it("ends at its time limit: the sweep drops it and tells the session's watchers", async () => {
+    const manager = new PtyManager(makePubSub() as any, { lease: { requestTtlMs: 20 } })
+    const host = makeHost()
+    await manager.createInHost(host, "t_claude", 100, 30, "work_1", META("Claude Code", "claude"))
+    const changes: string[] = []
+    manager.onChange((_id, _ws, reason) => changes.push(reason))
+    manager.requestWheel("t_claude", { kind: "agent", id: "agent_atlas", name: "Atlas" }, null)
+    expect(manager.describe("t_claude")?.wheelRequest?.agent.id).toBe("agent_atlas")
+    changes.length = 0
+    await new Promise((r) => setTimeout(r, 30))
+    sweep(manager, Date.now())
+    expect(changes).toContain("wheel_request")
+    expect(manager.describe("t_claude")?.wheelRequest).toBeNull()
+    manager.destroy("t_claude")
   })
 })
 
@@ -675,6 +768,15 @@ describe("pure pieces", () => {
     // No id (hooks never reported one) or a hostile one: plain --continue.
     expect(claudeResumeLine("")).toMatch(/; claude --continue$/)
     expect(claudeResumeLine("x; rm -rf /")).toMatch(/; claude --continue$/)
+  })
+
+  it("claudeResumeLine for an agent's session: --resume <id> when its transcript exists, a fresh claude otherwise, never --continue", () => {
+    const line = claudeResumeLine("0b5c2c1e-1111-2222-3333-444455556666", "fresh")
+    expect(line).toContain(
+      "then claude --resume 0b5c2c1e-1111-2222-3333-444455556666; else claude; fi",
+    )
+    expect(line).not.toContain("--continue")
+    expect(claudeResumeLine("", "fresh")).toMatch(/; claude$/)
   })
 
   it("wakeCwdOf: a runner session (bridge + coding agent) always wakes in /workspace — the single boot cwd", () => {

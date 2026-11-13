@@ -46,6 +46,7 @@ export interface WorkspaceAppData {
   accentColors?: string[]
   /** App scope — 'personal' (per-user credentials, blocked in shared conversations) or 'shared' (workspace-level). Missing = 'personal'. */
   scope?: 'personal' | 'shared'
+  installedBy?: string
 }
 
 // ============================================================================

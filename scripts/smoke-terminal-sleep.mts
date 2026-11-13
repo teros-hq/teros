@@ -53,6 +53,7 @@ import { startFakeAnthropic } from "./smoke-terminal-fake-anthropic.mts"
 const { createTestServer } = await import("@teros/testing")
 const { McaHttpClient } = await import("../packages/backend/src/services/mca-http-client")
 const { PtyManager } = await import("../packages/backend/src/services/pty-manager")
+const { ProviderService } = await import("../packages/backend/src/services/provider-service")
 const { runDocker, TermHostManager } = await import(
   "../packages/backend/src/services/terminal/term-host"
 )
@@ -215,23 +216,20 @@ async function main(): Promise<void> {
       executeTool: async () => ({ output: "", isError: false }),
     } as unknown as McaManager
     const key = `sk-ant-api03-${"fake".repeat(16)}`
-    const credentials = {
-      env: async () => ({
-        env: { ANTHROPIC_API_KEY: key },
-        label: "API key ····test",
-        mode: "apiKey",
-      }),
-    } as any
 
     server = await createTestServer({
       enableNavbarStack: true,
       enableMcaBridge: true,
       ptyManager,
       mcaManager,
-      terminalAgentCredentials: credentials,
       mockResponses: [{ text: "mock" }],
     } as any)
     const { db } = server
+    await new ProviderService(db).addProvider(OWNER_ID, {
+      providerType: "anthropic",
+      displayName: "Anthropic (smoke)",
+      auth: { apiKey: key },
+    })
     await db.collection("workspaces").insertOne({
       workspaceId: WORKSPACE_ID,
       ownerId: OWNER_ID,

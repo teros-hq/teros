@@ -112,6 +112,10 @@ const LOGIN_PATTERNS: RegExp[] = [
   /not logged in\s*·?\s*run \/login/i,
   /invalid api key/i,
   /please run \/login/i,
+  /paste code here if prompted/i,
+  /browser didn't open/i,
+  /opening browser to sign in/i,
+  /login successful/i,
 ]
 
 export function detectLoginScreen(lines: string[]): boolean {

@@ -17,7 +17,7 @@
     "@teros/core": "*",
     "@teros/shared": "*",
     "@teros/testing": "*",
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "chai": "^6.2.2",
     "mongodb": "^6.11.0",
     "playwright": "^1.52.0",
@@ -26,11 +26,11 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/bcrypt": "^5.0.2",
+    "@types/bcrypt": "^6.0.0",
     "@types/chai": "^5.2.3",
     "@types/node": "^22.10.1",
     "@types/ws": "^8.5.13",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.12"
   }
 }

@@ -29,6 +29,7 @@ import type {
 import { consoleLogger } from './types';
 import { ensureDynamicCollectionIndexes } from './storage-indexes';
 import { config } from '../../config';
+import { objectVariantsDir } from '../platform-objects';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -436,6 +437,8 @@ export class CallbackHandlers {
     } catch (error: any) {
       if (error.code !== 'ENOENT') throw error;
     }
+    // Stored image variants of the object (OBJ-REQ-3) go with it.
+    await fs.rm(objectVariantsDir(filePath), { recursive: true, force: true });
 
     // Remove from MongoDB
     await this.db.collection('agent_app_objects').deleteOne({

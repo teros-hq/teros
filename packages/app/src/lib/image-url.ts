@@ -1,7 +1,8 @@
 /**
  * Image URL utilities for on-the-fly resizing
  *
- * Appends resize query params to static image URLs served by the backend.
+ * Appends resize query params to image URLs served by the backend: static
+ * files and objects (uploaded avatars).
  * The backend (Sharp) handles the actual resizing and caches the result.
  *
  * Usage:
@@ -22,11 +23,13 @@ export interface ImageResizeOptions {
  */
 function isResizableBackendImage(url: string): boolean {
   if (!url) return false
-  // Must be our backend static route
+  const path = url.split('?')[0]
+  // An object URL (an uploaded avatar): the backend transforms it (OBJ-REQ-6)
+  if (/\/objects\/obj_[a-f0-9]+$/.test(path)) return true
+  // Otherwise it must be our backend static route
   if (!url.includes('/static/')) return false
   // Must be an image extension
-  const path = url.split('?')[0].toLowerCase()
-  return /\.(jpg|jpeg|png|webp|gif|avif|tiff|svg)$/.test(path)
+  return /\.(jpg|jpeg|png|webp|gif|avif|tiff|svg)$/.test(path.toLowerCase())
 }
 
 /**
@@ -36,6 +39,8 @@ function isResizableBackendImage(url: string): boolean {
  * - No options provided
  * - URL is not a resizable backend image
  * - URL already has resize params
+ *
+ * @spec OBJ-REQ-6
  */
 export function getResizedImageUrl(
   url: string | undefined | null,
@@ -66,6 +71,8 @@ export function getResizedImageUrl(
  * Get a resized avatar URL optimized for the given display size
  *
  * Uses 2x pixel ratio for retina displays, WebP format for compression.
+ *
+ * @spec OBJ-REQ-6
  */
 export function getAvatarUrl(
   url: string | undefined | null,

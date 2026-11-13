@@ -72,7 +72,10 @@
     "metro-symbolicate": "0.83.3",
     "metro-transform-plugins": "0.83.3",
     "metro-transform-worker": "0.83.3",
-    "@tamagui/web": "1.138.6"
+    "@tamagui/web": "1.138.6",
+    "**/discord.js/undici": "6.29.1",
+    "**/@discordjs/rest/undici": "6.29.1",
+    "**/@qdrant/js-client-rest/undici": "7.30.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",

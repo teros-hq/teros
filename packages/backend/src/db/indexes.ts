@@ -518,9 +518,6 @@ export const INDEXES: { readonly [C in CollectionName]?: readonly IndexDef[] } =
     { key: { accountId: 1, windowStart: -1 }, name: 'accountId_windowStart' }, // 20260923_002
     { key: { windowEnd: 1 }, name: 'windowEnd_1' }, // 20260923_002
   ],
-  [COLLECTIONS.codingAgentCredentials]: [
-    { key: { userId: 1, agent: 1 }, name: 'userId_agent_unique', unique: true }, // agent-credentials.ts
-  ],
   [COLLECTIONS.terminalSleepingSessions]: [
     { key: { workspaceId: 1, terminalId: 1 }, name: 'workspaceId_terminalId_unique', unique: true }, // terminal/sleep-store.ts
     { key: { stackId: 1 }, name: 'stackId_1' }, // terminal/sleep-store.ts

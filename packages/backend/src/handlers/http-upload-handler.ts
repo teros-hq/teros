@@ -13,9 +13,15 @@ import type { AuthService } from '../auth/auth-service';
 import { canAccessAgent } from '../auth/workspace-access';
 import { broadcastAgentUpdated, buildAgentUpdatedPayload } from '../lib/agent-payload';
 import type { AgentInstance } from '../types/database';
-import { staticDir, uploadDir } from '../lib/static-paths';
+import { buildAvatarUrl } from '../lib/avatar-url';
+import { uploadDir } from '../lib/static-paths';
 import { extractSessionToken } from '../lib/session-cookie';
 import type { PubSubService } from '../services/pubsub-service';
+import {
+  agentAvatarOwner,
+  detectAvatarImageType,
+  putAgentAvatarObject,
+} from '../services/platform-objects';
 
 // ---------------------------------------------------------------------------
 // Security constants
@@ -350,7 +356,8 @@ export async function parseMultipartFormData(
 
 /**
  * Handle avatar upload.
- * Validates: image MIME type only, 5 MB max size.
+ * Validates: image MIME type only, 5 MB max size, image type read from the bytes.
+ * Stores the avatar as a platform object (OBJ-REQ-4).
  */
 async function handleAvatarUpload(
   req: IncomingMessage,
@@ -358,6 +365,7 @@ async function handleAvatarUpload(
   db: Db,
   agentId: string,
   userId: string,
+  objectStoragePath: string,
   pubSubService?: PubSubService | null,
 ): Promise<void> {
   try {
@@ -413,34 +421,45 @@ async function handleAvatarUpload(
       return;
     }
 
-    // Generate unique filename. Sanitize the agentId — ids like "agent:iria"
-    // contain ':' which the browser percent-encodes in the <img> URL (%3A),
-    // producing a 404 on the static route. Mirror the chat upload sanitization.
-    const ext = extname(filename) || '.jpg';
-    const safeAgentId = agentId.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const newFilename = `${safeAgentId}-avatar-${randomUUID().slice(0, 8)}${ext}`;
-    const filePath = join(staticDir, newFilename);
+    // The image type comes from the bytes, never from the client's file name
+    // or declared type (OBJ-REQ-4).
+    const contentType = detectAvatarImageType(file);
+    if (!contentType) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: 'Invalid file: an avatar must be a JPEG, PNG, GIF or WebP image',
+        }),
+      );
+      return;
+    }
 
-    // Ensure static directory exists
-    await mkdir(staticDir, { recursive: true });
+    const agentsCollection: Collection<AgentInstance> = db.collection('agents');
+    const agent = await agentsCollection.findOne({ agentId });
+    if (!agent) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Agent not found' }));
+      return;
+    }
 
-    // Write file
-    await writeFile(filePath, file);
+    // The avatar is a platform object owned by the agent's workspace, or by its
+    // owner user for a global agent (OBJ-REQ-4). Nothing is written into the
+    // static directory: that is part of the release and a deploy leaves it behind.
+    const { objectId } = await putAgentAvatarObject(db, objectStoragePath, {
+      data: file,
+      contentType,
+      agentId,
+      owner: agentAvatarOwner(agent),
+    });
 
-    // Public URL for immediate display in the upload response.
-    const publicUrl = `${config.static.baseUrl}/${newFilename}`;
-
-    // Persist the BARE filename — same convention as predefined core avatars
-    // ("iria.png"). The various buildAvatarUrl() resolvers prepend the static
-    // base, so storing an absolute URL here produced double-wrapping
-    // (`<base>/<base>/<file>` → 404, broken avatar on reload).
+    // Persist the object id; buildAvatarUrl() resolves it to the object URL.
     // Access already enforced by canAccessAgent above; scope by agentId only so
     // legitimate workspace-collaborator uploads aren't silently no-op'd. Mirrors
     // handleAgentUpdate. matchedCount === 0 below still guards a concurrent delete.
-    const agentsCollection: Collection<AgentInstance> = db.collection('agents');
     const result = await agentsCollection.updateOne(
       { agentId },
-      { $set: { avatarUrl: newFilename, updatedAt: new Date().toISOString() } },
+      { $set: { avatarUrl: objectId, updatedAt: new Date().toISOString() } },
     );
 
     if (result.matchedCount === 0) {
@@ -449,14 +468,14 @@ async function handleAvatarUpload(
       return;
     }
 
-    console.log(`✅ Avatar uploaded for agent ${agentId}: ${newFilename}`);
+    console.log(`✅ Avatar uploaded for agent ${agentId}: ${objectId}`);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify({
         success: true,
-        filename: newFilename,
-        url: publicUrl,
+        filename: objectId,
+        url: buildAvatarUrl(objectId),
       }),
     );
 
@@ -615,6 +634,7 @@ export class HttpUploadHandler {
     private db: Db,
     private authService: AuthService,
     private pubSubService?: PubSubService | null,
+    private objectStoragePath: string = config.agentApps.objectStoragePath,
   ) {}
 
   /**
@@ -648,7 +668,15 @@ export class HttpUploadHandler {
         return true;
       }
       const agentId = decodeURIComponent(avatarMatch[1]);
-      await handleAvatarUpload(req, res, this.db, agentId, userId, this.pubSubService);
+      await handleAvatarUpload(
+        req,
+        res,
+        this.db,
+        agentId,
+        userId,
+        this.objectStoragePath,
+        this.pubSubService,
+      );
       return true;
     }
 

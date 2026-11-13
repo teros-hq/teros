@@ -100,6 +100,10 @@ async function buildTerminalBundle(): Promise<void> {
     }
     #state button:hover { background: rgba(128,128,128,.18); }
     html.light #state { background: rgba(255,255,255,.95); color: #2b2f36; }
+    html #state.failed span::before {
+      content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+      background: #D9534F; margin-right: 7px; vertical-align: 1px;
+    }
     @keyframes pulse { 50% { opacity: .35; } }
     #jump.show { opacity: 1; pointer-events: auto; }
     /* xterm 6 draws its own (VS Code) scrollbar, 14px wide: keep it slim and quiet. */
@@ -124,7 +128,6 @@ async function buildTerminalBundle(): Promise<void> {
 
   const tsModule = `// AUTO-GENERATED — do not edit manually.
 // Run: bun run build in packages/app/src/terminal-bundle/
-// Generated: ${new Date().toISOString()}
 export const terminalHtml: string = ${JSON.stringify(html)};
 `
 

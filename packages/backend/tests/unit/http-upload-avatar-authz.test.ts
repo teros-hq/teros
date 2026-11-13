@@ -14,12 +14,12 @@
  * real avatar file to `staticDir`; `afterEach` unlinks anything created.
  */
 
-import { afterEach, describe, expect, it, mock } from "bun:test"
-import { unlink } from "fs/promises"
+import { afterAll, describe, expect, it, mock } from "bun:test"
+import { mkdtempSync, rmSync } from "fs"
 import type { IncomingMessage, ServerResponse } from "http"
+import { tmpdir } from "os"
 import { join } from "path"
 import { HttpUploadHandler } from "../../src/handlers/http-upload-handler"
-import { staticDir } from "../../src/lib/static-paths"
 
 const USER_PLAIN = "user_plain"
 const USER_OTHER = "user_other"
@@ -43,13 +43,11 @@ const WORKSPACES: Record<string, { status: string }> = {
 // (workspaceId, userId) pairs that are members.
 const MEMBERS = new Set([`${WS_ID}:${USER_MEMBER}`])
 
-/** Files written to staticDir during a test, cleaned up afterwards. */
-const created: string[] = []
+/** Object storage for the uploads of these tests, removed afterwards. */
+const OBJECTS_DIR = mkdtempSync(join(tmpdir(), "upload-avatar-authz-test-"))
 
-afterEach(async () => {
-  for (const f of created.splice(0)) {
-    await unlink(join(staticDir, f)).catch(() => {})
-  }
+afterAll(() => {
+  rmSync(OBJECTS_DIR, { recursive: true, force: true })
 })
 
 // ---------------------------------------------------------------------------
@@ -93,7 +91,8 @@ function makeDb() {
       if (name === "agents") return agents
       if (name === "workspaces") return workspaces
       if (name === "workspace_members") return workspaceMembers
-      return { findOne: mock(async () => null) }
+      // agent_app_objects: the avatar is stored as a platform object (OBJ-REQ-4).
+      return { findOne: mock(async () => null), insertOne: mock(async () => ({ acknowledged: true })) }
     }),
   }
   return { db: db as any, agents }
@@ -114,7 +113,8 @@ function makeReq(userId: string): IncomingMessage {
       `Content-Disposition: form-data; name="file"; filename="avatar.png"\r\n` +
       `Content-Type: image/png\r\n\r\n`,
   )
-  const body = Buffer.from("fake-png-bytes")
+  // A real PNG signature: the image type is read from the bytes (OBJ-REQ-4).
+  const body = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   const tail = Buffer.from(`\r\n--${boundary}--\r\n`)
   const full = Buffer.concat([head, body, tail])
 
@@ -148,12 +148,11 @@ function makeRes() {
 
 async function upload(userId: string, agentId: string) {
   const { db, agents } = makeDb()
-  const handler = new HttpUploadHandler(db, makeAuthService())
+  const handler = new HttpUploadHandler(db, makeAuthService(), null, OBJECTS_DIR)
   const req = makeReq(userId)
   const res = makeRes()
   await handler.handleRoute(req, res, `/api/upload/avatar/${agentId}`)
   const json = res.body ? JSON.parse(res.body) : {}
-  if (json.filename) created.push(json.filename)
   return { res, agents, json }
 }
 

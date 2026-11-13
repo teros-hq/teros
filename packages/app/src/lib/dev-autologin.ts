@@ -12,6 +12,27 @@
 
 const PROBE_TIMEOUT_MS = 1500
 
+let signedOut = false
+
+/**
+ * Record that the user signed out: no automatic sign-in again until the page
+ * is loaded anew, or signing out would bounce straight back in.
+ * @spec ALOGIN-REQ-7
+ */
+export function suppressAutologinAfterSignOut(): void {
+  signedOut = true
+}
+
+/** @spec ALOGIN-REQ-7 */
+export function isAutologinSuppressed(): boolean {
+  return signedOut
+}
+
+/** Test seam. */
+export function _resetAutologinSuppressionForTests(): void {
+  signedOut = false
+}
+
 function isLocalHostname(raw: string): boolean {
   let host = raw.toLowerCase()
   if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1)

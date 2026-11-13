@@ -18,7 +18,7 @@ import { terminalHtml } from "./terminalBundle"
 // Cast to accept props on all platforms (RN-web type resolution issue)
 const WebView = RawWebView as any
 
-export type ConnStatus = "connecting" | "live" | "offline" | "ended" | "denied"
+export type ConnStatus = "connecting" | "live" | "offline" | "ended" | "denied" | "failed"
 
 export interface PaneLiveState {
   status: ConnStatus
@@ -34,6 +34,7 @@ export type WindowShortcut =
   | "prev-session"
   | "next-session"
   | "take-wheel"
+  | "go-session"
   | "float"
   | "rail-left"
   | "rail-right"
@@ -42,6 +43,7 @@ const SHORTCUTS: readonly string[] = [
   "prev-session",
   "next-session",
   "take-wheel",
+  "go-session",
   "float",
   "rail-left",
   "rail-right",

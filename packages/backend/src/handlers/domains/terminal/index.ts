@@ -65,7 +65,15 @@
  * agents waiting on it) and `conflict` (two people typing within 2 s).
  */
 
-import type { TerminalDriver, TerminalWatcher, WsHandlerContext } from "@teros/shared"
+import {
+  type AccessAction,
+  isSpace,
+  type Principal,
+  type Space,
+  type TerminalDriver,
+  type TerminalWatcher,
+  type WsHandlerContext,
+} from "@teros/shared"
 import { type LaunchOptions, appendLaunchArgs, parseLaunchOptions } from "../../../services/terminal/launch-options"
 import { execSync } from "child_process"
 import { randomBytes } from "crypto"
@@ -85,35 +93,13 @@ import type {
   WakeResult,
 } from "../../../services/pty-manager"
 import type { PubSubService } from "../../../services/pubsub-service"
-import {
-  type AgentAuthStatus,
-  AgentCredentialStore,
-  asClaudeOauth,
-  type ClaudeAccountSession,
-  type CodingAgent,
-  claudeConfigDir,
-  claudeLoginCommand,
-  claudeSessionPrepScript,
-  codeInField,
-  harvestLoginScript,
-  isCodingAgent,
-  keyHint,
-  loginDir,
-  loginErrorMessage,
-  materializeClaudeDirScript,
-  parseHarvest,
-  readClaudeDirScript,
-  readExchangeScreen,
-  readSetupScreen,
-  redactScreen,
-  removeClaudeDirScript,
-  type SetupScreen,
-} from "../../../services/terminal/agent-credentials"
+import { agentProviderEnv } from "../../../services/terminal/agent-provider-key"
 import { detectBlocked, detectMenu } from "../../../services/terminal/agent-heuristics"
 import {
   AGENT_LAUNCH_LINES,
   AGENT_TITLES,
   claudeApproveKeyScript,
+  claudeSessionPrepScript,
   claudeHooksSetupScript,
   claudeOnboardingScript,
   claudeResumeLine,
@@ -129,10 +115,12 @@ import { CrewIdentities } from "../../../services/terminal/crew-identity"
 import { LeaseError } from "../../../services/terminal/driver-lease"
 import { TerminalSleepStore } from "../../../services/terminal/sleep-store"
 import type { TerminalStreamServer } from "../../../services/terminal/stream-server"
-import type { TermHost } from "../../../services/terminal/term-host"
+import { hostPersonOf, spaceOfSession, type TermHost } from "../../../services/terminal/term-host"
 import {
   checkTerminalAccess,
+  mayReachSession,
   mayUseHostPty as mayUseHostPtyFor,
+  terminalPrincipal,
 } from "../../../services/terminal/terminal-access"
 import type { WsRouter } from "../../../ws-framework/WsRouter"
 import { HandlerError } from "../../../ws-framework/WsRouter"
@@ -156,62 +144,7 @@ export interface TerminalDomainDeps {
   exec?: (cmd: string) => string
   /** Reads the user's Teros providers ("Use Teros" for coding agents). */
   providerService?: ProviderService | null
-  /** Coding-agent credentials (default: backed by `db`). */
-  agentCredentials?: AgentCredentialStore
 }
-
-/**
- * A private `claude setup-token` run. Both steps run in the background (the
- * first one may install Claude Code, the second waits on Anthropic) and the
- * window polls `terminal.agentAuthLoginState`, so no request outlives the
- * client's timeout and every failure reaches the card with its reason.
- */
-type LoginPhase = "starting" | "installing" | "ready" | "exchanging" | "done" | "failed"
-
-interface PendingLogin {
-  userId: string
-  workspaceId: string
-  host: TermHost | null
-  scratch: string
-  timer: ReturnType<typeof setTimeout>
-  phase: LoginPhase
-  url?: string
-  error?: { code: string; message: string }
-  status?: AgentAuthStatus
-}
-
-/** What the window sees of a sign-in (the URL only to its owner, never a token). */
-function loginView(loginId: string, login: PendingLogin) {
-  return {
-    loginId,
-    phase: login.phase,
-    ...(login.url && (login.phase === "ready" || login.phase === "exchanging")
-      ? { url: login.url }
-      : {}),
-    ...(login.error ? { error: login.error } : {}),
-    ...(login.status ? { status: login.status } : {}),
-  }
-}
-
-class LoginFailure extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
-    super(message)
-  }
-}
-
-const LOGIN_TTL_MS = 10 * 60 * 1000
-/** How long a finished sign-in stays pollable. */
-const LOGIN_RESULT_TTL_MS = 2 * 60 * 1000
-/** The login's pane width (startScratch default): the URL wraps at it. */
-const SCRATCH_COLS = 200
-const LOGIN_URL_TIMEOUT_MS = 60_000
-const LOGIN_INSTALL_TIMEOUT_MS = 5 * 60_000
-const LOGIN_EXCHANGE_TIMEOUT_MS = 60_000
-/** How often Claude account dirs are synced back to the store. */
-const CLAUDE_DIR_SYNC_MS = 10 * 60_000
 
 /** Keys and codes are single tokens: no whitespace, no control characters. */
 function hasSpaceOrControl(value: string): boolean {
@@ -246,7 +179,16 @@ function agentId(ctx: WsHandlerContext): string {
   return `agent:${ctx.sessionId.startsWith("mca:") ? ctx.sessionId.slice(4) : "domain"}`
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+function requestedSpace(value: unknown, bridge: boolean): Space {
+  if (value === undefined || value === null) return bridge ? "shared" : "personal"
+  if (!isSpace(value)) throw new HandlerError("INVALID_SPACE", 'space must be "personal" or "shared"')
+  if (bridge && value === "personal")
+    throw new HandlerError(
+      "INVALID_SPACE",
+      "A terminal an agent opens is always shared: a personal terminal belongs to a person",
+    )
+  return value
+}
 
 /** A driver's identity, to tell a change of hands from a refresh. */
 function driverKey(d: TerminalDriver | null | undefined): string {
@@ -289,9 +231,6 @@ async function ensureContainerRunning(
 export function register(router: WsRouter, deps: TerminalDomainDeps): void {
   const { pubSubService, ptyManager, mcaService, mcaManager, db } = deps
   const stream = deps.stream ?? null
-  const credentials =
-    deps.agentCredentials ?? new AgentCredentialStore(db, deps.providerService ?? null)
-  const logins = new Map<string, PendingLogin>()
   // MCA containers may run on a remote execution host (TWO-HOST-SEPARATION-PLAN
   // phase 3): TERMINAL_DOCKER_HOST points the docker CLI there. Scoped env,
   // not a global DOCKER_HOST — see pty-manager.ts for the same pattern.
@@ -334,18 +273,98 @@ export function register(router: WsRouter, deps: TerminalDomainDeps): void {
       return
     }
     const session = ptyManager.describe(terminalId)
-    if (workspaceId) {
-      pubSubService.broadcastToTopic?.(`terminals:${workspaceId}`, {
-        type: "terminal_sessions",
-        workspaceId,
-        terminalId,
-        reason,
-        session: session ? describe(session) : null,
-      })
-    }
+    if (reason === "watchable" || reason === "control" || reason === "exit")
+      revokeOutput(terminalId, workspaceId, session)
+    if (workspaceId) announce(terminalId, workspaceId, reason, session)
     if (reason === "exit") stream?.notifyExit(terminalId, 0)
     else stream?.notifyState(terminalId, session)
   })
+
+  const privateOpeners = new Map<string, string>()
+  const outputSubscribers = new Map<string, Map<string, Principal>>()
+
+  async function subscribeOutput(ctx: WsHandlerContext, terminalId: string): Promise<void> {
+    const workspaceId = ptyManager.ownerOf(terminalId)
+    if (!workspaceId) return
+    const principal = await callerPrincipal(ctx, workspaceId)
+    const session = ptyManager.describe?.(terminalId)
+    if (session && !mayReachSession(session, workspaceId, principal)) return
+    const subscribers = outputSubscribers.get(terminalId) ?? new Map<string, Principal>()
+    subscribers.set(ctx.sessionId, principal)
+    outputSubscribers.set(terminalId, subscribers)
+    pubSubService.subscribeSession(ctx.sessionId, `terminal:${terminalId}`)
+  }
+
+  function revokeOutput(
+    terminalId: string,
+    workspaceId: string | undefined,
+    session: SessionInfo | null,
+  ): void {
+    const subscribers = outputSubscribers.get(terminalId)
+    if (!subscribers) return
+    for (const [sessionId, principal] of subscribers) {
+      if (session && workspaceId && mayReachSession(session, workspaceId, principal)) continue
+      subscribers.delete(sessionId)
+      pubSubService.unsubscribeSession(sessionId, `terminal:${terminalId}`)
+    }
+    if (subscribers.size === 0) outputSubscribers.delete(terminalId)
+  }
+
+  async function callerPrincipal(ctx: WsHandlerContext, workspaceId: string): Promise<Principal> {
+    const bridge = isBridgeCall(ctx)
+    return terminalPrincipal(
+      db,
+      { userId: ctx.userId, bridge, workspaceId: bridge ? await bridgeWorkspace(ctx) : null },
+      workspaceId,
+    )
+  }
+
+  function personalOwnerOf(session: SessionInfo | null): string | null {
+    return session ? hostPersonOf(session) : null
+  }
+
+  function sessionsTopic(workspaceId: string, opener?: string | null): string {
+    return opener ? `terminals:${workspaceId}:${opener}` : `terminals:${workspaceId}`
+  }
+
+  function announce(
+    terminalId: string,
+    workspaceId: string,
+    reason: string,
+    session: SessionInfo | null,
+  ): void {
+    const send = (topic: string, shown: SessionInfo | null, why = reason) =>
+      pubSubService.broadcastToTopic?.(topic, {
+        type: "terminal_sessions",
+        workspaceId,
+        terminalId,
+        reason: why,
+        session: shown ? describe(shown) : null,
+      })
+    const owner = personalOwnerOf(session)
+    const opener = owner && !session?.watchable ? owner : null
+    const wasPrivateOf = privateOpeners.get(terminalId) ?? null
+    if (opener) privateOpeners.set(terminalId, opener)
+    else privateOpeners.delete(terminalId)
+    if (!session) {
+      send(sessionsTopic(workspaceId, wasPrivateOf), null)
+      return
+    }
+    if (opener && !wasPrivateOf && reason === "watchable") {
+      send(sessionsTopic(workspaceId), null, "unwatchable")
+      stream?.dropViewers(terminalId, (userId) => userId === opener)
+    }
+    send(sessionsTopic(workspaceId, opener), session)
+  }
+
+  async function bridgeWorkspace(ctx: WsHandlerContext): Promise<string | null> {
+    if (ctx.actor?.workspaceId) return ctx.actor.workspaceId
+    const appId =
+      ctx.actor?.appId ?? (ctx.sessionId.startsWith("mca:") ? ctx.sessionId.slice(4) : "")
+    if (!appId) return null
+    const app = await mcaService.getApp(appId).catch(() => null)
+    return app?.ownerId ?? null
+  }
 
   /** May this caller hold a host shell? System admin, on their own session. */
   function mayUseHostPty(ctx: WsHandlerContext): Promise<boolean> {
@@ -358,12 +377,18 @@ export function register(router: WsRouter, deps: TerminalDomainDeps): void {
    * session without recorded owner is denied. No-ops when there is no session —
    * callers decide how to handle absence.
    */
-  async function assertTerminalAccess(ctx: WsHandlerContext, terminalId: string): Promise<void> {
+  async function assertTerminalAccess(
+    ctx: WsHandlerContext,
+    terminalId: string,
+    action: AccessAction,
+  ): Promise<void> {
+    const bridge = isBridgeCall(ctx)
     const denial = await checkTerminalAccess(
       db,
       ptyManager,
-      { userId: ctx.userId, bridge: isBridgeCall(ctx) },
+      { userId: ctx.userId, bridge, workspaceId: bridge ? await bridgeWorkspace(ctx) : null },
       terminalId,
+      action,
     )
     if (denial === null || denial === "TERMINAL_NOT_FOUND") return
     if (denial === "FORBIDDEN_WORKSPACE_ROLE") {
@@ -372,6 +397,11 @@ export function register(router: WsRouter, deps: TerminalDomainDeps): void {
         "Write access to the workspace is required",
       )
     }
+    if (denial === "TERMINAL_VIEW_ONLY")
+      throw new HandlerError(
+        "TERMINAL_VIEW_ONLY",
+        "This is someone's personal terminal: they let the workspace watch it, and only they can type in it or change it.",
+      )
     throw new HandlerError("FORBIDDEN_TERMINAL", `No access to terminal ${terminalId}`)
   }
 
@@ -383,8 +413,12 @@ export function register(router: WsRouter, deps: TerminalDomainDeps): void {
    * interactive actions, which keep the manager's silent no-op for UX reasons.
    * Authz runs before the existence check so a caller can't probe terminalIds.
    */
-  async function requireSession(ctx: WsHandlerContext, terminalId: string): Promise<void> {
-    await assertTerminalAccess(ctx, terminalId)
+  async function requireSession(
+    ctx: WsHandlerContext,
+    terminalId: string,
+    action: AccessAction,
+  ): Promise<void> {
+    await assertTerminalAccess(ctx, terminalId, action)
     if (!ptyManager.has(terminalId)) {
       throw new HandlerError("TERMINAL_NOT_FOUND", `Terminal ${terminalId} not found`)
     }
@@ -395,7 +429,26 @@ export function register(router: WsRouter, deps: TerminalDomainDeps): void {
    * asleep → wakeSession). The result says what it woke from, null when it
    * was awake. A session that cannot be woken is TERMINAL_WAKE_FAILED.
    */
+  async function refuseWakeToWatchers(ctx: WsHandlerContext, terminalId: string): Promise<void> {
+    const lifecycle = ptyManager.describe?.(terminalId)?.lifecycle
+    if (!lifecycle || lifecycle === "awake") return
+    const bridge = isBridgeCall(ctx)
+    const denial = await checkTerminalAccess(
+      db,
+      ptyManager,
+      { userId: ctx.userId, bridge, workspaceId: bridge ? await bridgeWorkspace(ctx) : null },
+      terminalId,
+      "use",
+    )
+    if (denial === "TERMINAL_VIEW_ONLY")
+      throw new HandlerError(
+        "TERMINAL_ASLEEP",
+        "This terminal is asleep: only its person can wake it",
+      )
+  }
+
   async function wake(ctx: WsHandlerContext, terminalId: string): Promise<WakeResult | null> {
+    await refuseWakeToWatchers(ctx, terminalId)
     try {
       return (await ptyManager.ensureAwake?.(terminalId, { userId: ctx.userId })) ?? null
     } catch (err) {
@@ -410,10 +463,51 @@ export function register(router: WsRouter, deps: TerminalDomainDeps): void {
   async function requireAwake(
     ctx: WsHandlerContext,
     terminalId: string,
+    action: AccessAction,
   ): Promise<{ woke: WakeResult["from"] | null }> {
-    await requireSession(ctx, terminalId)
+    await requireSession(ctx, terminalId, action)
     const woke = await wake(ctx, terminalId)
     return { woke: woke?.from ?? null }
+  }
+
+  async function workspaceOwner(workspaceId: string): Promise<string> {
+    const workspace = await collection(db, COLLECTIONS.workspaces).findOne({ workspaceId })
+    return String(workspace?.ownerId ?? "")
+  }
+
+  async function hostFor(
+    appId: string,
+    workspaceId: string,
+    warmAs: string,
+    person: string | null,
+  ): Promise<TermHost> {
+    const termHosts = ptyManager.termHostManager
+    if (!termHosts) throw new Error("terminal hosts are not available")
+    const running = await termHosts.running(appId, person)
+    if (running) return running
+    const seedSharedHome = person !== null && person === (await workspaceOwner(workspaceId))
+    return termHosts.ensure(
+      appId,
+      workspaceId,
+      () => ensureContainerRunning(mcaManager, appId, warmAs, workspaceId, exec),
+      person ? { person, seedSharedHome } : undefined,
+    )
+  }
+
+  async function agentClaudeEnv(
+    host: TermHost,
+    workspaceId: string,
+    cwd: string,
+  ): Promise<Record<string, string> | undefined> {
+    const env = await agentProviderEnv(deps.providerService, await workspaceOwner(workspaceId))
+    if (!env) return undefined
+    const scripts = [claudeSessionPrepScript(cwd)]
+    if (env.ANTHROPIC_API_KEY) scripts.push(claudeApproveKeyScript(env.ANTHROPIC_API_KEY))
+    const prep = await host
+      .runScript(scripts.join("\n"))
+      .catch((err: unknown) => ({ code: 1, stderr: String(err) }))
+    if (prep.code !== 0) console.warn(`[terminal] claude session prep failed: ${prep.stderr.trim()}`)
+    return env
   }
 
   /**
@@ -429,11 +523,7 @@ export function register(router: WsRouter, deps: TerminalDomainDeps): void {
     const app = await mcaService.getApp(record.appId)
     if (!app || app.ownerId !== record.workspaceId)
       throw new Error(`its Bash app ${record.appId} is gone`)
-    const host =
-      (await termHosts.running(record.appId)) ??
-      (await termHosts.ensure(record.appId, record.workspaceId, () =>
-        ensureContainerRunning(mcaManager, record.appId, userId, record.workspaceId, exec),
-      ))
+    const host = await hostFor(record.appId, record.workspaceId, userId, hostPersonOf(record))
     const plan = resumePlan(record)
     const bridge = record.createdBy.startsWith("agent:")
     const file = `/tmp/teros-resume-${randomBytes(6).toString("hex")}`
@@ -451,29 +541,8 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
       if (setup.code !== 0)
         console.warn(`[terminal.wake] claude hooks setup failed: ${setup.stderr.trim()}`)
     }
-    // Credentials as at create: only a session started as that coding agent
-    // had them injected (a `claude` typed into a shell signs in by itself).
-    let auth: Awaited<ReturnType<AgentCredentialStore["env"]>> = null
-    if (plan.agent && record.kind === plan.agent) {
-      const owner = bridge
-        ? (
-            await collection(db, COLLECTIONS.workspaces).findOne({
-              workspaceId: record.workspaceId,
-            })
-          )?.ownerId
-        : record.createdBy
-      if (owner)
-        auth = await credentials.env(
-          String(owner),
-          plan.agent,
-          bridge ? { forWorkspace: record.workspaceId } : {},
-        )
-      if (plan.agent === "claude" && auth?.env.ANTHROPIC_API_KEY) {
-        await host
-          .runScript(claudeApproveKeyScript(auth.env.ANTHROPIC_API_KEY))
-          .catch(() => undefined)
-      }
-    }
+    const env =
+      bridge && record.kind === "claude" ? await agentClaudeEnv(host, record.workspaceId, cwd) : undefined
     await ptyManager.createInHost(
       host,
       record.terminalId,
@@ -485,16 +554,26 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
         kind: record.kind,
         createdBy: record.createdBy,
         appId: record.appId,
-        auth: auth?.label ?? record.auth,
+        auth: record.auth,
+        space: spaceOfSession(record),
       },
       {
         cwd,
-        env: auth?.env,
+        env,
         command: resumeWindowCommand(file, plan.notRestored),
-        resumed: { agent: plan.agent, notRestored: plan.notRestored, message: plan.message },
+        resumed: {
+          agent: plan.agent,
+          notRestored: plan.notRestored,
+          message: plan.message,
+          cwd,
+          sameDir: !record.cwd || cwd === record.cwd,
+        },
       },
     )
-    const launch = plan.agent === "claude" ? claudeResumeLine(record.agentSession) : plan.launch
+    const launch =
+      plan.agent === "claude"
+        ? claudeResumeLine(record.agentSession, bridge ? "fresh" : "continue")
+        : plan.launch
     if (launch)
       ptyManager.write(
         record.terminalId,
@@ -534,7 +613,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     if (driver?.kind === "agent") {
       throw new HandlerError(
         "WHEEL_HELD",
-        `${driver.name || "The agent"} has the wheel — your keys were not sent. Press "Take the wheel" to drive.`,
+        `${driver.name || "The agent"} is typing in this session: your keys were not sent. Switch "Agent off" to type.`,
       )
     }
     const who = await identities.human(ctx.userId)
@@ -620,6 +699,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
       preset?: TerminalPreset
       subscribe?: boolean
       reveal?: boolean
+      space?: unknown
     }
 
     if (!data.terminalId) throw new HandlerError("MISSING_TERMINAL_ID", "terminalId is required")
@@ -633,19 +713,35 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     if (data.preset !== undefined && !isPreset(data.preset)) {
       throw new HandlerError("INVALID_PRESET", 'preset must be "shell" or "claude"')
     }
+    const space = requestedSpace(data.space, isBridgeCall(ctx))
 
     // Verify user has access to the app (apps are workspace-owned:
     // ownerType 'workspace', ownerId === workspaceId)
     const app = await mcaService.getApp(data.appId)
     if (!app) throw new HandlerError("APP_NOT_FOUND", `App ${data.appId} not found`)
     const workspaceId = app.ownerId
-    if (!(await canAccessWorkspace(db, ctx.userId, workspaceId))) {
+    if (
+      !(await canAccessWorkspace(db, ctx.userId, workspaceId)) ||
+      (isBridgeCall(ctx) && (await bridgeWorkspace(ctx)) !== workspaceId)
+    ) {
       throw new HandlerError("FORBIDDEN_WORKSPACE", `No access to workspace ${workspaceId}`)
     }
     if (!(await canWriteWorkspace(db, ctx.userId, workspaceId))) {
       throw new HandlerError(
         "FORBIDDEN_WORKSPACE_ROLE",
         "Write access to the workspace is required",
+      )
+    }
+    if (!isBridgeCall(ctx) && mcaService.isAppVisibleTo?.(app, ctx.userId) === false) {
+      throw new HandlerError(
+        "FORBIDDEN_APP",
+        "This Bash app is another member's personal app: ask them to share it with the workspace",
+      )
+    }
+    if (!isBridgeCall(ctx) && space === "shared" && app.scope === "personal") {
+      throw new HandlerError(
+        "PERSONAL_APP",
+        "A shared terminal runs in the workspace's machine, and that needs a shared Bash app. This Bash app is personal: switch it to shared in My Apps → Settings, or open a personal terminal.",
       )
     }
 
@@ -675,12 +771,13 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
       if (ptyManager.ownerOf(data.terminalId) !== workspaceId) {
         throw new HandlerError("FORBIDDEN_TERMINAL", `No access to terminal ${data.terminalId}`)
       }
+      await assertTerminalAccess(ctx, data.terminalId, "see")
       const reusedHost = ptyManager.isHost(data.terminalId)
       if (reusedHost && !(await mayUseHostPty(ctx))) {
         throw new HandlerError("FORBIDDEN_TERMINAL", `No access to terminal ${data.terminalId}`)
       }
       const woke = await wake(ctx, data.terminalId)
-      if (subscribe) pubSubService.subscribeSession(ctx.sessionId, topic)
+      if (subscribe) await subscribeOutput(ctx, data.terminalId)
       if (data.reveal) ptyManager.reveal?.(data.terminalId)
       console.log(
         `✅ [terminal.create] terminal=${data.terminalId} user=${ctx.userId} host=${reusedHost} — reusing existing PTY session${woke ? ` (woke from ${woke.from})` : ""}`,
@@ -714,11 +811,12 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
       try {
         // Reuse the running host; only a first session pays the bash warmup
         // (its container is the template the host is cloned from).
-        const host =
-          (await termHosts.running(data.appId)) ??
-          (await termHosts.ensure(data.appId, workspaceId, () =>
-            ensureContainerRunning(mcaManager, data.appId, ctx.userId, workspaceId, exec),
-          ))
+        const host = await hostFor(
+          data.appId,
+          workspaceId,
+          ctx.userId,
+          space === "personal" ? ctx.userId : null,
+        )
         const cwd = data.cwd ?? "/workspace"
         if (preset === "claude") {
           const setup = await host.runScript(
@@ -727,35 +825,8 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
           if (setup.code !== 0)
             console.warn(`[terminal.create] claude hooks setup failed: ${setup.stderr.trim()}`)
         }
-        // The person's own coding-agent credentials (never the workspace's):
-        // a Teros agent's session gets the owner's only if they shared them here.
-        const auth =
-          preset === "shell"
-            ? null
-            : await credentials.env(ctx.userId, preset, bridge ? { forWorkspace: workspaceId } : {})
-        if (preset === "claude" && auth?.env.ANTHROPIC_API_KEY) {
-          await host
-            .runScript(claudeApproveKeyScript(auth.env.ANTHROPIC_API_KEY))
-            .catch(() => undefined)
-        }
-        // With credentials injected, skip Claude Code's first-run onboarding
-        // (it asks for a login method even when the token is set) and trust
-        // the session's /workspace directory: the session opens at the prompt.
-        if (preset === "claude" && auth?.claude) {
-          await prepareClaudeDir(host, ctx.userId, auth.claude, data.cwd ?? "/workspace")
-        } else if (preset === "claude" && !bridge) {
-          // No account sign-in (any more): a dir an earlier backend process built goes too.
-          await host
-            .runScript(removeClaudeDirScript(claudeConfigDir(ctx.userId)))
-            .catch(() => undefined)
-        }
-        if (preset === "claude" && auth && !auth.claude) {
-          const prep = await host
-            .runScript(claudeSessionPrepScript(data.cwd ?? "/workspace"))
-            .catch((err: unknown) => ({ code: 1, stderr: String(err) }))
-          if (prep.code !== 0)
-            console.warn(`[terminal.create] claude session prep failed: ${prep.stderr.trim()}`)
-        }
+        const env =
+          bridge && preset === "claude" ? await agentClaudeEnv(host, workspaceId, cwd) : undefined
         await ptyManager.createInHost(
           host,
           data.terminalId,
@@ -770,9 +841,13 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
                 : preset,
             createdBy: bridge ? agentId(ctx) : ctx.userId,
             appId: data.appId,
-            auth: auth?.label ?? "",
+            auth: env ? "API key" : "",
+            space,
           },
-          { cwd, env: launchOptions?.env ? { ...(auth?.env ?? {}), ...launchOptions.env } : auth?.env },
+          {
+            cwd,
+            env: launchOptions?.env ? { ...(env ?? {}), ...launchOptions.env } : env,
+          },
         )
         const launch =
           preset === "shell"
@@ -782,26 +857,23 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
         // A session an agent opens is the agent's to drive from the start.
         if (bridge)
           await seatAgent(ctx, data.terminalId, (rawData as { agentId?: unknown }).agentId)
-        if (subscribe) pubSubService.subscribeSession(ctx.sessionId, topic)
+        if (subscribe) await subscribeOutput(ctx, data.terminalId)
         if (data.reveal) ptyManager.reveal?.(data.terminalId)
         console.log(
-          `✅ [terminal.create] terminal=${data.terminalId} user=${ctx.userId} host=${host.container} preset=${preset}`,
+          `✅ [terminal.create] terminal=${data.terminalId} user=${ctx.userId} host=${host.container} preset=${preset} space=${space}`,
         )
-        const agentAuth =
-          preset === "shell" ? null : await agentAuthFor(ctx, preset, workspaceId)
-        return {
-          terminalId: data.terminalId,
-          cols,
-          rows,
-          persistent: true,
-          ...(agentAuth ? { agentAuth } : {}),
-        }
+        return { terminalId: data.terminalId, cols, rows, persistent: true }
       } catch (err) {
         // Images without the terminal host (no tmux / teros-term-host) keep
         // working on the legacy PTY below.
         console.warn(
           `[terminal.create] terminal host unavailable, legacy PTY: ${err instanceof Error ? err.message : String(err)}`,
         )
+        if (!bridge)
+          throw new HandlerError(
+            "TERMINAL_HOST_UNAVAILABLE",
+            `Could not start your terminal machine: ${err instanceof Error ? err.message : String(err)}`,
+          )
       }
     }
 
@@ -817,10 +889,18 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     // Create the PTY (recording the owning workspace for authz on later actions),
     // then subscribe — subscribing first would leave a dangling subscription if
     // the container warmup fails.
-    ptyManager.create(data.terminalId, containerId, cols, rows, workspaceId)
+    ptyManager.create(
+      data.terminalId,
+      containerId,
+      cols,
+      rows,
+      workspaceId,
+      isBridgeCall(ctx) ? agentId(ctx) : ctx.userId,
+      space,
+    )
     if (isBridgeCall(ctx))
       await seatAgent(ctx, data.terminalId, (rawData as { agentId?: unknown }).agentId)
-    if (subscribe) pubSubService.subscribeSession(ctx.sessionId, topic)
+    if (subscribe) await subscribeOutput(ctx, data.terminalId)
 
     if (data.reveal) ptyManager.reveal?.(data.terminalId)
 
@@ -840,7 +920,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
   router.register("terminal.input", async (ctx: WsHandlerContext, rawData: unknown) => {
     const data = rawData as { terminalId: string; data: string; agentId?: string }
     if (!data.terminalId) throw new HandlerError("MISSING_TERMINAL_ID", "terminalId is required")
-    await assertTerminalAccess(ctx, data.terminalId)
+    await assertTerminalAccess(ctx, data.terminalId, "use")
     let woke: WakeResult | null = null
     if (ptyManager.has(data.terminalId)) {
       woke = await wake(ctx, data.terminalId)
@@ -877,12 +957,18 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     if (data.paste !== undefined && typeof data.paste !== "boolean" && data.paste !== "auto") {
       throw new HandlerError("INVALID_PASTE", 'paste must be true, false or "auto"')
     }
-    const { woke } = await requireAwake(ctx, data.terminalId)
+    const { woke } = await requireAwake(ctx, data.terminalId, "use")
     await beforeInput(ctx, data.terminalId, data.agentId)
     const pasted = shouldPaste(data.paste ?? false, data.data, data.terminalId)
     const text = pasted ? `\x1b[200~${stripPasteMarkers(data.data)}\x1b[201~` : data.data
     const cursor = ptyManager.write(data.terminalId, data.sendEnter ? `${text}\r` : text)
-    return { ok: true, cursor, pasted, ...(woke ? { woke } : {}) }
+    return {
+      ok: true,
+      cursor,
+      pasted,
+      ...(woke ? { woke } : {}),
+      ...(await crewNews(ctx, data.terminalId, data.agentId)),
+    }
   })
 
   /**
@@ -915,7 +1001,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     if (data.since !== undefined && (!Number.isInteger(data.since) || data.since < 0)) {
       throw new HandlerError("INVALID_SINCE", "since must be a non-negative integer")
     }
-    const { woke } = await requireAwake(ctx, data.terminalId)
+    const { woke } = await requireAwake(ctx, data.terminalId, "see")
 
     const result: ReadResult = ptyManager.read(data.terminalId, {
       lines: data.lines,
@@ -942,7 +1028,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
   router.register("terminal.screen", async (ctx: WsHandlerContext, rawData: unknown) => {
     const data = rawData as { terminalId: string; agentId?: string }
     if (!data.terminalId) throw new HandlerError("MISSING_TERMINAL_ID", "terminalId is required")
-    const { woke } = await requireAwake(ctx, data.terminalId)
+    const { woke } = await requireAwake(ctx, data.terminalId, "see")
     const screen = await ptyManager.screen(data.terminalId)
     if (!screen)
       throw new HandlerError("TERMINAL_NOT_FOUND", `Terminal ${data.terminalId} not found`)
@@ -977,7 +1063,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     if (data.timeoutMs !== undefined && (!Number.isFinite(data.timeoutMs) || data.timeoutMs <= 0)) {
       throw new HandlerError("INVALID_TIMEOUT", "timeoutMs must be a positive number")
     }
-    await requireAwake(ctx, data.terminalId)
+    await requireAwake(ctx, data.terminalId, "see")
 
     let regex: RegExp
     try {
@@ -994,6 +1080,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
         timeoutMs: data.timeoutMs,
         fromLine: data.fromLine,
       })
+      await assertTerminalAccess(ctx, data.terminalId, "see")
       return {
         matched: result.matched,
         line: result.line,
@@ -1001,6 +1088,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
         cursor: result.nextLine,
       }
     } catch (err) {
+      await assertTerminalAccess(ctx, data.terminalId, "see")
       // Only map the manager's timeout rejection — session death and other
       // failures keep their original message (and INTERNAL_ERROR code).
       if (err instanceof Error && err.message.startsWith("waitFor: timeout")) {
@@ -1065,7 +1153,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     if (data.until === "text" && !text && !pattern) {
       throw new HandlerError("INVALID_PATTERN", 'until "text" needs text or pattern')
     }
-    const { woke } = await requireAwake(ctx, data.terminalId)
+    const { woke } = await requireAwake(ctx, data.terminalId, "see")
     const terminalId = data.terminalId
     const mark = (data.sinceNow === true
       ? ptyManager.mark(terminalId)
@@ -1093,6 +1181,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     } finally {
       if (me) ptyManager.agentWatching?.(terminalId, me, false)
     }
+    await assertTerminalAccess(ctx, terminalId, "see")
     const session = ptyManager.describe(terminalId)
     const screen = session ? await ptyManager.screen(terminalId).catch(() => null) : null
     const news = await crewNews(ctx, terminalId, data.agentId)
@@ -1122,7 +1211,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
   router.register("terminal.reveal", async (ctx: WsHandlerContext, rawData: unknown) => {
     const data = (rawData ?? {}) as { terminalId?: string }
     if (!data.terminalId) throw new HandlerError("MISSING_TERMINAL_ID", "terminalId is required")
-    await requireSession(ctx, data.terminalId)
+    await requireSession(ctx, data.terminalId, "see")
     ptyManager.reveal(data.terminalId)
     return { ok: true, watchers: stream?.watchers(data.terminalId) ?? [] }
   })
@@ -1135,7 +1224,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
   router.register("terminal.resize", async (ctx: WsHandlerContext, rawData: unknown) => {
     const data = rawData as { terminalId: string; cols: number; rows: number }
     if (!data.terminalId) throw new HandlerError("MISSING_TERMINAL_ID", "terminalId is required")
-    await assertTerminalAccess(ctx, data.terminalId)
+    await assertTerminalAccess(ctx, data.terminalId, "use")
     ptyManager.resize(data.terminalId, data.cols, data.rows)
     return { ok: true }
   })
@@ -1144,16 +1233,56 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
    * terminal.destroy
    * Kills the PTY session.
    */
+  const pendingCloses = new Map<string, ReturnType<typeof setTimeout>>()
+
   router.register("terminal.destroy", async (ctx: WsHandlerContext, rawData: unknown) => {
-    const data = rawData as { terminalId: string }
+    const data = rawData as { terminalId: string; undoMs?: unknown }
     if (!data.terminalId) throw new HandlerError("MISSING_TERMINAL_ID", "terminalId is required")
 
-    await assertTerminalAccess(ctx, data.terminalId)
-    ptyManager.destroy(data.terminalId)
-    pubSubService.unsubscribeSession(ctx.sessionId, `terminal:${data.terminalId}`)
-
-    console.log(`✅ [terminal.destroy] terminal=${data.terminalId}`)
+    await ptyManager.whenAdopted?.()
+    await assertTerminalAccess(ctx, data.terminalId, "manage")
+    if (isBridgeCall(ctx) && !ptyManager.has(data.terminalId))
+      throw new HandlerError(
+        "TERMINAL_NOT_FOUND",
+        `No session ${data.terminalId} here: terminal-list shows the open ones`,
+      )
+    const undoMs = Number(data.undoMs)
+    const terminalId = data.terminalId
+    const delayed =
+      data.undoMs !== undefined && Number.isFinite(undoMs) && undoMs > 0 && undoMs <= 30_000
+    if (delayed && !ptyManager.has(terminalId)) return { ok: true }
+    clearTimeout(pendingCloses.get(terminalId))
+    pendingCloses.delete(terminalId)
+    if (delayed) {
+      const timer = setTimeout(() => {
+        pendingCloses.delete(terminalId)
+        void assertTerminalAccess(ctx, terminalId, "manage").then(
+          () => destroyNow(ctx.sessionId, terminalId),
+          () => undefined,
+        )
+      }, undoMs)
+      timer.unref?.()
+      pendingCloses.set(terminalId, timer)
+      return { ok: true, closingInMs: undoMs }
+    }
+    destroyNow(ctx.sessionId, terminalId)
     return { ok: true }
+  })
+
+  function destroyNow(sessionId: string, terminalId: string): void {
+    ptyManager.destroy(terminalId)
+    pubSubService.unsubscribeSession(sessionId, `terminal:${terminalId}`)
+    console.log(`✅ [terminal.destroy] terminal=${terminalId}`)
+  }
+
+  router.register("terminal.cancelClose", async (ctx: WsHandlerContext, rawData: unknown) => {
+    const data = rawData as { terminalId: string }
+    if (!data.terminalId) throw new HandlerError("MISSING_TERMINAL_ID", "terminalId is required")
+    await assertTerminalAccess(ctx, data.terminalId, "manage")
+    const timer = pendingCloses.get(data.terminalId)
+    clearTimeout(timer)
+    pendingCloses.delete(data.terminalId)
+    return { ok: true, cancelled: timer !== undefined }
   })
 
   /**
@@ -1170,7 +1299,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     if (data.title !== undefined && typeof data.title !== "string") {
       throw new HandlerError("INVALID_TITLE", "title must be a string")
     }
-    await requireSession(ctx, data.terminalId)
+    await requireSession(ctx, data.terminalId, "manage")
     if (data.title !== undefined) await ptyManager.rename(data.terminalId, data.title)
     const session = ptyManager.describe(data.terminalId)
     return { session: session ? describe(session) : null }
@@ -1189,10 +1318,10 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     if (!ptyManager.has(data.terminalId)) {
       throw new HandlerError("TERMINAL_NOT_FOUND", `Terminal ${data.terminalId} not found`)
     }
-    await assertTerminalAccess(ctx, data.terminalId)
+    await assertTerminalAccess(ctx, data.terminalId, "see")
 
     const topic = `terminal:${data.terminalId}`
-    pubSubService.subscribeSession(ctx.sessionId, topic)
+    await subscribeOutput(ctx, data.terminalId)
 
     console.log(`✅ [terminal.subscribe] session=${ctx.sessionId} subscribed to ${topic}`)
     return { terminalId: data.terminalId, topic }
@@ -1220,10 +1349,15 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     workspaceId?: string,
   ): Promise<SessionInfo[]> {
     await ptyManager.whenAdopted?.()
+    if (isBridgeCall(ctx)) {
+      const own = await bridgeWorkspace(ctx)
+      if (!own || (workspaceId && workspaceId !== own)) return []
+      workspaceId = own
+    }
     const sessions: SessionInfo[] = ptyManager.list()
     const visible: SessionInfo[] = []
     let hostAllowed: boolean | undefined
-    const writable = new Map<string, boolean>()
+    const principals = new Map<string, Principal>()
     for (const session of sessions) {
       const owner = session.ownerWorkspaceId
       if (!owner) continue
@@ -1232,23 +1366,12 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
         hostAllowed ??= await mayUseHostPty(ctx)
         if (!hostAllowed) continue
       }
-      if (!writable.has(owner)) writable.set(owner, await canWriteWorkspace(db, ctx.userId, owner))
-      if (writable.get(owner)) visible.push(describe(session))
+      const principal = principals.get(owner) ?? (await callerPrincipal(ctx, owner))
+      principals.set(owner, principal)
+      if (!mayReachSession(session, owner, principal)) continue
+      visible.push(describe(session))
     }
     return visible
-  }
-
-  /**
-   * What a Teros agent may know about the person's coding-agent sign-in in
-   * this workspace (bridge calls only; never the secret nor its label): whether
-   * they set one up and shared it with the workspace's agents — the sessions an
-   * agent opens get it only then.
-   */
-  async function agentAuthFor(ctx: WsHandlerContext, agent: CodingAgent, workspaceId?: string) {
-    if (!isBridgeCall(ctx) || !workspaceId) return null
-    const status = await credentials.status(ctx.userId, agent, workspaceId).catch(() => null)
-    if (!status) return null
-    return { agent, signedIn: status.mode !== null, mode: status.mode, shared: status.shared }
   }
 
   /**
@@ -1262,20 +1385,27 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
   router.register("terminal.watch", async (ctx: WsHandlerContext, rawData: unknown) => {
     const data = rawData as { workspaceId: string }
     if (!data.workspaceId) throw new HandlerError("MISSING_WORKSPACE_ID", "workspaceId is required")
+    if (isBridgeCall(ctx) && (await bridgeWorkspace(ctx)) !== data.workspaceId) {
+      throw new HandlerError("FORBIDDEN_WORKSPACE", `No access to workspace ${data.workspaceId}`)
+    }
     if (!(await canWriteWorkspace(db, ctx.userId, data.workspaceId))) {
       throw new HandlerError(
         "FORBIDDEN_WORKSPACE_ROLE",
         "Write access to the workspace is required",
       )
     }
-    pubSubService.subscribeSession(ctx.sessionId, `terminals:${data.workspaceId}`)
+    if (!isBridgeCall(ctx)) {
+      pubSubService.subscribeSession(ctx.sessionId, sessionsTopic(data.workspaceId))
+      pubSubService.subscribeSession(ctx.sessionId, sessionsTopic(data.workspaceId, ctx.userId))
+    }
     return { workspaceId: data.workspaceId, sessions: await visibleSessions(ctx, data.workspaceId) }
   })
 
   router.register("terminal.unwatch", async (ctx: WsHandlerContext, rawData: unknown) => {
     const data = rawData as { workspaceId: string }
     if (!data.workspaceId) throw new HandlerError("MISSING_WORKSPACE_ID", "workspaceId is required")
-    pubSubService.unsubscribeSession(ctx.sessionId, `terminals:${data.workspaceId}`)
+    pubSubService.unsubscribeSession(ctx.sessionId, sessionsTopic(data.workspaceId))
+    pubSubService.unsubscribeSession(ctx.sessionId, sessionsTopic(data.workspaceId, ctx.userId))
     return { workspaceId: data.workspaceId }
   })
 
@@ -1315,11 +1445,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
    */
   router.register("terminal.list", async (ctx: WsHandlerContext, rawData: unknown) => {
     const data = (rawData ?? {}) as { workspaceId?: string }
-    const agentAuth = await agentAuthFor(ctx, "claude", data.workspaceId ?? ctx.actor?.workspaceId)
-    return {
-      sessions: await visibleSessions(ctx, data.workspaceId),
-      ...(agentAuth ? { agentAuth } : {}),
-    }
+    return { sessions: await visibleSessions(ctx, data.workspaceId) }
   })
 
   /**
@@ -1333,7 +1459,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
   router.register("terminal.status", async (ctx: WsHandlerContext, rawData: unknown) => {
     const data = rawData as { terminalId: string; wake?: boolean }
     if (!data.terminalId) throw new HandlerError("MISSING_TERMINAL_ID", "terminalId is required")
-    await requireSession(ctx, data.terminalId)
+    await requireSession(ctx, data.terminalId, "see")
     const woke = data.wake === true ? ((await wake(ctx, data.terminalId))?.from ?? null) : null
 
     const status: SessionStatus | null = ptyManager.getStatus(data.terminalId)
@@ -1347,16 +1473,44 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
   // ── The wheel (terminal crew) ─────────────────────────────────────────────
 
   /** The wheel is a person's: an agent never takes or gives it on their behalf. */
-  async function wheelCaller(ctx: WsHandlerContext, terminalId: unknown) {
+  async function wheelCaller(ctx: WsHandlerContext, terminalId: unknown, action: AccessAction) {
     if (typeof terminalId !== "string" || !terminalId)
       throw new HandlerError("MISSING_TERMINAL_ID", "terminalId is required")
     if (isBridgeCall(ctx))
       throw new HandlerError(
         "FORBIDDEN",
-        "The wheel is taken and given back by people in their Terminal window",
+        "Agent control is switched by people in the Terminal window",
       )
-    await requireSession(ctx, terminalId)
+    await requireSession(ctx, terminalId, action)
     return identities.human(ctx.userId)
+  }
+
+  async function openerWhoAnswers(terminalId: string): Promise<string | null> {
+    const opener = personalOwnerOf(ptyManager.describe(terminalId))
+    if (!opener) return null
+    const workspaceId = ptyManager.ownerOf(terminalId)
+    return workspaceId && (await canWriteWorkspace(db, opener, workspaceId)) ? opener : null
+  }
+
+  async function wheelAnswerer(
+    terminalId: string,
+    userId: string,
+  ): Promise<{ id: string; typing: boolean } | null> {
+    const busy = ptyManager.busyPerson?.(terminalId, userId) ?? null
+    if (busy) return { id: busy.id, typing: true }
+    const opener = await openerWhoAnswers(terminalId)
+    return opener ? { id: opener, typing: false } : null
+  }
+
+  async function assertMayAnswerWheel(userId: string, terminalId: string): Promise<void> {
+    const answerer = await wheelAnswerer(terminalId, userId)
+    if (!answerer || answerer.id === userId) return
+    const { name } = await identities.human(answerer.id)
+    const role = answerer.typing ? "is typing in this session" : "opened this session"
+    throw new HandlerError(
+      "NOT_YOUR_WHEEL",
+      `${name || "Someone else"} ${role}: only they can switch Agent on or answer this request.`,
+    )
   }
 
   function leaseCall<T>(fn: () => T): T {
@@ -1376,7 +1530,7 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
    */
   router.register("terminal.takeWheel", async (ctx: WsHandlerContext, rawData: unknown) => {
     const data = (rawData ?? {}) as { terminalId?: unknown }
-    const who = await wheelCaller(ctx, data.terminalId)
+    const who = await wheelCaller(ctx, data.terminalId, "use")
     const terminalId = data.terminalId as string
     ptyManager.takeWheel?.(terminalId, who)
     return { ok: true, driver: ptyManager.driver?.(terminalId) ?? null }
@@ -1392,10 +1546,15 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     const data = (rawData ?? {}) as { terminalId?: unknown; note?: unknown }
     if (data.note !== undefined && data.note !== null && typeof data.note !== "string")
       throw new HandlerError("INVALID_NOTE", "note must be a string")
-    const who = await wheelCaller(ctx, data.terminalId)
+    const who = await wheelCaller(ctx, data.terminalId, "control")
     const terminalId = data.terminalId as string
+    await assertMayAnswerWheel(ctx.userId, terminalId)
     leaseCall(() => ptyManager.giveBack?.(terminalId, who, (data.note as string | null) ?? null))
-    return { ok: true, driver: ptyManager.driver?.(terminalId) ?? null }
+    const driver = ptyManager.driver?.(terminalId) ?? null
+    if (driver?.kind === "agent" && driver.id)
+      for (const answer of wheelWaiters.get(wheelKey(terminalId, driver.id)) ?? [])
+        answer("approved", { id: who.id, name: who.name || who.id })
+    return { ok: true, driver }
   })
 
   /**
@@ -1407,426 +1566,152 @@ ${claudeOnboardingScript(bridge ? { trustDir: cwd } : {})}`,
     const data = (rawData ?? {}) as { terminalId?: unknown; to?: unknown }
     if (typeof data.to !== "string" || !data.to)
       throw new HandlerError("INVALID_TARGET", "to (the other person's userId) is required")
-    const who = await wheelCaller(ctx, data.terminalId)
+    const who = await wheelCaller(ctx, data.terminalId, "use")
     const terminalId = data.terminalId as string
     const to = await identities.human(data.to)
     leaseCall(() => ptyManager.yieldWheel?.(terminalId, who, to))
     return { ok: true, driver: ptyManager.driver?.(terminalId) ?? null }
   })
 
-  // ── Coding-agent credentials (per user) ────────────────────────────────────
-
-  /** Agent-auth actions are the person's own: never through the MCA bridge. */
-  async function authCaller(
-    ctx: WsHandlerContext,
-    data: { agent?: unknown; workspaceId?: unknown },
-  ) {
-    if (isBridgeCall(ctx))
-      throw new HandlerError("FORBIDDEN", "Coding-agent credentials belong to a person")
-    if (!isCodingAgent(data.agent))
-      throw new HandlerError("INVALID_AGENT", "agent must be claude, codex or opencode")
-    const workspaceId = typeof data.workspaceId === "string" ? data.workspaceId : ""
-    if (!workspaceId) throw new HandlerError("MISSING_WORKSPACE_ID", "workspaceId is required")
-    if (!(await canWriteWorkspace(db, ctx.userId, workspaceId))) {
-      throw new HandlerError(
-        "FORBIDDEN_WORKSPACE_ROLE",
-        "Write access to the workspace is required",
-      )
-    }
-    return { agent: data.agent, workspaceId }
-  }
-
-  router.register("terminal.agentAuthStatus", async (ctx: WsHandlerContext, rawData: unknown) => {
-    const { agent, workspaceId } = await authCaller(ctx, (rawData ?? {}) as Record<string, unknown>)
-    return credentials.status(ctx.userId, agent, workspaceId)
+  router.register("terminal.releaseWheel", async (ctx: WsHandlerContext, rawData: unknown) => {
+    const data = (rawData ?? {}) as { terminalId?: unknown; agentId?: unknown }
+    if (!isBridgeCall(ctx))
+      throw new HandlerError("FORBIDDEN", "People switch Agent on in the Terminal window")
+    if (typeof data.terminalId !== "string" || !data.terminalId)
+      throw new HandlerError("MISSING_TERMINAL_ID", "terminalId is required")
+    const terminalId = data.terminalId
+    await requireSession(ctx, terminalId, "use")
+    const who = await identities.agent(ctx, data.agentId)
+    const released = ptyManager.releaseWheel?.(terminalId, who) ?? false
+    return { released, driver: ptyManager.driver?.(terminalId) ?? null }
   })
 
-  router.register("terminal.agentAuthSet", async (ctx: WsHandlerContext, rawData: unknown) => {
+  router.register("terminal.agentControl", async (ctx: WsHandlerContext, rawData: unknown) => {
+    const data = (rawData ?? {}) as { terminalId?: unknown; enabled?: unknown }
+    const who = await wheelCaller(ctx, data.terminalId, "control")
+    if (typeof data.enabled !== "boolean")
+      throw new HandlerError("INVALID_ENABLED", "enabled must be a boolean")
+    const terminalId = data.terminalId as string
+    await assertMayAnswerWheel(ctx.userId, terminalId)
+    const pending = ptyManager.describe(terminalId)?.wheelRequest?.agent ?? null
+    leaseCall(() => ptyManager.setAgentControl(terminalId, who, data.enabled as boolean))
+    const by = { id: who.id, name: who.name || who.id }
+    if (pending)
+      for (const answer of wheelWaiters.get(wheelKey(terminalId, pending.id)) ?? [])
+        answer(data.enabled ? "approved" : "denied", by)
+    const session = ptyManager.describe(terminalId)
+    return { ok: true, agentControl: session?.agentControl ?? false, driver: session?.driver ?? null }
+  })
+
+  router.register("terminal.watchable", async (ctx: WsHandlerContext, rawData: unknown) => {
+    const data = (rawData ?? {}) as { terminalId?: unknown; enabled?: unknown }
+    await wheelCaller(ctx, data.terminalId, "manage")
+    if (typeof data.enabled !== "boolean")
+      throw new HandlerError("INVALID_ENABLED", "enabled must be a boolean")
+    const terminalId = data.terminalId as string
+    if (!personalOwnerOf(ptyManager.describe(terminalId)))
+      throw new HandlerError(
+        "NOT_WATCHABLE",
+        "A shared terminal is already the workspace's: every member with write access sees it",
+      )
+    ptyManager.setWatchable(terminalId, data.enabled)
+    return { ok: true, watchable: ptyManager.describe(terminalId)?.watchable ?? false }
+  })
+
+  type AnsweredBy = { id: string; name: string }
+  type WheelAnswer = (outcome: "approved" | "denied", by: AnsweredBy) => void
+  const wheelWaiters = new Map<string, Set<WheelAnswer>>()
+  const wheelKey = (terminalId: string, agentId: string) => `${terminalId}\u0000${agentId}`
+
+  router.register("terminal.requestWheel", async (ctx: WsHandlerContext, rawData: unknown) => {
     const data = (rawData ?? {}) as {
-      agent?: unknown
-      workspaceId?: unknown
-      mode?: unknown
-      apiKey?: unknown
+      terminalId?: unknown
+      reason?: unknown
+      timeoutMs?: unknown
+      agentId?: unknown
     }
-    const { agent, workspaceId } = await authCaller(ctx, data)
-    if (data.mode === "teros") {
-      try {
-        await credentials.useTeros(ctx.userId, agent)
-      } catch (err) {
-        throw new HandlerError(
-          "TEROS_UNAVAILABLE",
-          err instanceof Error ? err.message : String(err),
-        )
-      }
-    } else if (data.mode === "apiKey") {
-      const key = typeof data.apiKey === "string" ? data.apiKey.trim() : ""
-      if (key.length < 20 || key.length > 400 || hasSpaceOrControl(key)) {
-        throw new HandlerError("INVALID_API_KEY", "That doesn't look like an API key")
-      }
-      if (agent === "claude" && !key.startsWith("sk-ant-")) {
-        throw new HandlerError("INVALID_API_KEY", "Anthropic API keys start with sk-ant-")
-      }
-      await credentials.setSecret(ctx.userId, agent, "apiKey", key, `API key ${keyHint(key)}`)
-    } else {
+    if (!isBridgeCall(ctx))
+      throw new HandlerError("FORBIDDEN", "People switch Agent off in the Terminal window")
+    if (typeof data.terminalId !== "string" || !data.terminalId)
+      throw new HandlerError("MISSING_TERMINAL_ID", "terminalId is required")
+    const timeoutMs = data.timeoutMs === undefined ? 90_000 : Number(data.timeoutMs)
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_STATE_WAIT_MS)
       throw new HandlerError(
-        "INVALID_MODE",
-        "mode must be teros or apiKey (subscription: use the sign-in flow)",
+        "INVALID_TIMEOUT",
+        `timeoutMs must be between 1 and ${MAX_STATE_WAIT_MS}`,
       )
+    const terminalId = data.terminalId
+    await requireSession(ctx, terminalId, "use")
+    const who = await identities.agent(ctx, data.agentId)
+    const held = ptyManager.agentMayWrite?.(terminalId, who) ?? null
+    if (!held) {
+      ptyManager.noteInput?.(terminalId, { kind: "agent", id: agentId(ctx), name: who.name }, who)
+      return {
+        outcome: "granted",
+        driver: ptyManager.driver?.(terminalId) ?? null,
+        ...(await crewNews(ctx, terminalId, data.agentId)),
+      }
     }
-    if (agent === "claude") await dropClaudeDirs(ctx.userId)
-    return credentials.status(ctx.userId, agent, workspaceId)
-  })
-
-  router.register("terminal.agentAuthShare", async (ctx: WsHandlerContext, rawData: unknown) => {
-    const data = (rawData ?? {}) as { agent?: unknown; workspaceId?: unknown; shared?: unknown }
-    const { agent, workspaceId } = await authCaller(ctx, data)
-    if (typeof data.shared !== "boolean")
-      throw new HandlerError("INVALID_SHARED", "shared must be a boolean")
-    await credentials.setShared(ctx.userId, agent, workspaceId, data.shared)
-    return credentials.status(ctx.userId, agent, workspaceId)
-  })
-
-  router.register("terminal.agentAuthSignOut", async (ctx: WsHandlerContext, rawData: unknown) => {
-    const { agent, workspaceId } = await authCaller(ctx, (rawData ?? {}) as Record<string, unknown>)
-    await credentials.clear(ctx.userId, agent)
-    if (agent === "claude") await dropClaudeDirs(ctx.userId)
-    return credentials.status(ctx.userId, agent, workspaceId)
-  })
-
-  // ── Claude account sessions: the person's private CLAUDE_CONFIG_DIR ──────
-
-  /** Config dirs this backend built, by host and person: synced back and removed on sign-out. */
-  const claudeDirs = new Map<string, { host: TermHost; userId: string; dir: string }>()
-
-  /** Keep whichever copy of the credential is newer (Claude Code refreshes it in the dir). */
-  async function syncClaudeDir(userId: string, inDir: unknown, where: string): Promise<void> {
-    const result = await credentials.syncAccountCredential(userId, asClaudeOauth(inDir))
-    if (result === "dir-newer")
-      console.log(
-        `[terminal.agentAuth] ${where}: kept the refreshed Claude credential of ${userId}`,
+    const openerAnswers = (await openerWhoAnswers(terminalId)) !== null
+    const pending = ptyManager.describe(terminalId)?.wheelRequest
+    if (pending && pending.agent.id !== who.id)
+      return {
+        outcome: "busy",
+        askedBy: { id: pending.agent.id, name: pending.agent.name || pending.agent.id },
+        driver: ptyManager.driver?.(terminalId) ?? null,
+      }
+    if (!pending)
+      ptyManager.requestWheel?.(
+        terminalId,
+        who,
+        typeof data.reason === "string" ? data.reason : null,
+        openerAnswers,
       )
-  }
-
-  /**
-   * Before a Claude session of `userId` starts: build their config dir on the
-   * host (or refresh it) and pick up a credential Claude Code refreshed there.
-   */
-  async function prepareClaudeDir(
-    host: TermHost,
-    userId: string,
-    claude: ClaudeAccountSession,
-    cwd: string,
-  ): Promise<void> {
-    const res = await host.runScript(materializeClaudeDirScript(claude.dir, claude.account, cwd))
-    if (res.code !== 0) {
-      console.warn(`[terminal.create] Claude account dir failed: ${redactScreen([res.stderr], 1)}`)
-      return
-    }
-    claudeDirs.set(`${host.container}|${userId}`, { host, userId, dir: claude.dir })
-    let out: { inDir?: unknown; wrote?: boolean } = {}
-    try {
-      out = JSON.parse(res.stdout)
-    } catch {
-      return
-    }
-    if (!out.inDir) return
-    if (out.wrote)
-      console.log(
-        `[terminal.agentAuth] ${host.container}: the stored Claude credential of ${userId} was newer; dir updated`,
-      )
-    else await syncClaudeDir(userId, out.inDir, host.container)
-  }
-
-  /** Sign out / another method / a new sign-in: the person's old dirs go. */
-  async function dropClaudeDirs(userId: string): Promise<void> {
-    for (const [key, entry] of claudeDirs) {
-      if (entry.userId !== userId) continue
-      claudeDirs.delete(key)
-      await entry.host.runScript(removeClaudeDirScript(entry.dir)).catch(() => undefined)
-    }
-  }
-
-  // Claude Code refreshes access tokens (and may rotate the refresh token) in
-  // the dir: bring those back to the store, so a host restart or another
-  // workspace starts from the current one.
-  const claudeDirSync = setInterval(() => {
-    for (const [key, entry] of claudeDirs) {
-      entry.host
-        .runScript(readClaudeDirScript(entry.dir))
-        .then(async (res) => {
-          if (res.code !== 0) return
-          const { inDir } = JSON.parse(res.stdout || "{}") as { inDir?: unknown }
-          if (!inDir) claudeDirs.delete(key)
-          else await syncClaudeDir(entry.userId, inDir, entry.host.container)
-        })
-        .catch(() => claudeDirs.delete(key))
-    }
-  }, CLAUDE_DIR_SYNC_MS)
-  claudeDirSync.unref?.()
-
-  /** Poll a scratch session's screen until `pick` returns something (or time runs out). */
-  async function waitForScreen<T>(
-    host: TermHost,
-    scratch: string,
-    pick: (lines: string[]) => T | null,
-    timeoutMs: number,
-    onLines?: (lines: string[]) => void,
-  ): Promise<{ found: T | null; lines: string[] }> {
-    const deadline = Date.now() + timeoutMs
-    let lines: string[] = []
-    while (Date.now() < deadline) {
-      lines = await host.scratchLines(scratch).catch(() => [] as string[])
-      onLines?.(lines)
-      const found = pick(lines)
-      if (found !== null) return { found, lines }
-      await sleep(400)
-    }
-    return { found: null, lines }
-  }
-
-  /** A sign-in failed: keep the reason pollable for a while, drop the scratch session. */
-  function failLogin(loginId: string, login: PendingLogin, err: unknown): void {
-    const code = err instanceof LoginFailure ? err.code : "LOGIN_FAILED"
-    const message = err instanceof Error ? err.message : String(err)
-    console.warn(`[terminal.agentAuth] sign-in ${loginId} failed: ${code} — ${message}`)
-    login.phase = "failed"
-    login.error = { code, message }
-    endLogin(loginId, login, LOGIN_RESULT_TTL_MS)
-  }
-
-  /** Kill the scratch session (screen and history) and forget the sign-in after `keepMs`. */
-  function endLogin(loginId: string, login: PendingLogin, keepMs: number): void {
-    clearTimeout(login.timer)
-    if (login.host) void login.host.killScratch(login.scratch)
-    login.timer = setTimeout(() => logins.delete(loginId), keepMs)
-    login.timer.unref?.()
-  }
-
-  function ownLogin(ctx: WsHandlerContext, loginId: unknown): [string, PendingLogin] {
-    if (isBridgeCall(ctx))
-      throw new HandlerError("FORBIDDEN", "Coding-agent credentials belong to a person")
-    const login = typeof loginId === "string" ? logins.get(loginId) : undefined
-    if (!login || login.userId !== ctx.userId)
-      throw new HandlerError("LOGIN_NOT_FOUND", "This sign-in expired; start again")
-    return [loginId as string, login]
-  }
-
-  const live = (l: PendingLogin) => l.phase !== "done" && l.phase !== "failed"
-
-  /** Register a new sign-in for `userId`; it replaces any they still have running. */
-  function openLogin(loginId: string, userId: string, workspaceId: string): PendingLogin {
-    for (const [id, other] of logins) {
-      if (other.userId === userId && live(other))
-        failLogin(
-          id,
-          other,
-          new LoginFailure("LOGIN_REPLACED", "A newer sign-in replaced this one"),
-        )
-    }
-    const login: PendingLogin = {
-      userId,
-      workspaceId,
-      host: null,
-      scratch: `auth-${loginId.slice(6)}`,
-      timer: setTimeout(() => {
-        if (live(login))
-          failLogin(
-            loginId,
-            login,
-            new LoginFailure("LOGIN_EXPIRED", "This sign-in expired; start again"),
-          )
-      }, LOGIN_TTL_MS),
-      phase: "starting",
-    }
-    login.timer.unref?.()
-    logins.set(loginId, login)
-    return login
-  }
-
-  /** Install and setup-token get separate budgets: returns the new deadline, or null to keep it. */
-  function advanceStartPhase(login: PendingLogin, kind: SetupScreen["kind"]): number | null {
-    if (kind === "installing" && login.phase === "starting") {
-      login.phase = "installing"
-      return Date.now() + LOGIN_INSTALL_TIMEOUT_MS
-    }
-    if (kind === "installed" && login.phase === "installing") {
-      login.phase = "starting"
-      return Date.now() + LOGIN_URL_TIMEOUT_MS
-    }
-    return null
-  }
-
-  /** Background half of loginStart: host, scratch session, install if needed, authorize URL. */
-  async function runLoginStart(
-    login: PendingLogin,
-    ensureHost: () => Promise<TermHost>,
-  ): Promise<void> {
-    const host = await ensureHost().catch((err) => {
-      throw new LoginFailure(
-        "TERMINAL_HOST_UNAVAILABLE",
-        `The workspace terminal could not start: ${err instanceof Error ? err.message : String(err)}`,
-      )
+    const key = wheelKey(terminalId, who.id)
+    const waiters = wheelWaiters.get(key) ?? new Set<WheelAnswer>()
+    wheelWaiters.set(key, waiters)
+    let answeredBy: AnsweredBy | null = null
+    const outcome = await new Promise<"approved" | "denied" | "pending" | "ended">((resolve) => {
+      const done = (o: "approved" | "denied" | "pending" | "ended") => {
+        clearTimeout(timer)
+        clearInterval(alive)
+        waiters.delete(answer)
+        if (waiters.size === 0) wheelWaiters.delete(key)
+        resolve(o)
+      }
+      const answer: WheelAnswer = (o, by) => {
+        answeredBy = by
+        done(o)
+      }
+      const timer = setTimeout(() => done("pending"), timeoutMs)
+      const alive = setInterval(() => {
+        if (!ptyManager.has(terminalId)) done("ended")
+      }, 1000)
+      waiters.add(answer)
     })
-    // Phase changes under us (cancel, replace, TTL): read it through a function.
-    const cancelled = () => login.phase === "failed"
-    if (cancelled()) return
-    login.host = host
-    await host.startScratch(
-      login.scratch,
-      claudeLoginCommand(loginDir(login.scratch)),
-      { LANG: "C.UTF-8" },
-      SCRATCH_COLS,
-    )
-    let deadline = Date.now() + LOGIN_URL_TIMEOUT_MS
-    let lines: string[] = []
-    while (Date.now() < deadline) {
-      if (cancelled()) {
-        await host.killScratch(login.scratch)
-        return
-      }
-      lines = await host.scratchLines(login.scratch).catch(() => [] as string[])
-      const screen = readSetupScreen(lines, SCRATCH_COLS)
-      if (screen.kind === "failed") throw new LoginFailure(screen.code, screen.message)
-      if (screen.kind === "url") {
-        login.url = screen.url
-        login.phase = "ready"
-        return
-      }
-      deadline = advanceStartPhase(login, screen.kind) ?? deadline
-      await sleep(400)
+    return {
+      outcome,
+      driver: ptyManager.driver?.(terminalId) ?? null,
+      ...(answeredBy ? { answeredBy } : {}),
+      ...(await crewNews(ctx, terminalId, data.agentId)),
     }
-    throw new LoginFailure(
-      "LOGIN_UNAVAILABLE",
-      `Claude Code did not offer a sign-in link in time. Last screen: ${redactScreen(lines) || "(empty)"}`,
-    )
-  }
+  })
 
-  /** Background half of loginFinish: type the code, submit it, keep the account. */
-  async function runLoginFinish(
-    loginId: string,
-    login: PendingLogin,
-    host: TermHost,
-    code: string,
-  ): Promise<void> {
-    // The code and its Enter must not arrive in one burst: Claude Code's input
-    // takes a burst as a paste and swallows the CR. Type, wait until the masked
-    // field shows it, then press Enter on its own.
-    await host.scratchType(login.scratch, code)
-    await waitForScreen(host, login.scratch, (l) => (codeInField(l) ? true : null), 3_000)
-    await sleep(250)
-    await host.scratchType(login.scratch, "\r")
-    const enteredAt = Date.now()
-    let resent = false
-    const { found, lines } = await waitForScreen(
-      host,
-      login.scratch,
-      (rows) => readExchangeScreen(rows),
-      LOGIN_EXCHANGE_TIMEOUT_MS,
-      (rows) => {
-        // Still sitting in the field: that Enter was taken as part of the paste.
-        if (!resent && Date.now() - enteredAt > 3_000 && codeInField(rows)) {
-          resent = true
-          void host.scratchType(login.scratch, "\r")
-        }
-      },
-    )
-    if (found?.kind === "error")
-      throw new LoginFailure("LOGIN_REJECTED", loginErrorMessage(found.error))
-    if (found?.kind !== "done") {
-      throw new LoginFailure(
-        "LOGIN_TIMEOUT",
-        `Claude did not confirm the sign-in within ${LOGIN_EXCHANGE_TIMEOUT_MS / 1000} s. Last screen: ${redactScreen(lines) || "(empty)"}`,
-      )
-    }
-    // Read the account out of the login's dir before the scratch session (and its trap) removes it.
-    const harvest = await host.runScript(harvestLoginScript(loginDir(login.scratch)))
-    const parsed = parseHarvest(harvest.stdout)
-    if (!parsed.ok)
-      throw new LoginFailure("LOGIN_INCOMPLETE", `Claude signed in, but ${parsed.reason}`)
-    // A previous sign-in's dirs must not outlive it.
-    await dropClaudeDirs(login.userId)
-    const label = await credentials.setAccount(login.userId, parsed.account)
-    login.status = await credentials.status(login.userId, "claude", login.workspaceId)
-    login.phase = "done"
-    console.log(
-      `[terminal.agentAuth] sign-in ${loginId} stored the Claude account of ${login.userId} (${label})`,
-    )
-    endLogin(loginId, login, LOGIN_RESULT_TTL_MS)
-  }
+  router.register("terminal.answerWheel", async (ctx: WsHandlerContext, rawData: unknown) => {
+    const data = (rawData ?? {}) as { terminalId?: unknown; approve?: unknown; agentId?: unknown }
+    const who = await wheelCaller(ctx, data.terminalId, "control")
+    if (typeof data.approve !== "boolean")
+      throw new HandlerError("INVALID_APPROVE", "approve must be a boolean")
+    const terminalId = data.terminalId as string
+    const approve = data.approve
+    const answers = typeof data.agentId === "string" && data.agentId ? data.agentId : undefined
+    if (ptyManager.describe(terminalId)?.wheelRequest) await assertMayAnswerWheel(ctx.userId, terminalId)
+    const asked = leaseCall(() => ptyManager.answerWheel?.(terminalId, approve, answers))
+    const by = { id: who.id, name: who.name || who.id }
+    if (asked)
+      for (const answer of wheelWaiters.get(wheelKey(terminalId, asked.id)) ?? [])
+        answer(approve ? "approved" : "denied", by)
+    return { ok: true, driver: ptyManager.driver?.(terminalId) ?? null }
+  })
 
-  /**
-   * Sign in with a Claude subscription without anyone touching the TUI: a
-   * private scratch session runs `claude setup-token`; the window opens the
-   * authorize URL and sends back the code (loginFinish); the resulting
-   * long-lived token is stored encrypted for this user and the scratch session
-   * (screen and history) is destroyed. Start and finish return at once; the
-   * window polls loginState for the phase, the URL and any failure.
-   */
-  router.register(
-    "terminal.agentAuthLoginStart",
-    async (ctx: WsHandlerContext, rawData: unknown) => {
-      const data = (rawData ?? {}) as { agent?: unknown; workspaceId?: unknown; appId?: unknown }
-      const { agent, workspaceId } = await authCaller(ctx, data)
-      if (agent !== "claude")
-        throw new HandlerError("INVALID_AGENT", "Sign-in is available for Claude Code")
-      const appId = typeof data.appId === "string" ? data.appId : ""
-      const app = appId ? await mcaService.getApp(appId) : null
-      if (!app || app.ownerId !== workspaceId)
-        throw new HandlerError("APP_NOT_FOUND", "Bash app not found in this workspace")
-      const termHosts = ptyManager.termHostManager
-      if (!termHosts)
-        throw new HandlerError("TERMINAL_HOST_UNAVAILABLE", "Terminal hosts are not available")
-      const loginId = `login_${randomBytes(9).toString("hex")}`
-      const login = openLogin(loginId, ctx.userId, workspaceId)
-      const ensureHost = async () =>
-        (await termHosts.running(appId)) ??
-        (await termHosts.ensure(appId, workspaceId, () =>
-          ensureContainerRunning(mcaManager, appId, ctx.userId, workspaceId, exec),
-        ))
-      void runLoginStart(login, ensureHost).catch((err) => failLogin(loginId, login, err))
-      return loginView(loginId, login)
-    },
-  )
-
-  router.register(
-    "terminal.agentAuthLoginState",
-    async (ctx: WsHandlerContext, rawData: unknown) => {
-      const [loginId, login] = ownLogin(ctx, ((rawData ?? {}) as { loginId?: unknown }).loginId)
-      return loginView(loginId, login)
-    },
-  )
-
-  router.register(
-    "terminal.agentAuthLoginFinish",
-    async (ctx: WsHandlerContext, rawData: unknown) => {
-      const data = (rawData ?? {}) as { loginId?: unknown; code?: unknown }
-      const [loginId, login] = ownLogin(ctx, data.loginId)
-      if (login.phase !== "ready" || !login.host) {
-        throw new HandlerError(
-          "LOGIN_NOT_READY",
-          login.phase === "failed"
-            ? (login.error?.message ?? "This sign-in failed; start again")
-            : "This sign-in is not waiting for a code",
-        )
-      }
-      const code = typeof data.code === "string" ? data.code.trim() : ""
-      if (!code || code.length > 2000 || hasSpaceOrControl(code)) {
-        throw new HandlerError("INVALID_CODE", "Paste the code exactly as the page shows it")
-      }
-      login.phase = "exchanging"
-      const host = login.host
-      void runLoginFinish(loginId, login, host, code).catch((err) => failLogin(loginId, login, err))
-      return loginView(loginId, login)
-    },
-  )
-
-  router.register(
-    "terminal.agentAuthLoginCancel",
-    async (ctx: WsHandlerContext, rawData: unknown) => {
-      const [loginId, login] = ownLogin(ctx, ((rawData ?? {}) as { loginId?: unknown }).loginId)
-      if (live(login))
-        failLogin(loginId, login, new LoginFailure("LOGIN_CANCELLED", "Sign-in cancelled"))
-      return { ok: true }
-    },
-  )
 }

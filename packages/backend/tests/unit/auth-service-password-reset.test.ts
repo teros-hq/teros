@@ -42,6 +42,9 @@ mock.module("../../src/services/email-service", () => ({
     sendAccessGranted: mock(() => Promise.resolve({ success: true })),
   }),
 }))
+afterAll(() => {
+  configured = false
+})
 
 // API-token revocation goes through the real api-tokens module against this
 // collection stub. (A mock.module of api-tokens would leak into every later
@@ -67,9 +70,12 @@ function makeAuthService(opts: {
   identity?: unknown
   user?: unknown
   sendLimited?: boolean
+  /** Result of findUserByEmail's profile lookup — the OAuth-only case. */
+  ownerByEmail?: unknown
 } = {}) {
   const identity = opts.identity === undefined ? baseIdentity : opts.identity
   const user = opts.user === undefined ? baseUser : opts.user
+  const ownerByEmail = opts.ownerByEmail === undefined ? null : opts.ownerByEmail
 
   const db = {
     collection: (name: string) =>
@@ -79,10 +85,15 @@ function makeAuthService(opts: {
   const stubs = {
     userService: {
       getByUserId: mock(() => Promise.resolve(user)),
+      getByEmail: mock(() => Promise.resolve(ownerByEmail)),
       updateLastLogin: mock(() => Promise.resolve()),
     },
     identityService: {
       getByProvider: mock(() => Promise.resolve(identity)),
+      getAnyByEmail: mock(() => Promise.resolve(null)),
+      provisionUnusablePasswordIdentity: mock(() =>
+        Promise.resolve({ _id: "idn_new", userId: "usr_1", type: "password" }),
+      ),
       changePassword: mock(() => Promise.resolve(true)),
       setPasswordResetToken: mock(() => Promise.resolve()),
       clearPasswordResetToken: mock(() => Promise.resolve()),
@@ -171,6 +182,56 @@ describe("AuthService password reset", () => {
       await flush()
       expect(sendPasswordReset).not.toHaveBeenCalled()
       expect(stubs.identityService.setPasswordResetToken).not.toHaveBeenCalled()
+    })
+
+    it("provisions a password identity for an OAuth-only account and emails the code", async () => {
+      // The reported case: the account exists but signs in through a provider,
+      // so it has no password identity and the reset used to dead-end in the
+      // decoy — the user was told a code was sent and none ever arrived.
+      const { auth, stubs } = makeAuthService({
+        identity: null,
+        ownerByEmail: baseUser,
+      })
+      const result = await auth.requestPasswordReset("dana@example.com")
+      await flush() // the reset email is fire-and-forget
+
+      // The identity is provisioned against the real user, not a decoy
+      expect(stubs.identityService.provisionUnusablePasswordIdentity).toHaveBeenCalledWith(
+        "usr_1",
+        "dana@example.com",
+      )
+      // A real challenge, tied to the real user and the provisioned identity
+      expect(stubs.passwordResetService.issue).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: "usr_1", email: "dana@example.com" }),
+      )
+      expect(stubs.identityService.setPasswordResetToken).toHaveBeenCalledWith(
+        "idn_new",
+        expect.stringMatching(/^[0-9a-f]{64}$/),
+        expect.any(Date),
+      )
+      // The code actually goes out — this is the bug that was reported
+      expect(sendPasswordReset).toHaveBeenCalledWith("dana@example.com", {
+        USER_NAME: "Dana",
+        CODE: "424242",
+      })
+      expect(result.passwordReset?.challengeToken).toBe("chl_1")
+    })
+
+    it("keeps a suspended account in the decoy — a ban is not lifted by self-service", async () => {
+      const { auth, stubs } = makeAuthService({
+        identity: null,
+        ownerByEmail: { ...baseUser, status: "suspended" },
+      })
+      const result = await auth.requestPasswordReset("dana@example.com")
+      await flush()
+
+      expect(stubs.identityService.provisionUnusablePasswordIdentity).not.toHaveBeenCalled()
+      expect(stubs.passwordResetService.issue).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: "unknown" }),
+      )
+      expect(sendPasswordReset).not.toHaveBeenCalled()
+      // Still indistinguishable from an unknown email
+      expect(result.passwordReset?.challengeToken).toBe("chl_1")
     })
 
     it("answers identically when rate-limited, with a non-functional token", async () => {

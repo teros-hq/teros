@@ -1,21 +1,19 @@
-/**
- * A terminal that needs the person, as a notice: the chat's needs-you card
- * (NeedsYouCard — one component for both), with the question read from the
- * session's screen and its workspace named.
- */
-
+import { useAuthStore } from "../../store/authStore"
+import { useNavbarStore } from "../../store/navbarStore"
+import { openerOf } from "../../windows/TerminalWindow/sessionText"
+import { sessionLabel } from "../../windows/TerminalWindow/terminalSessions"
 import { NeedsYouCard } from "../mca/renderers/terminal/NeedsYouCard"
-import type { OpenHow } from "./openTerminalNeed"
+import { controlAnswererOf, WheelRequestCard } from "../mca/renderers/terminal/WheelRequestCard"
+import { openTerminalNeed } from "./openTerminalNeed"
 import { fallbackQuestion, useScreenQuestion } from "./screenQuestion"
 import type { TerminalNeed } from "./terminalNeeds"
 
 interface Props {
   need: TerminalNeed
-  /** Called on "Open floating" / "Go to the terminal" (close the sheet it sits in). */
-  onOpen?: (how: OpenHow) => void
+  onOpen?: () => void
 }
 
-export function TerminalNeedCard({ need, onOpen }: Props) {
+function BlockedNeedCard({ need, onOpen }: Props) {
   const question = useScreenQuestion(need.session) ?? fallbackQuestion(need.session)
   return (
     <NeedsYouCard
@@ -25,5 +23,38 @@ export function TerminalNeedCard({ need, onOpen }: Props) {
       question={question}
       onOpen={onOpen}
     />
+  )
+}
+
+function RequestNeedCard({ need, onOpen }: Props) {
+  const me = useAuthStore((s) => s.user?.userId)
+  const role = useNavbarStore(
+    (s) => s.workspaces.find((w) => w.workspaceId === need.workspaceId)?.role,
+  )
+  const { session, workspaceId } = need
+  const open = (mode: "tab" | "float") => {
+    onOpen?.()
+    void openTerminalNeed(workspaceId, session.terminalId, mode)
+  }
+  return (
+    <WheelRequestCard
+      terminalId={session.terminalId}
+      sessionName={sessionLabel(session)}
+      request={session.wheelRequest ?? null}
+      canAnswer={role !== "read"}
+      answerer={controlAnswererOf(session, me)}
+      opener={session.createdBy ? openerOf(session, me) : null}
+      workspaceName={need.workspaceName}
+      onFloat={() => open("float")}
+      onShow={() => open("tab")}
+    />
+  )
+}
+
+export function TerminalNeedCard({ need, onOpen }: Props) {
+  return need.kind === "request" ? (
+    <RequestNeedCard need={need} onOpen={onOpen} />
+  ) : (
+    <BlockedNeedCard need={need} onOpen={onOpen} />
   )
 }

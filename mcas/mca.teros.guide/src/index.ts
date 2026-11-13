@@ -15,7 +15,7 @@ export function createGuideServer(): McaServer {
   const server = new McaServer({
     id: 'mca.teros.guide',
     name: 'Teros Guide',
-    version: '1.1.0',
+    version: '1.7.0',
   });
 
   // Register from the single source of truth so the server and the

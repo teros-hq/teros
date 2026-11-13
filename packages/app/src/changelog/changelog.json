@@ -1,6 +1,22 @@
 {
   "entries": [
     {
+      "id": "v1.4.8-password-reset-oauth",
+      "date": "2026-11-13",
+      "category": "fix",
+      "title": {
+        "en": "Password reset works for accounts created with a provider",
+        "es": "La recuperación de contraseña funciona en cuentas creadas con un proveedor",
+        "ko": "사용자 제공자로 만든 계정에서도 비밀번호 재설정이 됩니다"
+      },
+      "description": "If you signed up with Google, GitHub or Microsoft, \"Forgot my password\" used to promise a code it never sent. It now sends it, and lets you set a password for the first time.",
+      "content": {
+        "en": "If your account was created with Google, GitHub or Microsoft, you never had a password — so \"Forgot my password\" had nothing to reset. The screen told you a code was on its way and no email ever arrived.\n\n### What changed\n\n- **The code now arrives**: asking for a reset on a provider-only account sends the email, and entering the code sets your first password.\n- **You keep signing in the way you did**: until you finish the reset, your provider button still works exactly as before.\n- **The step after the code works too**: the reset could have failed with \"Could not update password\" even once the code arrived. That is fixed as well.\n\n### For everyone else\n\nNothing changes. Reset for email-and-password accounts works as it always did, and asking for a reset on an address that is not registered still reveals nothing.",
+        "es": "Si tu cuenta se creó con Google, GitHub o Microsoft, nunca tuviste contraseña, así que \"He olvidado mi contraseña\" no tenía nada que resetear. La pantalla te decía que el código iba de camino y el email no llegaba nunca.\n\n### Qué cambia\n\n- **El código ya llega**: pedir un reset en una cuenta que solo entra por proveedor manda el email, y al meter el código fijas tu primera contraseña.\n- **Sigues entrando como hasta ahora**: hasta que termines el reset, el botón de tu proveedor funciona igual que antes.\n- **El paso siguiente también funciona**: el reset podía fallar con \"Could not update password\" incluso con el código en la mano. Eso también está arreglado.\n\n### Para el resto\n\nNada cambia. El reset de las cuentas con email y contraseña funciona como siempre, y pedir un reset con una dirección que no está registrada sigue sin revelar nada.",
+        "ko": "Google, GitHub 또는 Microsoft로 계정을 만들었다면 비밀번호가 없었기 때문에 \"비밀번호를 잊었습니다\"로는 재설정할 것이 없었습니다. 화면은 코드가 간다고 말했지만 메일은 오지 않았습니다.\n\n### 달라진 점\n\n- **이제 코드가 도착합니다**: 제공자 전용 계정에서 재설정을 요청하면 메일이 발송되고, 코드를 입력하면 첫 비밀번호를 설정합니다.\n- **기존방식으로계속 로그인할 수 있습니다**: 재설정을 끝내기 전까지 제공자 버튼은 이전과 같이 작동합니다.\n- **코드 이후의 단계도 작동합니다**: 코드가 도착해도 \"Could not update password\"로 재설정이 실패할 수 있었습니다. 이번에 함께 수정했습니다.\n\n### 다른 사용자에게는\n\n변화가 없습니다. 이메일과 비밀번호 계정의 재설정은 이전과 같이 작동하며, 등록되지 않은 주소로 재설정을 요청해도 아무 것도 드러나지 않습니다."
+      }
+    },
+    {
       "id": "v1.4.6-browser-visible-tabs",
       "date": "2026-11-08",
       "category": "feature",

@@ -15,7 +15,7 @@
     },
     {
       "name": "terminal-create",
-      "description": "Open a terminal session in the workspace's Linux machine (shared with the Bash app: same files, home and tools). The user watches and can type in the same session from their Terminal window (show, default true, brings it up there). With agent=\"claude\" (or \"codex\", \"opencode\") the session starts that coding agent with the user's own sign-in (installing it on first use) and waits until it is ready for a prompt — then use terminal-prompt. Without agent you get a bash shell — use terminal-run for commands. Each call opens a NEW session: check terminal-list first and reuse yours. Sessions are kept until terminal-destroy: idle ones sleep and wake (same directory, Claude Code on its conversation) the next time a tool uses them.",
+      "description": "Open a terminal session in the workspace's Linux machine (the same workspace files and tools as the Bash app). It is a shared terminal: it runs in the workspace's machine with the workspace's home, never in a person's personal terminal. It is yours: its \"Agent\" switch is on, and the workspace's members can see it, each session in its own Terminal window (show, default true, opens or focuses that window for the user); to type in it they switch it to \"Agent off\". With agent=\"claude\" (or \"codex\", \"opencode\") the session starts that coding agent (installing it on first use) and waits until it is ready for a prompt — then use terminal-prompt. Claude Code runs on the API key of the workspace owner's Anthropic provider in Teros; with none it shows its login screen: stop and tell the user (Teros never asks for, stores or shares a Claude sign-in). Without agent you get a bash shell — use terminal-run for commands. Each call opens a NEW session: check terminal-list first and reuse yours. Sessions are kept until terminal-destroy: idle ones sleep and wake (same directory while it still exists, Claude Code on its conversation) the next time a tool uses them.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -34,11 +34,11 @@
           },
           "title": {
             "type": "string",
-            "description": "Short label the user sees in their session list — set one (e.g. \"deploy logs\", \"fix login bug\")"
+            "description": "Short label the user sees on the window and in the \"Sessions\" list — set one (e.g. \"deploy logs\", \"fix login bug\")"
           },
           "show": {
             "type": "boolean",
-            "description": "Bring the session up in the user's Terminal window so they can watch (default: true)"
+            "description": "Open or focus this session's Terminal window in the user's app so they can watch (default: true)"
           },
           "cols": {
             "type": "number",
@@ -58,7 +58,7 @@
     },
     {
       "name": "terminal-prompt",
-      "description": "Send a prompt to the coding agent running in a session (Claude Code, Codex, opencode) and wait until its turn ends: it finished (done), asks something / wants a permission (blocked), needs a sign-in, or left. Returns what happened and the screen with its answer. Multi-line prompts are pasted as one message. If it is still working when the wait runs out, call terminal-wait until=\"turn\" — never send the prompt again. Also use it for slash commands (\"/clear\", \"/exit\") and to answer a free-text question.",
+      "description": "Send a prompt to the coding agent running in a session (Claude Code, Codex, opencode) and wait until its turn ends: it finished (done), asks something / wants a permission (blocked), shows its login screen, or left. Returns what happened and the screen with its answer. Multi-line prompts are pasted as one message. If it is still working when the wait runs out, call terminal-wait until=\"turn\" — never send the prompt again. Also use it for slash commands (\"/clear\", \"/exit\") and to answer a free-text question.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -89,7 +89,7 @@
     },
     {
       "name": "terminal-wait",
-      "description": "Wait for something to happen in a session instead of sleeping or polling, then get the screen. until: \"turn\" — the coding agent finished its turn, asks something, needs a sign-in or left (after terminal-prompt / terminal-send-key); \"ready\" — a coding agent started and waits for a prompt; \"exit\" — the running shell command finished; \"quiet\" — no output for quietMs (any program settled); \"text\" — the screen shows `text` (case-insensitive) or matches the regex `pattern`. Only what happens after your last write/prompt/key counts. A timeout is not an error: it says what is going on, and you can call it again. If a person takes the wheel in their Terminal window, the wait stops early (reason \"driver\"): don't type until they give it back — the next wait/read then carries their note (handedBack).",
+      "description": "Wait for something to happen in a session instead of sleeping or polling, then get the screen. until: \"turn\" — the coding agent finished its turn, asks something, shows its login screen or left (after terminal-prompt / terminal-send-key); \"ready\" — a coding agent started and waits for a prompt; \"exit\" — the running shell command finished; \"quiet\" — no output for quietMs (any program settled); \"text\" — the screen shows `text` (case-insensitive) or matches the regex `pattern`. Only what happens after your last write/prompt/key counts. A timeout is not an error: it says what is going on, and you can call it again. If a person switches the session to \"Agent off\" or starts typing in it, the wait stops early (reason \"driver\"): don't type until control is yours again — a note they leave when switching \"Agent\" on comes with your next wait/read (handedBack).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -138,7 +138,7 @@
     },
     {
       "name": "terminal-run",
-      "description": "Run a command line in a shell session, wait for it to finish (up to timeoutMs) and return its output. The user sees it run in their Terminal window. For long or interactive programs it returns what they printed so far and that they are still running: then use terminal-wait until=\"exit\", terminal-screen, terminal-send-key (ctrl-c to stop). For a coding agent use terminal-prompt instead.",
+      "description": "Run a command line in a shell session, wait for it to finish (up to timeoutMs) and return its output. The user sees it run in that session's Terminal window. For long or interactive programs it returns what they printed so far and that they are still running: then use terminal-wait until=\"exit\", terminal-screen, terminal-send-key (ctrl-c to stop). For a coding agent use terminal-prompt instead.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -321,20 +321,68 @@
     },
     {
       "name": "terminal-list",
-      "description": "List the terminal sessions of this workspace (yours and the user's): id, title, what runs in it, the coding agent's state (working / blocked = waiting for someone / done), who is watching, and whether it is asleep (idle sessions freeze, then sleep; any tool that uses one wakes it). Reuse a session instead of opening a new one.",
+      "description": "List the terminal sessions you can reach in this workspace: the ones agents opened (the workspace's members see those too) and the ones a person opened and switched to \"Agent\". A session a person opens, their personal terminal or a shared one, is not listed while it reads \"Agent off\": to work in it, ask them to switch it to \"Agent\" in that session's Terminal window. Each line has the id, title, what runs in it, the coding agent's state (working / blocked = waiting for someone / done), which space it is in (a person's personal terminal, or a shared one in the workspace's machine), who opened it, who is typing, who is watching, and whether it is asleep (idle sessions freeze, then sleep; any tool that uses one wakes it). Reuse a session instead of opening a new one.",
       "inputSchema": {
         "type": "object",
         "properties": {}
       },
       "annotations": {
         "readOnlyHint": true,
-        "summary": "List the workspace's terminal sessions",
+        "summary": "List the terminal sessions you can reach",
+        "group": "Terminal"
+      }
+    },
+    {
+      "name": "terminal-request-control",
+      "description": "Ask for control of a session you can reach while a person is typing in it (your writes there are refused with \"<name> is typing in this session\" until they have typed nothing for 60 s). The person gets \"Allow\" / \"Keep off\" in this chat and in that session's Terminal window; \"Allow\" switches it to \"Agent\" for you at once. Waits up to 90 s: granted (nobody was typing), approved (you may type), denied (don't type; say in chat what you need or open your own session), pending (call again to keep waiting) or busy (another agent asked first; nothing was sent). It cannot reach a person's own session that reads \"Agent off\": only they switch that on.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "terminalId": {
+            "type": "string",
+            "description": "Session id"
+          },
+          "reason": {
+            "type": "string",
+            "description": "What you want to do there, in a few words (e.g. \"run the tests\")"
+          }
+        },
+        "required": [
+          "terminalId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "summary": "Ask the person for control of a session",
+        "group": "Terminal"
+      }
+    },
+    {
+      "name": "terminal-release-control",
+      "description": "Let go of a session you are typing in, when the person asks you to stop, let them type or give them control. Then tell them how: they switch it to \"Agent off\" in that session's Terminal window and type (while an agent types, a person's keys are not sent). Don't type there again until they switch it back to \"Agent\" (a note they leave comes with your next call) or you ask with terminal-request-control. Answers released, or who is typing when it wasn't you (nothing changes).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "terminalId": {
+            "type": "string",
+            "description": "Session id"
+          }
+        },
+        "required": [
+          "terminalId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "summary": "Let go of control of a session",
         "group": "Terminal"
       }
     },
     {
       "name": "terminal-show",
-      "description": "Show a session in the user's Terminal window (opens it as a tab there, or focuses it), so they can watch what happens in it. terminal-create already does this unless show=false.",
+      "description": "Open or focus a session's own Terminal window in the user's app (one window shows one session), so they can watch what happens in it. terminal-create already does this unless show=false.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -349,13 +397,13 @@
       },
       "annotations": {
         "readOnlyHint": true,
-        "summary": "Bring a session up in the user's Terminal window",
+        "summary": "Open a session's Terminal window for the user",
         "group": "Terminal"
       }
     },
     {
       "name": "terminal-destroy",
-      "description": "Close a session and kill whatever runs in it. Only close sessions you opened, or that the user asked you to close.",
+      "description": "End a session and kill whatever runs in it (what \"End session\" in the window's ⋯ menu does; closing a window never ends its session). Only end sessions you opened, or that the user asked you to end.",
       "inputSchema": {
         "type": "object",
         "properties": {

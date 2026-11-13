@@ -27,6 +27,7 @@ import { auditLogger } from '../lib/audit-logger'
 import { initGoogleAuth } from '../auth/google-auth'
 import { initGitHubAuth } from '../auth/github-auth'
 import { initMicrosoftAuth } from '../auth/microsoft-auth'
+import { enableSocialSignIn } from '../auth/sign-in-methods'
 import type { McaOAuth } from '../auth/mca-oauth'
 import type { AuthManager } from '../auth/auth-manager'
 import type { SecretsManager } from '../secrets/secrets-manager'
@@ -166,6 +167,7 @@ export async function bootstrapServer({
         oauthSecrets.google.redirectUri ||
         `http://localhost:${config.server.port}/auth/google/callback`,
     })
+    enableSocialSignIn('google')
     console.log('Google OAuth initialized')
   } else {
     console.log('Google OAuth: not configured')
@@ -181,6 +183,7 @@ export async function bootstrapServer({
         `http://localhost:${config.server.port}/auth/microsoft/callback`,
       tenant: oauthSecrets.microsoft.tenantId || 'common',
     })
+    enableSocialSignIn('microsoft')
     console.log('Microsoft OAuth initialized')
   } else {
     console.log('Microsoft OAuth: not configured')
@@ -195,6 +198,7 @@ export async function bootstrapServer({
         oauthSecrets.github.redirectUri ||
         `http://localhost:${config.server.port}/auth/github/callback`,
     })
+    enableSocialSignIn('github')
     console.log('GitHub OAuth initialized')
   } else {
     console.log('GitHub OAuth: not configured')

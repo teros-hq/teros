@@ -27,7 +27,8 @@
  *   POST /api/agent-apps/volume/mkdir     → file_volume_mkdir
  *   POST /api/agent-apps/lifecycle/install   → lifecycle_install
  *   POST /api/agent-apps/lifecycle/uninstall → lifecycle_uninstall
- *   GET  /objects/:objectId  → serve object file (public, no auth)
+ *   GET  /objects/:objectId  → serve object file (public, no auth); with
+ *        ?w=&h=&fit=&format=&q= a transformed image (OBJ-REQ-3)
  */
 
 import type { IncomingMessage, ServerResponse } from 'http';
@@ -43,6 +44,11 @@ import { authenticateCallback } from './mca-callback-routes';
 import type { McaContainerManager } from '../services/mca-container-manager';
 import { applyInlineSafetyHeaders, buildFrameAncestorsDirective } from '../lib/content-safety';
 import { config as globalConfig } from '../config';
+import {
+  isTransformableContentType,
+  parseObjectTransform,
+  transformObject,
+} from '../services/object-transforms';
 
 const log = createLogger('AgentAppsStorageRoutes');
 
@@ -296,8 +302,32 @@ export function createAgentAppsStorageRoutes(config: AgentAppsStorageRoutesConfi
       const filePath = objDoc.path as string;
       const contentType = (objDoc.contentType as string) ?? 'application/octet-stream';
 
+      // Image transforms (OBJ-REQ-3): strict parameters, raster images only.
+      const transform = parseObjectTransform(
+        new URLSearchParams(queryIdx >= 0 ? url.slice(queryIdx + 1) : ''),
+      );
+      const transformError =
+        transform.kind === 'invalid'
+          ? transform.error
+          : transform.kind === 'transform' && !isTransformableContentType(contentType)
+            ? 'Transform parameters apply only to raster images'
+            : null;
+      if (transformError) {
+        res.writeHead(400, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+        });
+        res.end(JSON.stringify({ success: false, error: transformError }));
+        return;
+      }
+
       try {
-        const data = await fs.readFile(filePath);
+        const served =
+          transform.kind === 'transform'
+            ? await transformObject(filePath, contentType, transform.options)
+            : { data: await fs.readFile(filePath), contentType };
+        const data = served.data;
         // F1 containment (review tn_KjOnSKdgygs1xbQu): a browser-executable
         // object (HTML/SVG/JS/XML) served inline here used to run in the
         // backend's own origin — Stored XSS with full reach of the session
@@ -308,17 +338,22 @@ export function createAgentAppsStorageRoutes(config: AgentAppsStorageRoutesConfi
         // nosniff only. See applyInlineSafetyHeaders.
         const headers = applyInlineSafetyHeaders(
           {
-            'Content-Type': contentType,
+            'Content-Type': served.contentType,
             'Content-Length': data.length.toString(),
             // Objects are immutable — cache aggressively
             'Cache-Control': 'public, max-age=31536000, immutable',
           },
-          contentType,
+          served.contentType,
           frameAncestors,
         );
         res.writeHead(200, headers);
         res.end(headOnly ? undefined : data);
-      } catch {
+      } catch (error) {
+        // A transform that fails on an existing file is a server error, not a
+        // missing object.
+        if (transform.kind === 'transform' && (error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
         res.writeHead(404, {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-store',

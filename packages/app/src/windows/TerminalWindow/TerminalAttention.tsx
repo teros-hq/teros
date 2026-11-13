@@ -1,104 +1,212 @@
-/**
- * TerminalAttention — "a coding agent needs you" from anywhere in the app.
- *
- * Mounted once in the workspace layout. Watches the active workspace's
- * terminal sessions; when an agent in one of them becomes blocked (permission
- * prompt, question) or finishes its turn, it shows a toast with an Open action
- * — unless that session is already on screen in the focused window — and keeps
- * the Terminal windows' badge at the number of sessions waiting for you.
- */
-
+import type { MemberRole } from "@teros/shared"
 import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { useToast } from "../../components/Toast"
+import { type ToastAction, useToast } from "../../components/Toast"
+import { useAuthStore } from "../../store/authStore"
 import { useNavbarStore } from "../../store/navbarStore"
-import type { LayoutNode } from "../../store/tilingStore"
-import { selectActiveContainerId, selectLayout, useTilingStore } from "../../store/tilingStore"
+import { floatsSupported } from "../../store/tilingFloats"
+import { isWindowOnScreen, useTilingStore } from "../../store/tilingStore"
+import { setWindowStatus } from "../../store/windowTabMetaStore"
 import { useWorkspaceStore } from "../../store/workspaceStore"
-import { sessionLabel, showTerminalSession, useTerminalSessions } from "./terminalSessions"
+import {
+  isAskedToUse,
+  isBlockedOn,
+  markFinished,
+  mayUse,
+  sessionStatus,
+  useSessionMarks,
+} from "./sessionStatus"
+import { agentDisplayName } from "./sessionText"
+import {
+  floatTerminalSession,
+  onSessionRevealed,
+  sessionLabel,
+  showTerminalSession,
+  type TerminalSession,
+  useTerminalSessions,
+} from "./terminalSessions"
 
-function containerOf(
-  node: LayoutNode | null,
-  windowId: string,
-): { id: string; activeWindowId: string | null } | null {
-  if (!node) return null
-  if (node.type === "container") return node.windowIds.includes(windowId) ? node : null
-  return containerOf(node.first, windowId) ?? containerOf(node.second, windowId)
+function looking(): boolean {
+  return typeof document === "undefined" || (!document.hidden && document.hasFocus?.() !== false)
 }
 
-/** Is this session on screen in the window the user is looking at? */
 function onScreen(terminalId: string): boolean {
-  if (typeof document !== "undefined" && (document.hidden || !document.hasFocus?.())) return false
+  if (!looking()) return false
   const state = useTilingStore.getState()
-  const layout = selectLayout(state)
-  const activeContainer = selectActiveContainerId(state)
-  for (const win of Object.values(state.windows)) {
-    if (win.type !== "terminal") continue
-    if (win.props?.active !== terminalId && win.props?.split !== terminalId) continue
-    const container = containerOf(layout, win.id)
-    if (container?.activeWindowId === win.id && container.id === activeContainer) return true
-  }
-  return false
+  return Object.values(state.windows).some(
+    (win) =>
+      win.type === "terminal" &&
+      win.props?.terminalId === terminalId &&
+      isWindowOnScreen(state, win.id),
+  )
+}
+
+function stateKey(s: TerminalSession): string {
+  return s.agentState ? `${s.agentState.state}@${s.agentState.at}` : ""
+}
+
+function requestKey(s: TerminalSession): string {
+  return s.wheelRequest ? `${s.wheelRequest.agent.id}@${s.wheelRequest.at}` : ""
+}
+
+type Call = "blocked" | "done" | "request"
+
+function callOf(
+  s: TerminalSession,
+  prev: { state: string; request: string } | undefined,
+  me: string | undefined,
+  role: MemberRole,
+): Call | null {
+  if (!prev) return null
+  const request = requestKey(s)
+  if (request && request !== prev.request && isAskedToUse(s, me, role)) return "request"
+  if (stateKey(s) === prev.state || !s.agentState) return null
+  if (s.agentState.state === "blocked") return isBlockedOn(s, me, role) ? "blocked" : null
+  if (s.agentState.state !== "done" || !mayUse(s, me, role)) return null
+  const before = prev.state.split("@")[0]
+  return before === "working" || before === "blocked" ? "done" : null
 }
 
 export function TerminalAttention() {
   const { t } = useTranslation()
   const toast = useToast()
   const workspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const me = useAuthStore((s) => s.user?.userId)
   const role = useNavbarStore((s) => s.workspaces.find((w) => w.workspaceId === workspaceId)?.role)
   const { sessions, loaded } = useTerminalSessions(
     workspaceId && role !== "read" ? workspaceId : null,
   )
-  const seen = useRef(new Map<string, string>())
-  const lastCount = useRef(-1)
+  const windows = useTilingStore((s) => s.windows)
+  const floats = useTilingStore((s) => s.floats)
+  const desktops = useTilingStore((s) => s.desktops)
+  const activeDesktop = useTilingStore((s) => s.activeDesktopIndex)
+  const finished = useSessionMarks((s) => s.finished)
+  const seen = useRef(new Map<string, { state: string; request: string }>())
+  const published = useRef(new Set<string>())
 
   useEffect(() => {
     if (!loaded) return
+    const floats = floatsSupported()
+    const float: (id: string) => ToastAction = (id) => ({
+      label: t("terminal.float", { defaultValue: "Float" }),
+      onPress: () => {
+        toast.hide()
+        floatTerminalSession(workspaceId, id)
+      },
+    })
+    const open: (id: string) => ToastAction = (id) => ({
+      label: t("terminal.open", { defaultValue: "Open" }),
+      onPress: () => {
+        toast.hide()
+        showTerminalSession(workspaceId, id)
+      },
+    })
     for (const s of sessions) {
-      const key = s.agentState ? `${s.agentState.state}@${s.agentState.at}` : ""
-      const prev = seen.current.get(s.terminalId)
-      seen.current.set(s.terminalId, key)
-      // First sight (page load): badge it, but don't toast old news.
-      if (prev === undefined || prev === key || !s.agentState) continue
-      const state = s.agentState.state
-      if (state !== "blocked" && state !== "done") continue
-      // "Finished" only after a turn actually ran (Claude's idle reminder also reports done).
-      const before = prev.split("@")[0]
-      if (state === "done" && before !== "working" && before !== "blocked") continue
-      if (onScreen(s.terminalId)) continue
-      const open = () => showTerminalSession(workspaceId, s.terminalId)
+      const id = s.terminalId
+      const call = callOf(s, seen.current.get(id), me, role ?? "write")
+      seen.current.set(id, { state: stateKey(s), request: requestKey(s) })
+      if (s.agentState?.state !== "done") markFinished(id, false)
+      if (!call || onScreen(id)) continue
+      const name = sessionLabel(s)
+      if (call === "done") {
+        markFinished(id, true)
+        toast.show(t("terminal.attentionDone", { defaultValue: "{{name}} finished", name }), {
+          message: s.agentState?.message,
+          type: "success",
+          duration: 6_000,
+          action: open(id),
+          secondary: floats ? float(id) : undefined,
+        })
+        continue
+      }
       const title =
-        state === "blocked"
-          ? t("terminal.attentionBlocked", {
-              defaultValue: "{{name}} needs you",
-              name: sessionLabel(s),
+        call === "request"
+          ? t("terminal.attentionRequest", {
+              defaultValue: "{{agent}} asks to use {{name}}",
+              agent: agentDisplayName(s.wheelRequest?.agent),
+              name,
             })
-          : t("terminal.attentionDone", {
-              defaultValue: "{{name}} finished",
-              name: sessionLabel(s),
-            })
+          : t("terminal.attentionBlocked", { defaultValue: "{{name}} needs you", name })
       toast.show(title, {
-        message: s.agentState.message,
-        type: state === "blocked" ? "warning" : "success",
-        duration: state === "blocked" ? 15_000 : 6_000,
-        action: { label: t("terminal.open", { defaultValue: "Open" }), onPress: open },
+        message: call === "request" ? (s.wheelRequest?.reason ?? undefined) : s.agentState?.message,
+        type: "warning",
+        duration: 15_000,
+        action: floats ? float(id) : open(id),
+        secondary: floats ? open(id) : undefined,
       })
     }
     for (const id of [...seen.current.keys()]) {
-      if (!sessions.some((s) => s.terminalId === id)) seen.current.delete(id)
+      if (sessions.some((s) => s.terminalId === id)) continue
+      seen.current.delete(id)
+      markFinished(id, false)
     }
+  }, [sessions, loaded, workspaceId, me, role, t, toast])
 
-    // Badge: sessions blocked on the user, on every Terminal window.
-    const waiting = sessions.filter((s) => s.agentState?.state === "blocked").length
-    if (waiting === lastCount.current) return
-    lastCount.current = waiting
-    const tiling = useTilingStore.getState()
-    for (const win of Object.values(tiling.windows)) {
-      if (win.type !== "terminal") continue
-      if (waiting > 0) tiling.setWindowNotification(win.id, true, waiting)
-      else tiling.clearWindowNotification(win.id)
+  useEffect(() => {
+    const clear = () => {
+      for (const id of Object.keys(useSessionMarks.getState().finished))
+        if (onScreen(id)) markFinished(id, false)
     }
-  }, [sessions, loaded, workspaceId, t, toast])
+    clear()
+    if (typeof window === "undefined") return
+    window.addEventListener("focus", clear)
+    return () => window.removeEventListener("focus", clear)
+  }, [windows, floats, desktops, activeDesktop, finished])
+
+  useEffect(() => {
+    const byId = new Map(sessions.map((s) => [s.terminalId, s]))
+    const next = new Set<string>()
+    for (const win of Object.values(windows)) {
+      if (win.type !== "terminal") continue
+      const session = loaded ? byId.get(win.props?.terminalId) : undefined
+      setWindowStatus(win.id, session ? sessionStatus(session, me, role ?? "write", finished) : null)
+      next.add(win.id)
+    }
+    for (const id of published.current) if (!next.has(id)) setWindowStatus(id, null)
+    published.current = next
+  }, [sessions, loaded, windows, finished, me, role])
+
+  useEffect(
+    () => () => {
+      for (const id of published.current) setWindowStatus(id, null)
+    },
+    [],
+  )
+
+  useEffect(
+    () =>
+      onSessionRevealed((revealedIn, session) => {
+        if (revealedIn !== workspaceId || onScreen(session.terminalId)) return
+        const floatIt: ToastAction = {
+          label: t("terminal.float", { defaultValue: "Float" }),
+          onPress: () => {
+            toast.hide()
+            floatTerminalSession(revealedIn, session.terminalId)
+          },
+        }
+        const openIt: ToastAction = {
+          label: t("terminal.open", { defaultValue: "Open" }),
+          onPress: () => {
+            toast.hide()
+            showTerminalSession(revealedIn, session.terminalId)
+          },
+        }
+        toast.show(
+          t("terminal.window.agentShows", {
+            defaultValue: "{{agent}} is working in {{name}}",
+            agent: agentDisplayName(session.driver),
+            name: sessionLabel(session),
+          }),
+          {
+            type: "info",
+            duration: 10_000,
+            action: floatsSupported() ? floatIt : openIt,
+            secondary: floatsSupported() ? openIt : undefined,
+          },
+        )
+      }),
+    [workspaceId, t, toast],
+  )
 
   return null
 }

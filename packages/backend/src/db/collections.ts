@@ -59,8 +59,6 @@ export const COLLECTIONS = {
   channelMessages: 'channel_messages',
   channelSubscriptions: 'channel_subscriptions',
   channels: 'channels',
-  /** Coding-agent credentials per user (encrypted; services/terminal/agent-credentials.ts). */
-  codingAgentCredentials: 'coding_agent_credentials',
   /** Costs API (/api/costs/*) access audit — one row per request (task_6de67c22b163387a). */
   costsAccessLogs: 'costs_access_logs',
   compactions: 'compactions',

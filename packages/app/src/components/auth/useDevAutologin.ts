@@ -7,7 +7,11 @@
  */
 import { useRouter } from "expo-router"
 import { useEffect, useRef, useState } from "react"
-import { isLocalBackendUrl, probeDevAutologin } from "../../lib/dev-autologin"
+import {
+  isAutologinSuppressed,
+  isLocalBackendUrl,
+  probeDevAutologin,
+} from "../../lib/dev-autologin"
 import { getTerosClient } from "../../services/terosClientSingleton"
 import { normalizeAuthUser, useAuthStore } from "../../store/authStore"
 import { wsUrl as resolveWsUrl } from "../../config/runtime"
@@ -65,7 +69,8 @@ export function useDevAutologin(enabled: boolean): DevAutologinStatus {
   const wsUrl = resolveWsUrl()
   // Decided synchronously: against a non-local backend (prod) the hook is inert
   // from the first render — no probe, no blank frame.
-  const local = isLocalBackendUrl(wsUrl) && !optedOut()
+  // After a sign-out the form stays until the page is loaded anew (ALOGIN-REQ-7).
+  const local = isLocalBackendUrl(wsUrl) && !optedOut() && !isAutologinSuppressed()
   const [status, setStatus] = useState<DevAutologinStatus>(local ? "probing" : "off")
   // Latest router/login without re-running the effect (it must run once per mount).
   const latest = useRef({ router, login })

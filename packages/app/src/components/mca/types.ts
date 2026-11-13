@@ -82,7 +82,7 @@ export const PermissionContext = createContext<PermissionContextValue | null>(nu
  * Who made the tool call (the chat message's agent), for renderers that name
  * it ("Atlas hands you the wheel"). Provided by MessageBubble.
  */
-export const ToolCallAuthorContext = createContext<{ name?: string } | null>(null);
+export const ToolCallAuthorContext = createContext<{ name?: string; agentId?: string; at?: number } | null>(null);
 
 /**
  * Hook to access permission callbacks

@@ -12,6 +12,7 @@ import { useRouter } from "expo-router"
 import { useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { View } from "react-native"
+import { suppressAutologinAfterSignOut } from "../src/lib/dev-autologin"
 import { destroySession } from "../src/store/session/SessionManager"
 import { useColors } from "../src/components/mca/primitives/useColors"
 import { AppSpinner } from "../src/components/ui/AppSpinner"
@@ -23,6 +24,7 @@ export default function LogoutPage() {
   const c = useColors()
 
   useEffect(() => {
+    suppressAutologinAfterSignOut()
     destroySession().then(() => {
       router.replace("/(auth)/login")
     })

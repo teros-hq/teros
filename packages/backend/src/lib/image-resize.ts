@@ -118,29 +118,13 @@ export function isResizableImage(filePath: string): boolean {
 }
 
 /**
- * Resize an image with Sharp
+ * Apply resize + format conversion to an image held in memory. No cache, no
+ * file access: the caller decides where the result lives.
  */
-export async function resizeImage(
-  filePath: string,
+export async function transformImageBuffer(
+  inputBuffer: Buffer,
   options: ResizeOptions,
-): Promise<ResizeResult> {
-  const cacheKey = getCacheKey(filePath, options);
-
-  // Check cache first
-  const cached = await getCached(cacheKey);
-  if (cached) {
-    const format = options.format || extname(filePath).slice(1) as OutputFormat;
-    return {
-      data: cached,
-      contentType: `image/${format === 'jpg' ? 'jpeg' : format}`,
-      cached: true,
-    };
-  }
-
-  // Read original
-  const inputBuffer = await fs.readFile(filePath);
-
-  // Build Sharp pipeline
+): Promise<Buffer> {
   let pipeline = sharp(inputBuffer);
 
   // Apply resize if dimensions specified
@@ -173,8 +157,33 @@ export async function resizeImage(
     }
   }
 
-  // Execute
-  const data = await pipeline.toBuffer();
+  return pipeline.toBuffer();
+}
+
+/**
+ * Resize an image with Sharp
+ */
+export async function resizeImage(
+  filePath: string,
+  options: ResizeOptions,
+): Promise<ResizeResult> {
+  const cacheKey = getCacheKey(filePath, options);
+
+  // Check cache first
+  const cached = await getCached(cacheKey);
+  if (cached) {
+    const format = options.format || extname(filePath).slice(1) as OutputFormat;
+    return {
+      data: cached,
+      contentType: `image/${format === 'jpg' ? 'jpeg' : format}`,
+      cached: true,
+    };
+  }
+
+  // Read original
+  const inputBuffer = await fs.readFile(filePath);
+
+  const data = await transformImageBuffer(inputBuffer, options);
 
   // Determine content type
   const outputFormat = options.format || extname(filePath).slice(1) as OutputFormat;

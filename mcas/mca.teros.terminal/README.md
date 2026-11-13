@@ -1,30 +1,34 @@
 # mca.teros.terminal
 
 Terminal sessions a Teros agent drives while the user watches. The typical
-scene: the user chats with their agent and keeps the **Terminal window** open
-beside the chat; the agent opens Claude Code there, with the user's own
-sign-in, gives it a task and reports back, and the user sees every keystroke
-(and can type into the same session at any time — the window shows who is
-typing). (Host shells were removed with `mca.teros.admin.bash` on 2026-10-19 —
-terminal sessions run in the workspace terminal host; see the terminal domain
-header.)
+scene: the user chats with their agent; the agent opens Claude Code in a
+session, gives it a task and reports back, and the user sees every keystroke
+in that session's **Terminal window** beside the chat. One window shows one
+session (spec TW, `docs/specs/ui/20261110_terminal-windows.md`): people open each session in
+its own Teros window (a tab or a split), from the launcher or from the
+window's "Sessions" list. (Host shells were removed with
+`mca.teros.admin.bash` on 2026-10-19 — terminal sessions run in terminal
+hosts; see the terminal domain header.)
 
-Sessions live in the workspace's **terminal host**: a `teros-term-*` container
-(a clone of the Bash app's container: same image, files, home, networks and
-limits) running a tmux server; each session is a tmux window. They survive
-backend restarts and browser tabs. See
-`packages/backend/src/services/terminal/term-host.ts`.
+Sessions live in **terminal hosts**: `teros-term-*` containers cloned from the
+Bash app's container (same image, workspace files, networks and limits), each
+running a tmux server; a session is a tmux window. The sessions agents open
+run in the workspace's shared host, and so do the shared terminals a person
+opens; a person's personal terminals run in that person's own host, with a
+private home. They survive backend restarts and
+browser tabs. See `packages/backend/src/services/terminal/term-host.ts`.
 
 ## Sessions sleep, they don't expire
 
-A session ends only when someone closes it (`terminal-destroy`, the window's
-×) or its shell exits. Idle sessions sleep instead (`pty-manager.ts`):
+A session ends only when someone ends it (`terminal-destroy`, "End session" in
+the window's ⋯ menu) or its shell exits; closing a window does not end it.
+Idle sessions sleep instead (`pty-manager.ts`):
 
 | State | When | What it costs | Coming back |
 |---|---|---|---|
 | `awake` | in use | the machine runs | — |
 | `frozen` | every session of the workspace's machine idle 15 min (no input, no output, no viewer, no wait) — `TERMINAL_FREEZE_AFTER_MS` | `docker pause`: no CPU, memory kept | unpause, < 1 s, nothing lost |
-| `sleeping` | frozen for 2 h — `TERMINAL_HIBERNATE_AFTER_MS` | each session saved (last 5k lines, cwd, title, what ran, Claude Code's session id) in `terminal_sleeping_sessions`; the machine is removed | a new machine, same `terminalId` and cwd, the old output printed dimmed above a `— resumed after sleep —` line, Claude Code resumed with `claude --resume <id>` (`--continue` when no id), Codex/opencode started again; anything else that was running (a dev server) is reported as not restarted |
+| `sleeping` | frozen for 2 h — `TERMINAL_HIBERNATE_AFTER_MS` | each session saved (last 5k lines, cwd, title, what ran, Claude Code's session id) in `terminal_sleeping_sessions`; the machine is removed | a new machine, same `terminalId`, the same cwd while it still exists (else `/workspace`; a runner's session always comes back in `/workspace`), the old output printed dimmed above a `— resumed after sleep —` line, Claude Code resumed with `claude --resume <id>` (when the transcript is missing: `--continue` in a person's session, a fresh `claude` in an agent's), Codex/opencode started again; anything else that was running (a dev server) is reported as not restarted |
 
 A coding agent mid-turn prints (its spinner), so it never counts as idle.
 Every tool that uses a session wakes it first and starts its answer with what
@@ -70,35 +74,69 @@ terminal-prompt  text="/exit"         → "Claude Code is not running any more (
 - `terminal-run` waits for the shell prompt to be back on the last screen row
   (a pure-bash loop keeps bash in the foreground and is not "finished").
 - Claude Code's first-run screens (theme, security notes) are skipped for every
-  session; the folder trust check only for sessions a Teros agent opens. The
-  credentials are the user's own (Sign in with Claude / API key / Use Teros),
-  injected only if they shared them with the workspace's agents; without them
-  the tools answer "needs to sign in — ask the user", never ask for a secret.
-- `show` (default true) asks the user's Terminal window to bring the session up
-  (`terminal_sessions` event with reason `reveal`); `terminal-show` does it for
-  an existing session. Every agent write is announced (reason `input`,
-  `lastInput`), so the window can follow the session the agent is driving.
+  session; the folder trust check only for sessions a Teros agent opens.
+- **No Claude sign-in in Teros** (TW-REQ-22, TW-REQ-23): a Claude Code session
+  an agent opens gets the API key of the workspace owner's Anthropic-compatible
+  provider (`ANTHROPIC_API_KEY`, or the provider's endpoint and token) when
+  they have one; a person's session gets nothing injected. With no key Claude
+  Code shows its login screen and the tools answer `needs-login`: "stop, tell
+  the user the workspace owner needs an Anthropic API-key provider (Providers),
+  or a person opens Claude Code in their own Terminal and signs in there by
+  themselves". Teros never asks for, stores or shares that sign-in.
+- `show` (default true) asks the user's app to open or focus the window of the
+  session (`terminal_sessions` event with reason `reveal`); `terminal-show`
+  does it for an existing session. Every agent write is announced (reason
+  `input`, `lastInput`).
 
-## The wheel (who drives)
+## Agent control (the "Agent" switch)
 
-A session has one driver: the agent, a person or nobody (`driver` on every
-session; `watchers` lists the people with it open and the agents waiting on
-it). The agent's write takes the wheel only when nobody holds it, an agent
-does, or the person at it has been idle for over 60 s; otherwise the write is
-refused (`WHEEL_HELD`: "<name> has the wheel; wait or ask them in chat").
-When a person takes the wheel (`terminal.takeWheel`, or simply typing), an
-agent's `terminal-wait` returns early (reason `driver`). When they give it back
-(`terminal.giveBack`, optional note), the agent's next wait / read / screen
-leads with "<name> gave you the wheel back. Their note: …" — once. Every tool
-call carries the calling agent's id (`agentId`, checked against the app's
-grants), so the seat shows that agent's name and avatar.
+Every session has one agent-control flag, shown as the switch in its window's
+toolbar: **"Agent"** when on, **"Agent off"** when off (Spanish UI:
+**"Agente"** / **"Agente off"**). It is on in a session an agent opens and off
+in a session a person opens (TW-REQ-9).
+
+- **Off, in a session a person opened**: agents cannot list, read, write, wait
+  on, rename or close it (TW-REQ-10). It is not in `terminal-list`, and any
+  tool on its id fails with `FORBIDDEN_TERMINAL`, which the tools turn into
+  "ask the person to switch it to "Agent" in that session's Terminal window".
+- **On**: the agent reads and types, except while a person typed there in the
+  last 60 s (TW-REQ-11). That write is refused with `WHEEL_HELD` ("<Name> is
+  typing in this session. …"): an answer for the model, not a failed call.
+  While an agent types, a person's keys are not sent; they switch it to
+  "Agent off" to type.
+- **In a session an agent opened**, a person can switch it off; the agent may
+  type again once that person has typed nothing for 60 s (TW-REQ-12). The
+  agent's `terminal-wait` returns early when it happens (reason `driver`).
+- An agent refused with `WHEEL_HELD` may ask with `terminal-request-control`
+  (TW-REQ-13): the person gets **"Allow"** / **"Keep off"** (**"Permitir"** /
+  **"Mantener apagado"**) in the chat and in that session's window. One
+  request per session, it ends after 10 minutes, and only who may switch the
+  flag answers.
+- `terminal-release-control` lets go when the person asks the agent to stop.
+- A note the person left when switching "Agent" on (`handedBack` in the
+  results) leads the agent's next tool answer: "<name> switched "Agent" on
+  again: you may type. Their note: …" — once.
+- Every tool call carries the calling agent's id (`agentId`, checked against
+  the app's grants).
+
+## Who sees a session
+
+- A terminal lives in one of two spaces, fixed when it is opened (SPACE-REQ-10).
+  **Personal**: the person's own host and private home; only they see it. They
+  can choose "Let the workspace watch", which is view only for the others
+  (SPACE-REQ-15). **Shared**: the workspace's host and home; every write member
+  sees it, types in it and can end it (SPACE-REQ-12).
+- A session an agent opens is always a shared terminal (SPACE-REQ-11,
+  TW-REQ-16).
+- An agent only reaches sessions of its own workspace, and among those only
+  the ones agents opened and the ones whose "Agent" switch is on (TW-REQ-17).
 
 ## Tools
 
 | Tool | Backend action | Purpose |
 |---|---|---|
 | `-health-check` | — | Reports bridge WS status to the backend |
-| `terminal-create` | `terminal.create` (+ `terminal.wait` ready) | Open a shell, or Claude Code / Codex / opencode (`agent`), shown in the user's window; waits until the agent is ready |
+| `terminal-create` | `terminal.create` (+ `terminal.wait` ready) | Open a shell, or Claude Code / Codex / opencode (`agent`), shown in its own window in the user's app; waits until the agent is ready |
 | `terminal-prompt` | `terminal.write` (paste) + `terminal.wait` turn | Give a coding agent a task and wait for its turn to end (done / blocked / needs-login / exited) |
 | `terminal-wait` | `terminal.wait` | Wait for a state: `turn`, `ready`, `exit`, `quiet`, `text` — returns the screen |
 | `terminal-run` | `terminal.write` + `terminal.wait` exit + `terminal.read` | Run a shell command, get its output |
@@ -107,9 +145,11 @@ grants), so the seat shows that agent's name and avatar.
 | `terminal-write` | `terminal.write` | Low level: type text (+ Enter), pasted when multi-line |
 | `terminal-send-key` | `terminal.input` | Keys and key sequences: enter, arrows, shift-tab, ctrl-<x>, alt-<x>, F-keys… |
 | `terminal-wait-for` | `terminal.waitFor` | Regex on the output log (kept for compatibility) |
-| `terminal-list` | `terminal.list` | Sessions (title, command, agent state, opener, watchers, frozen / asleep — never wakes) |
-| `terminal-show` | `terminal.reveal` | Bring a session up in the user's Terminal window |
-| `terminal-destroy` | `terminal.destroy` | Close a session (idempotent) |
+| `terminal-list` | `terminal.list` | The sessions the agent can reach (title, command, agent state, opener and visibility, the "Agent" switch, who is typing, watchers, frozen / asleep — never wakes) |
+| `terminal-show` | `terminal.reveal` | Open or focus a session's own Terminal window in the user's app |
+| `terminal-request-control` | `terminal.requestWheel` | Ask for control of a session while a person is typing in it; waits up to 90 s: granted / approved / denied / pending / busy / ended |
+| `terminal-release-control` | `terminal.releaseWheel` | Let go of a session the agent is typing in |
+| `terminal-destroy` | `terminal.destroy` | End a session; an id that doesn't exist is an error (`TERMINAL_NOT_FOUND`) |
 
 ## Architecture
 

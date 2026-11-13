@@ -34,6 +34,7 @@ export * from './ui-state';
 export * from './voice-frames';
 export * from './tags';
 export * from './templates';
+export * from './sharing';
 export * from './terminal-crew';
 export * from './token-budget';
 export * from './ws-framework';

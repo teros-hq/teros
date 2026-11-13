@@ -19,7 +19,12 @@
  * announces what changed.
  */
 
-import type { TerminalConflict, TerminalDriver, TerminalHandedBack } from "@teros/shared"
+import type {
+  TerminalConflict,
+  TerminalDriver,
+  TerminalHandedBack,
+  TerminalWheelRequest,
+} from "@teros/shared"
 
 /** A person or an agent, as shown on the seat. */
 export interface CrewIdentity {
@@ -36,16 +41,19 @@ export interface DriverLeaseOptions {
   conflictWindowMs?: number
   /** A conflict nobody resolved ends when neither typed for this long (default 10 s). */
   conflictClearMs?: number
+  requestTtlMs?: number
 }
 
 /** What a change touched (terminal_sessions reasons). */
-export type LeaseChange = "driver" | "conflict" | "watchers"
+export type LeaseChange = "driver" | "conflict" | "watchers" | "request" | "control" | "watchable"
 
 /** What survives a backend restart and a sleep (tmux option / SleepRecord). */
 export interface LeaseSnapshot {
   driver: TerminalDriver
   priorAgent: CrewIdentity | null
   handedBack: (TerminalHandedBack & { to: string | null }) | null
+  agentControl?: boolean
+  watchable?: boolean
 }
 
 /** Refusal of an agent write: who holds the wheel. */
@@ -54,9 +62,18 @@ export interface WheelHeld {
   message: string
 }
 
+export function wheelButtons(_agentName?: string | null): string {
+  return '"Allow" / "Keep off"'
+}
+
 export class LeaseError extends Error {
   constructor(
-    readonly code: "NOT_DRIVER" | "NO_CONFLICT" | "INVALID_TARGET",
+    readonly code:
+      | "NOT_DRIVER"
+      | "NO_CONFLICT"
+      | "INVALID_TARGET"
+      | "NO_WHEEL_REQUEST"
+      | "STALE_WHEEL_REQUEST",
     message: string,
   ) {
     super(message)
@@ -70,6 +87,9 @@ export class DriverLease {
   /** A give-back note not yet read by its agent. */
   handedBack: LeaseSnapshot["handedBack"] = null
   conflict: TerminalConflict | null = null
+  agentControl = false
+  watchable = false
+  private pending: TerminalWheelRequest | null = null
   /** Last time each person typed. */
   private readonly typing = new Map<string, { at: number; who: CrewIdentity }>()
   /** Last input (or takeover) of the current driver. */
@@ -79,6 +99,22 @@ export class DriverLease {
   readonly idleTakeoverMs: number
   readonly conflictWindowMs: number
   readonly conflictClearMs: number
+  readonly requestTtlMs: number
+
+  get request(): TerminalWheelRequest | null {
+    const r = this.pending
+    return r && this.now() - r.at < this.requestTtlMs ? r : null
+  }
+
+  set request(r: TerminalWheelRequest | null) {
+    this.pending = r
+  }
+
+  expireRequest(): boolean {
+    if (!this.pending || this.request) return false
+    this.pending = null
+    return true
+  }
 
   constructor(
     private readonly now: () => number = Date.now,
@@ -87,9 +123,22 @@ export class DriverLease {
     this.idleTakeoverMs = opts.idleTakeoverMs ?? 60_000
     this.conflictWindowMs = opts.conflictWindowMs ?? 2_000
     this.conflictClearMs = opts.conflictClearMs ?? 10_000
+    this.requestTtlMs = opts.requestTtlMs ?? 10 * 60_000
     const t = now()
     this.driver = { kind: "none", since: t }
     this.driverActiveAt = t
+  }
+
+  busyPerson(exceptId: string): CrewIdentity | null {
+    const t = this.now()
+    const d = this.driver
+    const driving =
+      d.kind === "human" && !!d.id && d.id !== exceptId && t - this.driverActiveAt <= this.idleTakeoverMs
+    if (driving) return { kind: "human", id: d.id as string, name: d.name, avatarUrl: d.avatarUrl }
+    const typed = this.typists().find(
+      (x) => x.who.id !== exceptId && t - x.at <= this.idleTakeoverMs,
+    )
+    return typed ? typed.who : null
   }
 
   /** When each person last typed (watchers' typingAt). */
@@ -136,15 +185,89 @@ export class DriverLease {
   }
 
   /** May this agent write now? Null when it may, else who holds the wheel. */
-  agentMay(agent: CrewIdentity): WheelHeld | null {
+  agentMay(agent: CrewIdentity, personOpened = false): WheelHeld | null {
     const d = this.driver
-    if (d.kind !== "human") return null
-    if (this.now() - this.driverActiveAt > this.idleTakeoverMs) return null
-    const name = d.name || "Someone"
-    return {
+    const unsent = `(${agent.name || "The agent"}'s keys were not sent.)`
+    const held = (): WheelHeld => ({
       holder: { ...d },
-      message: `${name} has the wheel; wait or ask them in chat. (${agent.name || "The agent"}'s keys were not sent.)`,
+      message: `${d.name || "Someone"} is typing in this session. Ask for control with terminal-request-control (they get ${wheelButtons(agent.name)}), or wait: terminal-wait returns when control changes. ${unsent}`,
+    })
+    const idle = this.now() - this.driverActiveAt > this.idleTakeoverMs
+    if (!this.agentControl) {
+      if (!personOpened && (d.kind !== "human" || idle)) return null
+      if (!personOpened) return held()
+      return {
+        holder: { ...d },
+        message: `Agent control is off in this session: ask the person to switch "Agent off" to "Agent" in its Terminal window. ${unsent}`,
+      }
     }
+    if (d.kind !== "human" || idle) return null
+    return held()
+  }
+
+  setAgentControl(who: CrewIdentity, enabled: boolean): LeaseChange[] {
+    if (enabled) {
+      if (this.request) return ["control", ...this.answerWheel(true).changes]
+      const changes: LeaseChange[] = this.agentControl ? [] : ["control"]
+      this.agentControl = true
+      if (this.driver.kind === "human") changes.push(...this.giveBackTo(who, null))
+      return changes
+    }
+    const changes: LeaseChange[] = this.agentControl ? ["control"] : []
+    this.agentControl = false
+    if (this.request) {
+      this.request = null
+      changes.push("request")
+    }
+    return [...changes, ...this.takeWheel(who)]
+  }
+
+  setWatchable(watchable: boolean): LeaseChange[] {
+    if (this.watchable === watchable) return []
+    this.watchable = watchable
+    return ["watchable"]
+  }
+
+  askWheel(agent: CrewIdentity, reason: string | null, openerAnswers = false): LeaseChange[] {
+    this.request = {
+      agent: { id: agent.id, name: agent.name, avatarUrl: agent.avatarUrl ?? null },
+      reason: reason?.trim() ? reason.trim().slice(0, 300) : null,
+      at: this.now(),
+      openerAnswers,
+    }
+    return ["request"]
+  }
+
+  answerWheel(approve: boolean, agentId?: string): { agent: CrewIdentity; changes: LeaseChange[] } {
+    const r = this.request
+    if (!r) throw new LeaseError("NO_WHEEL_REQUEST", "No agent is asking for the wheel")
+    if (agentId && agentId !== r.agent.id)
+      throw new LeaseError(
+        "STALE_WHEEL_REQUEST",
+        `That request was answered or ended: ${r.agent.name || "another agent"} is asking now. Answer its card instead.`,
+      )
+    this.request = null
+    const agent: CrewIdentity = { kind: "agent", ...r.agent }
+    if (!approve) return { agent, changes: ["request"] }
+    const t = this.now()
+    const changes: LeaseChange[] = ["request", "driver"]
+    if (!this.agentControl) changes.push("control")
+    this.agentControl = true
+    this.driver = {
+      kind: "agent",
+      id: agent.id,
+      name: agent.name,
+      avatarUrl: agent.avatarUrl ?? null,
+      since: t,
+      note: null,
+    }
+    this.driverActiveAt = t
+    this.priorAgent = null
+    if (this.conflict) {
+      this.conflict = null
+      changes.push("conflict")
+    }
+    return { agent, changes }
   }
 
   /** An agent wrote (after agentMay said yes). */
@@ -162,12 +285,30 @@ export class DriverLease {
       note: null,
     }
     this.priorAgent = null
-    const changes: LeaseChange[] = ["driver"]
+    const changes: LeaseChange[] = ["driver", ...this.dropRequestOf(agent.id)]
+    if (!this.agentControl) changes.push("control")
+    this.agentControl = true
     if (this.conflict) {
       this.conflict = null
       changes.push("conflict")
     }
     return changes
+  }
+
+  private dropRequestOf(agentId: string | undefined): LeaseChange[] {
+    if (!agentId || this.request?.agent.id !== agentId) return []
+    this.request = null
+    return ["request"]
+  }
+
+  release(agent: CrewIdentity): LeaseChange[] {
+    const d = this.driver
+    if (d.kind !== "agent" || d.id !== agent.id) return []
+    const t = this.now()
+    this.priorAgent = identityOf(d)
+    this.driver = { kind: "none", since: t }
+    this.driverActiveAt = t
+    return ["driver"]
   }
 
   /** A person takes the wheel: the agent that drove becomes the copilot. */
@@ -192,16 +333,21 @@ export class DriverLease {
    * (with the note, read once by that agent), or to nobody.
    */
   giveBack(who: CrewIdentity, note: string | null): LeaseChange[] {
-    const t = this.now()
     const d = this.driver
-    if (d.kind === "agent" || (d.kind === "human" && d.id !== who.id)) {
+    if (d.kind === "agent") return []
+    if (d.kind === "human" && d.id !== who.id) {
       throw new LeaseError(
         "NOT_DRIVER",
-        d.kind === "agent"
-          ? `${d.name || "The agent"} already has the wheel`
-          : `${d.name || "Someone else"} has the wheel, not you`,
+        `${d.name || "Someone else"} is typing in this session, not you`,
       )
     }
+    const changes: LeaseChange[] = this.agentControl ? [] : ["control"]
+    this.agentControl = true
+    return [...changes, ...this.giveBackTo(who, note)]
+  }
+
+  private giveBackTo(who: CrewIdentity, note: string | null): LeaseChange[] {
+    const t = this.now()
     const to = this.priorAgent
     const text = note?.trim() ? note.trim().slice(0, 2000) : null
     this.driver = to
@@ -213,15 +359,13 @@ export class DriverLease {
           since: t,
           note: text,
         }
-      : { kind: "none", since: t, note: text }
+      : { kind: "none", since: t }
     this.driverActiveAt = t
-    this.handedBack = {
-      by: { id: who.id, name: who.name || who.id },
-      note: text,
-      to: to?.id ?? null,
-    }
+    this.handedBack = to
+      ? { by: { id: who.id, name: who.name || who.id }, note: text, to: to.id }
+      : null
     this.priorAgent = null
-    const changes: LeaseChange[] = ["driver"]
+    const changes: LeaseChange[] = ["driver", ...this.dropRequestOf(to?.id)]
     if (this.conflict) {
       this.conflict = null
       changes.push("conflict")
@@ -277,7 +421,13 @@ export class DriverLease {
   }
 
   snapshot(): LeaseSnapshot {
-    return { driver: { ...this.driver }, priorAgent: this.priorAgent, handedBack: this.handedBack }
+    return {
+      driver: { ...this.driver },
+      priorAgent: this.priorAgent,
+      handedBack: this.handedBack,
+      agentControl: this.agentControl,
+      watchable: this.watchable,
+    }
   }
 
   /** Bring back a snapshot (restart, wake). Idle time counts from the driver's `since`. */
@@ -287,6 +437,9 @@ export class DriverLease {
     this.driverActiveAt = this.driver.since
     this.priorAgent = s.priorAgent ?? null
     this.handedBack = s.handedBack ?? null
+    if (typeof s.agentControl === "boolean") this.agentControl = s.agentControl
+    else if (this.driver.kind === "agent") this.agentControl = true
+    if (typeof s.watchable === "boolean") this.watchable = s.watchable
   }
 }
 

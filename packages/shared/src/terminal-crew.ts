@@ -46,17 +46,26 @@ export interface TerminalHandedBack {
   note: string | null
 }
 
+export interface TerminalWheelRequest {
+  agent: { id: string; name?: string; avatarUrl?: string | null }
+  reason: string | null
+  at: number
+  openerAnswers?: boolean
+}
+
 /** The crew fields of a session (SessionInfo carries them besides its other fields). */
 export interface TerminalCrew {
   driver: TerminalDriver
   watchers: TerminalWatcher[]
   conflict: TerminalConflict | null
+  wheelRequest: TerminalWheelRequest | null
+  priorAgent?: TerminalWheelRequest["agent"] | null
   /** Live viewer connections (kept from before watchers were identities). */
   viewers: number
 }
 
 /** `terminal_sessions` event reasons added with the crew. */
-export type TerminalCrewReason = "driver" | "watchers" | "conflict"
+export type TerminalCrewReason = "driver" | "watchers" | "conflict" | "wheel_request"
 
 /** A person idle this long at the wheel can be taken over by an agent's write. */
 export const TERMINAL_DRIVER_IDLE_MS = 60_000

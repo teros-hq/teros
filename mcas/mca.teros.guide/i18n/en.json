@@ -28,7 +28,25 @@
   "description": "Platform self-knowledge for agents. Lets an agent look up how Teros works on demand (agents, apps, boards, providers, workspaces, files…) so it can walk the user through the real steps. Two read-only tools: list-guide-topics and get-guide-section.",
   "changelog": [
     {
-      "notes": "New topic terminal-claude-code: Claude Code in a terminal the user watches, on their own sign-in — when it fits, proposing it once and remembering the answer, enabling it, and driving a session (the wheel, sign-in, closing sessions)."
+      "notes": "terminal-claude-code explains the two spaces of a terminal: Personal (the person's own machine, home and logins; \"Let the workspace watch\" is view only) and Shared (the workspace's machine and home, for every member with write access; a person can open one only where the workspace's Bash app is shared). The sessions an agent opens are always shared."
+    },
+    {
+      "notes": "terminal-claude-code follows the Terminal windows model: one window shows one session (opened from the launcher or the \"Sessions\" list; \"End session\" ends it, closing the window does not); each session has one \"Agent\" / \"Agent off\" switch, on in the sessions an agent opens and off in the sessions a person opens; a person's session is private until they choose \"Share with the workspace\" and closed to agents while it reads \"Agent off\"; an agent refused because a person is typing asks with terminal-request-control (\"Allow\" / \"Keep off\") and lets go with terminal-release-control. Teros no longer handles any Claude sign-in: Claude Code sessions an agent opens run on the API key of the workspace owner's Anthropic provider, and on a login screen the agent stops and tells the user."
+    },
+    {
+      "notes": "terminal-claude-code now holds the rules the core prompt only points to, e.g. for a bug or a failing test in a repo, propose it in the first reply."
+    },
+    {
+      "notes": "terminal-claude-code: 'What the person sees' with the real labels (Spanish too), the workspace's Linux machine, and never claiming a call that wasn't made."
+    },
+    {
+      "notes": "terminal-claude-code: ask before typing in a session a person is using."
+    },
+    {
+      "notes": "terminal-claude-code: the topic names only what exists in the app; no more \"a session menu\"."
+    },
+    {
+      "notes": "New topic terminal-claude-code: Claude Code in a terminal the user watches — when it fits, proposing it once and remembering the answer, enabling it, and driving a session."
     }
   ]
 }

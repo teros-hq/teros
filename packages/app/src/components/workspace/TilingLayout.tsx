@@ -50,6 +50,7 @@ function DesktopTilingLayout() {
   const moveWindowToNewSplit = useTilingStore((state) => state.moveWindowToNewSplit)
 
   const swapWindows = useTilingStore((state) => state.swapWindows)
+  const floatWindow = useTilingStore((state) => state.floatWindow)
   const moveWindowsToContainer = useTilingStore((state) => state.moveWindowsToContainer)
   const moveWindowsToNewSplit = useTilingStore((state) => state.moveWindowsToNewSplit)
   const swapContainerWindows = useTilingStore((state) => state.swapContainerWindows)
@@ -77,7 +78,9 @@ function DesktopTilingLayout() {
         }
       } else if (windowId) {
         // Drag de una sola tab
-        if (target.zone === "tabs") {
+        if (target.zone === "float") {
+          floatWindow(windowId, { at: target.point })
+        } else if (target.zone === "tabs") {
           moveWindowToContainer(windowId, target.containerId, target.tabIndex)
         } else if (target.zone === "center") {
           swapWindows(windowId, target.containerId)
@@ -91,6 +94,7 @@ function DesktopTilingLayout() {
       }
     },
     [
+      floatWindow,
       moveWindowToContainer,
       moveWindowToNewSplit,
       swapWindows,

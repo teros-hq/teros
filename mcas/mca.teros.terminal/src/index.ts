@@ -41,17 +41,23 @@
 import { HealthCheckBuilder, McaServer, type ToolContext } from "@teros/mca-sdk"
 import {
   AGENT_COMMANDS,
-  type AgentAuthInfo,
-  actingFor,
-  agentAuthNote,
+  runTool,
   agentName,
   backendAction,
   commandOutput,
+  CONTROL_LABELS,
+  type ControlOutcome,
+  controlButtons,
+  controlNote,
+  controlRequestText,
+  type Driver,
+  type HandedBack,
   isOwnText,
   isWsConnected,
   KEY_HELP,
-  lifecycleLabel,
+  needsLoginText,
   newTerminalId,
+  noAccessText,
   type RenderedScreen,
   type ResumeInfo,
   renderCarriageReturns,
@@ -59,11 +65,11 @@ import {
   resolveKey,
   screenChanges,
   screenText,
+  sessionLine,
   showSequence,
   statusLine,
-  type Driver,
-  type HandedBack,
-  wheelNote,
+  refusedWriteText,
+  releaseControlText,
   wokeNote,
 } from "./lib"
 
@@ -82,6 +88,7 @@ const CREATE_TIMEOUT_MS = 90_000
 const TOOL_BUDGET_MS = 105_000
 const READY_WAIT_MS = 90_000
 const PROMPT_WAIT_MS = 90_000
+const CONTROL_WAIT_MS = 90_000
 const DEFAULT_READ_LINES = 200
 /** terminal-prompt: the typed prompt has landed when the screen is quiet this long. */
 const TYPE_SETTLE_MS = 300
@@ -100,7 +107,6 @@ interface TerminalCreateResult {
   reused?: boolean
   host?: boolean
   persistent?: boolean
-  agentAuth?: AgentAuthInfo
 }
 
 interface TerminalReadResult {
@@ -133,6 +139,7 @@ interface SessionInfo {
   persistent?: boolean
   /** awake, frozen (idle, paused) or sleeping (saved, no machine): both wake when used. */
   lifecycle?: "awake" | "frozen" | "sleeping"
+  space?: "personal" | "shared"
   sleptAt?: string | null
   resumed?: ResumeInfo | null
   agentState?: { state: string; message?: string } | null
@@ -142,6 +149,9 @@ interface SessionInfo {
   watchers?: Array<{ id: string; kind: "human" | "agent"; name: string }>
   driver?: Driver
   conflict?: { ids: string[]; at: number } | null
+  openedBy?: "person" | "agent"
+  agentControl?: boolean
+  shared?: boolean
 }
 
 // =============================================================================
@@ -372,7 +382,7 @@ function extractCdError(output: string, sentinel: string): string {
 // SERVER
 // =============================================================================
 
-const VERSION = "1.3.1"
+const VERSION = "2.1.0"
 
 const server = new McaServer({
   id: "mca.teros.terminal",
@@ -380,10 +390,6 @@ const server = new McaServer({
   version: VERSION,
 })
 
-// Every tool runs on behalf of the agent that called it (actingFor): the
-// backend puts that agent on the seat when it types, and tells it about the
-// wheel. A write refused because a person holds the wheel is an answer for
-// the model (what to do now), not a failed tool call.
 {
   const register = server.tool.bind(server)
   server.tool = ((name: string, config: Parameters<typeof register>[1]) =>
@@ -391,14 +397,17 @@ const server = new McaServer({
       ...config,
       handler: async (args, context) => {
         try {
-          return await actingFor(context?.execution?.agentId, () => config.handler(args, context))
+          return await runTool(context?.execution?.agentId, () => config.handler(args, context))
         } catch (error) {
+          const terminalId = (args as { terminalId?: unknown } | undefined)?.terminalId
+          if (errorCode(error) === "FORBIDDEN_TERMINAL" && typeof terminalId === "string")
+            throw new Error(noAccessText(terminalId))
           if (errorCode(error) !== "WHEEL_HELD") throw error
-          return reply(
-            `${errorMessage(error)} Nothing was typed. Wait (terminal-wait returns when they give ` +
-              "it back) or ask them in chat.",
-            { refused: true, reason: "wheel-held", message: errorMessage(error) },
-          )
+          return reply(refusedWriteText(errorMessage(error)), {
+            refused: true,
+            reason: "person-typing",
+            message: errorMessage(error),
+          })
         }
       },
     })) as typeof server.tool
@@ -420,12 +429,6 @@ function defaultTitle(title: unknown, agent: string | undefined, cwd: string | u
   return `${agent ? agentName(agent) : "Shell"} (agent)${dir}`
 }
 
-function sessionLabel(s: { title?: string; command?: string | null; kind?: string }): string {
-  if (s.title) return s.title
-  if (s.command && s.command !== "bash") return s.command
-  return s.kind === "agent" ? "Agent shell" : "Shell"
-}
-
 /** What terminal.wait answers. */
 interface WaitResult {
   /** A question or menu on the screen waiting for an answer, if any. */
@@ -433,11 +436,8 @@ interface WaitResult {
   met: boolean
   reason: string
   message?: string
-  /** Who holds the wheel now. */
   driver?: Driver
-  /** reason "driver": the wheel changed hands during the wait. */
   driverChanged?: Driver | null
-  /** A person gave the wheel back (once). */
   handedBack?: HandedBack
   waitedMs: number
   alive: boolean
@@ -508,7 +508,7 @@ function describeWait(
     case "ready":
       return `${who} is ready for a prompt. Next: terminal-prompt with terminalId "${terminalId}".`
     case "needs-login":
-      return `${who} needs to sign in before it can work. Tell the user: in their Terminal window, sign in (Sign in with Claude, API key or Use Teros) and turn on sharing with this workspace's agents; then call terminal-wait until="ready". Do not type credentials yourself.`
+      return needsLoginText(agent ?? r.needsAuth ?? r.command, terminalId)
     case "exited":
       return until === "exit"
         ? `The command finished; the shell prompt is back (after ${secs}).`
@@ -524,14 +524,14 @@ function describeWait(
     case "driver": {
       const d = r.driverChanged ?? r.driver
       if (d?.kind === "human")
-        return `${d.name || "The user"} took the wheel (after ${secs}): your wait stopped and your keys would be refused while they drive. Wait for them to give it back (terminal-wait again returns when they do) or ask them in chat; don't type into this session.`
+        return `${d.name || "A person"} switched this session to "${CONTROL_LABELS.off}" or started typing in it (after ${secs}): your wait stopped and your keys would be refused while they type. Don't type into this session: wait (terminal-wait again returns when control changes), or ask with terminal-request-control (they get ${controlButtons()}).`
       return r.handedBack
-        ? "The wheel is yours again."
-        : `The wheel changed hands (after ${secs}); it is ${d?.kind === "agent" ? `${d.name || "an agent"}'s` : "free"} now. Look at the screen before you go on.`
+        ? "You may type in this session again."
+        : `Control of this session changed (after ${secs}); ${d?.kind === "agent" ? `${d.name || "an agent"} types in it` : "nobody is typing in it"} now. Look at the screen before you go on.`
     }
     default: {
       const now = r.needsAuth
-        ? `${agentName(r.needsAuth)} needs to sign in`
+        ? `${agentName(r.needsAuth)} shows its login screen`
         : r.agentState
           ? `${who} is ${r.agentState.state}`
           : r.command
@@ -546,9 +546,8 @@ function describeWait(
   }
 }
 
-/** The wheel news a wait carries, unless describeWait already tells it (a person took it). */
 function waitLead(r: WaitResult): string {
-  return r.reason === "driver" && !r.handedBack ? "" : wheelNote(r)
+  return r.reason === "driver" && !r.handedBack ? "" : controlNote(r)
 }
 
 function waitData(r: WaitResult, terminalId: string) {
@@ -629,15 +628,20 @@ server.tool("terminal-create", {
     group: "Terminal",
   },
   description:
-    "Open a terminal session in the workspace's Linux machine (shared with the Bash app: same " +
-    "files, home and tools). The user watches and can type in the same session from their " +
-    'Terminal window (show, default true, brings it up there). With agent="claude" (or ' +
-    '"codex", "opencode") the session starts that coding agent with the user\'s own sign-in ' +
-    "(installing it on first use) and waits until it is ready for a prompt — then use " +
-    "terminal-prompt. Without agent you get a bash shell — use terminal-run for commands. " +
+    "Open a terminal session in the workspace's Linux machine (the same workspace files and tools " +
+    "as the Bash app). It is a shared terminal: it runs in the workspace's machine with the " +
+    "workspace's home, never in a person's personal terminal. " +
+    'It is yours: its "Agent" switch is on, and the workspace\'s members can see it, ' +
+    "each session in its own Terminal window (show, default true, opens or focuses that window for " +
+    'the user); to type in it they switch it to "Agent off". With agent="claude" (or "codex", ' +
+    '"opencode") the session starts that coding agent (installing it on first use) and waits until ' +
+    "it is ready for a prompt — then use terminal-prompt. Claude Code runs on the API key of the " +
+    "workspace owner's Anthropic provider in Teros; with none it shows its login screen: stop and " +
+    "tell the user (Teros never asks for, stores or shares a Claude sign-in). Without agent you get " +
+    "a bash shell — use terminal-run for commands. " +
     "Each call opens a NEW session: check terminal-list first and reuse yours. Sessions are kept " +
-    "until terminal-destroy: idle ones sleep and wake (same directory, Claude Code on its " +
-    "conversation) the next time a tool uses them.",
+    "until terminal-destroy: idle ones sleep and wake (same directory while it still exists, " +
+    "Claude Code on its conversation) the next time a tool uses them.",
   parameters: {
     type: "object",
     properties: {
@@ -657,12 +661,12 @@ server.tool("terminal-create", {
       title: {
         type: "string",
         description:
-          'Short label the user sees in their session list — set one (e.g. "deploy logs", "fix login bug")',
+          'Short label the user sees on the window and in the "Sessions" list — set one (e.g. "deploy logs", "fix login bug")',
       },
       show: {
         type: "boolean",
         description:
-          "Bring the session up in the user's Terminal window so they can watch (default: true)",
+          "Open or focus this session's Terminal window in the user's app so they can watch (default: true)",
       },
       cols: { type: "number", description: "Terminal width in columns (default: 120)" },
       rows: { type: "number", description: "Terminal height in rows (default: 40)" },
@@ -730,7 +734,7 @@ server.tool("terminal-create", {
       bashAppId: appId,
       bashAppResolved: resolved,
     }
-    const shownNote = show ? " The user can watch it in their Terminal window." : ""
+    const shownNote = show ? " The user can watch it in its own Terminal window." : ""
 
     if (agent) {
       // Wait for the agent with what is left of this call's budget.
@@ -741,11 +745,9 @@ server.tool("terminal-create", {
         wait.reason === "timeout"
           ? `Opened session ${terminalId}; ${name} is still starting (the first use installs it, about a minute).${shownNote} Next: terminal-wait with terminalId "${terminalId}" until="ready".`
           : `Opened session ${terminalId} with ${name}.${shownNote} ${describeWait(terminalId, "ready", wait, agent)}`
-      const auth = agentAuthNote(result.agentAuth)
-      return reply(head + (auth ? `\n${auth}` : "") + screenBlock(terminalId, wait.screen), {
+      return reply(head + screenBlock(terminalId, wait.screen), {
         ...base,
         agent,
-        agentAuth: result.agentAuth ?? null,
         cwd: cwd ?? "/workspace",
         ...waitData(wait, terminalId),
         status: wait.met ? "ready" : wait.reason === "timeout" ? "starting" : wait.reason,
@@ -785,7 +787,7 @@ server.tool("terminal-prompt", {
   description:
     "Send a prompt to the coding agent running in a session (Claude Code, Codex, opencode) and " +
     "wait until its turn ends: it finished (done), asks something / wants a permission " +
-    "(blocked), needs a sign-in, or left. Returns what happened and the screen with its " +
+    "(blocked), shows its login screen, or left. Returns what happened and the screen with its " +
     "answer. Multi-line prompts are pasted as one message. If it is still working when the " +
     'wait runs out, call terminal-wait until="turn" — never send the prompt again. Also use ' +
     'it for slash commands ("/clear", "/exit") and to answer a free-text question.',
@@ -868,15 +870,15 @@ server.tool("terminal-wait", {
   },
   description:
     "Wait for something to happen in a session instead of sleeping or polling, then get the " +
-    'screen. until: "turn" — the coding agent finished its turn, asks something, needs a ' +
-    'sign-in or left (after terminal-prompt / terminal-send-key); "ready" — a coding agent ' +
+    'screen. until: "turn" — the coding agent finished its turn, asks something, shows its ' +
+    'login screen or left (after terminal-prompt / terminal-send-key); "ready" — a coding agent ' +
     'started and waits for a prompt; "exit" — the running shell command finished; "quiet" — ' +
     'no output for quietMs (any program settled); "text" — the screen shows `text` ' +
     "(case-insensitive) or matches the regex `pattern`. Only what happens after your last " +
     "write/prompt/key counts. A timeout is not an error: it says what is going on, and you " +
     "can call it again." +
-    ' If a person takes the wheel in their Terminal window, the wait stops early (reason "driver"): ' +
-    "don't type until they give it back — the next wait/read then carries their note (handedBack).",
+    ' If a person switches the session to "Agent off" or starts typing in it, the wait stops early ' +
+    '(reason "driver"): don\'t type until control is yours again.',
   parameters: {
     type: "object",
     properties: {
@@ -929,7 +931,7 @@ server.tool("terminal-run", {
   },
   description:
     "Run a command line in a shell session, wait for it to finish (up to timeoutMs) and return " +
-    "its output. The user sees it run in their Terminal window. For long or interactive " +
+    "its output. The user sees it run in that session's Terminal window. For long or interactive " +
     "programs it returns what they printed so far and that they are still running: then use " +
     'terminal-wait until="exit", terminal-screen, terminal-send-key (ctrl-c to stop). For a ' +
     "coding agent use terminal-prompt instead.",
@@ -1031,12 +1033,13 @@ server.tool("terminal-screen", {
     const changes = args.onlyChanges === true ? screenChanges(previous, screen.lines) : null
     const head =
       note +
-      wheelNote({ driver, handedBack }) +
+      controlNote({ driver, handedBack }) +
       statusLine({
         terminalId,
         command: status.command,
         agentState: status.agentState,
         needsAuth: status.needsAuth,
+        space: status.space,
       }) +
       (question ? `\nWaiting for an answer: ${question}` : "")
     let text: string
@@ -1106,7 +1109,7 @@ server.tool("terminal-read", {
     })
     const empty = result.output.length === 0
     const dropped = result.truncated && since !== undefined ? " (older output was dropped)" : ""
-    const lead = note + wheelNote(result)
+    const lead = note + controlNote(result)
     const text = empty
       ? `${lead}No new output. cursor=${result.cursor}`
       : `${lead}${renderCarriageReturns(result.output)}\n--- cursor=${result.cursor}${dropped} ---`
@@ -1285,53 +1288,117 @@ server.tool("terminal-wait-for", {
 server.tool("terminal-list", {
   annotations: {
     readOnlyHint: true,
-    summary: "List the workspace's terminal sessions",
+    summary: "List the terminal sessions you can reach",
     group: "Terminal",
   },
   description:
-    "List the terminal sessions of this workspace (yours and the user's): id, title, what " +
-    "runs in it, the coding agent's state (working / blocked = waiting for someone / done), " +
-    "who is watching, and whether it is asleep (idle sessions freeze, then sleep; any tool that " +
-    "uses one wakes it). Reuse a session instead of opening a new one.",
+    "List the terminal sessions you can reach in this workspace: the ones agents opened (the " +
+    'workspace\'s members see those too) and the ones a person opened and switched to "Agent". A ' +
+    "session a person opens, their personal terminal or a shared one, is not listed while it reads " +
+    '"Agent off": to ' +
+    'work in it, ask them to switch it to "Agent" in that session\'s Terminal window. Each line has ' +
+    "the id, title, what runs in it, the coding agent's state (working / blocked = waiting for " +
+    "someone / done), which space it is in (a person's personal terminal, or a shared one in the " +
+    "workspace's machine), who opened it, who is typing, who is watching, and whether it is asleep " +
+    "(idle sessions freeze, then sleep; any tool that uses one wakes it). Reuse a session instead " +
+    "of opening a new one.",
   parameters: {
     type: "object",
     properties: {},
   },
   handler: async () => {
-    const result = await backendAction<{ sessions: SessionInfo[]; agentAuth?: AgentAuthInfo }>(
-      "terminal.list",
-    )
+    const result = await backendAction<{ sessions: SessionInfo[] }>("terminal.list")
     const sessions = result.sessions ?? []
-    const lines = sessions.map((s) => {
-      const parts = [`${s.terminalId}  "${sessionLabel(s)}"`]
-      if (s.command) parts.push(s.command)
-      if (s.needsAuth) parts.push(`${agentName(s.needsAuth)} needs to sign in`)
-      else if (s.agentState)
-        parts.push(
-          `agent ${s.agentState.state}${s.agentState.message ? ` (${s.agentState.message})` : ""}`,
-        )
-      parts.push(
-        String(s.createdBy ?? "").startsWith("agent:")
-          ? "opened by an agent"
-          : "opened by the user",
-      )
-      if (s.driver?.kind === "human") parts.push(`${s.driver.name || "the user"} has the wheel`)
-      else if (s.driver?.kind === "agent") parts.push(`${s.driver.name || "an agent"} drives`)
-      if (s.conflict) parts.push("two people are typing at once")
-      const people = (s.watchers ?? []).filter((w) => w.kind === "human").map((w) => w.name)
-      if (people.length) parts.push(`watched by ${people.join(", ")}`)
-      const sleep = lifecycleLabel(s)
-      if (sleep) parts.push(sleep)
-      return `- ${parts.join(" · ")}`
-    })
+    const lines = sessions.map((s) => sessionLine(s))
     const list = sessions.length
       ? `${sessions.length} session(s):\n${lines.join("\n")}`
-      : 'No terminal sessions. Open one with terminal-create (agent="claude" for Claude Code).'
-    const auth = agentAuthNote(result.agentAuth)
-    return reply(auth ? `${list}\n${auth}` : list, {
-      sessions,
-      count: sessions.length,
-      agentAuth: result.agentAuth ?? null,
+      : 'No terminal sessions you can reach. Open one with terminal-create (agent="claude" for Claude Code).'
+    return reply(list, { sessions, count: sessions.length })
+  },
+})
+
+server.tool("terminal-request-control", {
+  annotations: {
+    readOnlyHint: false,
+    safeWriteHint: true,
+    summary: "Ask the person for control of a session",
+    group: "Terminal",
+  },
+  description:
+    "Ask for control of a session you can reach while a person is typing in it (your writes there " +
+    'are refused with "<name> is typing in this session" until they have typed nothing for 60 s). ' +
+    'The person gets "Allow" / "Keep off" in this chat and in that session\'s Terminal window; ' +
+    '"Allow" switches it to "Agent" for you at once. Waits up to 90 s: granted (nobody was typing), ' +
+    "approved (you may type), denied (don't type; say in chat what you need or open your own " +
+    "session), pending (call again to keep waiting) or busy (another agent asked first; nothing " +
+    'was sent). It cannot reach a person\'s own session that reads "Agent off": only they switch ' +
+    "that on.",
+  parameters: {
+    type: "object",
+    properties: {
+      terminalId: { type: "string", description: "Session id" },
+      reason: {
+        type: "string",
+        description: 'What you want to do there, in a few words (e.g. "run the tests")',
+      },
+    },
+    required: ["terminalId"],
+  },
+  handler: async (args) => {
+    const terminalId = requireString(args, "terminalId")
+    const reason = typeof args.reason === "string" && args.reason ? args.reason : undefined
+    const r = await backendAction<{
+      outcome: ControlOutcome
+      driver?: Driver | null
+      handedBack?: HandedBack
+      answeredBy?: { id: string; name: string }
+      askedBy?: { id: string; name: string }
+    }>(
+      "terminal.requestWheel",
+      { terminalId, reason, timeoutMs: CONTROL_WAIT_MS },
+      CONTROL_WAIT_MS + BRIDGE_HEADROOM_MS,
+    )
+    const by =
+      r.askedBy?.name ?? r.answeredBy?.name ?? (r.driver?.kind === "human" ? r.driver.name : null)
+    return reply(controlRequestText(r.outcome, terminalId, { by }), {
+      terminalId,
+      outcome: r.outcome,
+      driver: r.driver ?? null,
+    })
+  },
+})
+
+server.tool("terminal-release-control", {
+  annotations: {
+    readOnlyHint: false,
+    safeWriteHint: true,
+    summary: "Let go of control of a session",
+    group: "Terminal",
+  },
+  description:
+    "Let go of a session you are typing in, when the person asks you to stop, let them type or " +
+    'give them control. Then tell them how: they switch it to "Agent off" in that session\'s ' +
+    "Terminal window and type (while an agent types, a person's keys are not sent). Don't type " +
+    'there again until they switch it back to "Agent" (a note they leave comes with your next ' +
+    "call) or you ask with terminal-request-control. Answers released, or who is typing when it " +
+    "wasn't you (nothing changes).",
+  parameters: {
+    type: "object",
+    properties: {
+      terminalId: { type: "string", description: "Session id" },
+    },
+    required: ["terminalId"],
+  },
+  handler: async (args) => {
+    const terminalId = requireString(args, "terminalId")
+    const r = await backendAction<{ released: boolean; driver?: Driver | null }>(
+      "terminal.releaseWheel",
+      { terminalId },
+    )
+    return reply(releaseControlText({ ...r, terminalId }), {
+      terminalId,
+      released: r.released,
+      driver: r.driver ?? null,
     })
   },
 })
@@ -1339,12 +1406,13 @@ server.tool("terminal-list", {
 server.tool("terminal-show", {
   annotations: {
     readOnlyHint: true,
-    summary: "Bring a session up in the user's Terminal window",
+    summary: "Open a session's Terminal window for the user",
     group: "Terminal",
   },
   description:
-    "Show a session in the user's Terminal window (opens it as a tab there, or focuses it), so " +
-    "they can watch what happens in it. terminal-create already does this unless show=false.",
+    "Open or focus a session's own Terminal window in the user's app (one window shows one " +
+    "session), so they can watch what happens in it. terminal-create already does this unless " +
+    "show=false.",
   parameters: {
     type: "object",
     properties: {
@@ -1365,8 +1433,8 @@ server.tool("terminal-show", {
       .map((w) => (typeof w === "string" ? w : w.name))
     const watching = names.length ? ` Watching it now: ${names.join(", ")}.` : ""
     return reply(
-      `Asked the user's Terminal window to show ${terminalId}. If they don't have it open, it shows ` +
-        `up there next time.${watching}`,
+      `Asked the user's app to open or focus the Terminal window of ${terminalId}. With Teros closed, they ` +
+        `find it later in the "Sessions" list of any Terminal window.${watching}`,
       { shown: true, terminalId, watchers: names },
     )
   },
@@ -1380,8 +1448,9 @@ server.tool("terminal-destroy", {
     group: "Terminal",
   },
   description:
-    "Close a session and kill whatever runs in it. Only close sessions you opened, or that the " +
-    "user asked you to close.",
+    'End a session and kill whatever runs in it (what "End session" in the window\'s ⋯ menu does; ' +
+    "closing a window never ends its session). Only end sessions you opened, or that the user " +
+    "asked you to end.",
   parameters: {
     type: "object",
     properties: {
@@ -1396,6 +1465,7 @@ server.tool("terminal-destroy", {
       lastScreens.delete(terminalId)
       return reply(`Closed ${terminalId}.`, { destroyed: true, terminalId })
     } catch (error) {
+      if (errorCode(error) === "FORBIDDEN_TERMINAL") throw error
       throw new Error(`terminal-destroy failed: ${errorMessage(error)}`)
     }
   },

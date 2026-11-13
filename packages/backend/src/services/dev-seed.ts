@@ -320,6 +320,11 @@ export async function maybeAutoSeedDevUser(
     deletedAt: { $exists: false },
   })
   if (existing) return "exists"
+  // @spec ALOGIN-REQ-4 — the self-hosted switch never creates its user
+  if (state.selfHosted) {
+    log.warn(`⚠ AUTOLOGIN: user ${email} does not exist — fix TEROS_AUTOLOGIN_USER`)
+    return "missing"
+  }
   if (email !== DEV_SEED_EMAIL) {
     log.warn(`⚠ DEV AUTOLOGIN: user ${email} does not exist — create it or unset TEROS_DEV_USER`)
     return "missing"

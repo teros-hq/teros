@@ -33,6 +33,7 @@ import { usePendingPermissionCallbacks } from "../../hooks/usePendingPermissionC
 import { PermissionContext } from "../../components/mca/types"
 import { PendingPermissionCards } from "../../components/permissions/PendingPermissionCards"
 import { TerminalNeedCard } from "../../components/needsYou/TerminalNeedCard"
+import { terminalNeedKey } from "../../components/needsYou/terminalNeeds"
 import { useTerminalNeeds } from "../../components/needsYou/useTerminalNeeds"
 import { getDateLocale } from "../../i18n"
 import { Btn, Card, EmptyState, Page, PageHead, Ph, T } from "../../components/ui/ds"
@@ -117,14 +118,14 @@ export function PendingApprovalsWindowContent({
               <T step="sm" tone="text3">
                 {t("terminal.notices.lead", {
                   defaultValue:
-                    "Claude Code is waiting for your answer. Click an option and it is typed for you.",
+                    "An agent is waiting for you in a terminal. Answer here, or open the terminal floating or in its tab.",
                 })}
               </T>
             </View>
           </View>
           <View style={{ gap: 4, marginTop: 10 }}>
             {terminalNeeds.map((need) => (
-              <TerminalNeedCard key={need.session.terminalId} need={need} />
+              <TerminalNeedCard key={terminalNeedKey(need)} need={need} />
             ))}
           </View>
         </Card>

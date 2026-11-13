@@ -81,6 +81,10 @@ services:
       # allowlist (CORSAPP-REQ-4). Extra origins go in CORS_ALLOWED_ORIGINS.
       APP_URL: ${APP_URL:-http://localhost:10002}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      # Sign in as this user with no form. Only honoured while APP_URL is a
+      # localhost address: anyone who can open it gets in (ALOGIN-REQ-6).
+      TEROS_AUTOLOGIN: ${TEROS_AUTOLOGIN:-}
+      TEROS_AUTOLOGIN_USER: ${TEROS_AUTOLOGIN_USER:-}
       # All container operations go to the container-agent over HTTP (the backend
       # keeps its own docker.sock only for the terminal window's docker exec).
       CONTAINER_AGENT_URL: http://container-agent:10011

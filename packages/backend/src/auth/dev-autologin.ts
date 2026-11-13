@@ -22,6 +22,12 @@
  * (isDevAutologinRequestAllowed): direct TCP peer on loopback/LAN, no proxy
  * headers, and Host/Origin on a local host — so a reverse-proxied or
  * browser-cross-site connection never gets a dev session.
+ *
+ * Self-hosted auto-login (spec ALOGIN) is a second switch over the same
+ * contract: `TEROS_AUTOLOGIN=1` + `TEROS_AUTOLOGIN_USER=<email>`, accepted in
+ * production mode but only for an install whose public URLs are on loopback
+ * (resolveSelfHostedAutologin), with a loopback Host and the app's own Origin
+ * per connection. It never seeds a user.
  */
 
 import type { IncomingMessage } from "node:http"
@@ -33,7 +39,14 @@ const log = createLogger("DevAutologin")
 export const DEV_AUTOLOGIN_DEFAULT_USER = "dev@teros.local"
 
 export type DevAutologinState =
-  | { enabled: true; userEmail: string }
+  | {
+      enabled: true
+      userEmail: string
+      /** Turned on by TEROS_AUTOLOGIN (spec ALOGIN), not by the dev switch */
+      selfHosted?: true
+      /** Origin of APP_URL: the only browser origin a self-hosted auto-login accepts */
+      appOrigin?: string
+    }
   | { enabled: false; refusedReason?: string }
 
 const ALLOWED_NODE_ENVS = new Set(["", "development", "test"])
@@ -86,6 +99,16 @@ export function isLocalHost(rawHost: string): boolean {
   return false
 }
 
+/** True for `localhost`, a `.localhost` name, 127.0.0.0/8 and ::1 — this machine only. */
+export function isLoopbackHost(rawHost: string): boolean {
+  let host = rawHost.trim().toLowerCase().replace(/\.$/, "")
+  if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1)
+  if (host.startsWith("::ffff:")) host = host.slice(7)
+  if (host === "localhost" || host.endsWith(".localhost") || host === "::1") return true
+  const v4 = ipv4Octets(host)
+  return v4 !== null && v4[0] === 127
+}
+
 /** Hostname of a URL, or null when it doesn't parse. */
 function urlHost(raw: string): string | null {
   try {
@@ -134,26 +157,78 @@ export function resolveDevAutologin(
   return { enabled: true, userEmail }
 }
 
+/**
+ * Decide from the environment whether self-hosted auto-login is on. Pure, like
+ * resolveDevAutologin. Unlike it, NODE_ENV is not looked at: what makes it safe
+ * is that the install answers on loopback addresses only.
+ * @spec ALOGIN-REQ-1 ALOGIN-REQ-2
+ */
+export function resolveSelfHostedAutologin(
+  env: Record<string, string | undefined> = process.env,
+): DevAutologinState {
+  if (!isFlagOn(env.TEROS_AUTOLOGIN)) return { enabled: false }
+
+  const refuse = (refusedReason: string): DevAutologinState => ({ enabled: false, refusedReason })
+
+  const userEmail = env.TEROS_AUTOLOGIN_USER?.trim().toLowerCase()
+  if (!userEmail || !userEmail.includes("@")) return refuse("TEROS_AUTOLOGIN_USER is not set")
+  if (env.KUBERNETES_SERVICE_HOST) return refuse("running in Kubernetes")
+  if ((env.TEROS_EDITION ?? "").trim().toLowerCase() === "cloud") return refuse("TEROS_EDITION=cloud")
+
+  const appUrl = env.APP_URL?.trim()
+  if (!appUrl) return refuse("APP_URL is not set")
+  for (const name of PUBLIC_URL_ENVS) {
+    const value = env[name]?.trim()
+    if (!value) continue
+    const host = urlHost(value)
+    if (!host || !isLoopbackHost(host)) return refuse(`${name}=${value} is not a localhost address`)
+  }
+
+  const bindHost = env.BIND_HOST?.trim()
+  if (bindHost && bindHost !== "0.0.0.0" && bindHost !== "::" && !isLocalHost(bindHost)) {
+    return refuse(`BIND_HOST=${bindHost} is not a local address`)
+  }
+
+  return { enabled: true, userEmail, selfHosted: true, appOrigin: new URL(appUrl).origin }
+}
+
 let state: DevAutologinState = { enabled: false }
 
 /** Resolve once at boot and make it impossible to miss in the logs. */
 export function initDevAutologin(
   env: Record<string, string | undefined> = process.env,
 ): DevAutologinState {
-  state = resolveDevAutologin(env)
-  if (state.enabled) {
-    log.warn(`⚠ DEV AUTOLOGIN ENABLED as ${state.userEmail} — local development only`)
-  } else if (state.refusedReason) {
+  const dev = resolveDevAutologin(env)
+  if (dev.enabled) {
+    log.warn(`⚠ DEV AUTOLOGIN ENABLED as ${dev.userEmail} — local development only`)
+  } else if (dev.refusedReason) {
     log.error(
-      `⚠ TEROS_DEV_AUTOLOGIN is set but IGNORED: ${state.refusedReason}. Normal auth required.`,
+      `⚠ TEROS_DEV_AUTOLOGIN is set but IGNORED: ${dev.refusedReason}. Normal auth required.`,
     )
   }
+  // The dev switch wins; the self-hosted one is only evaluated without it (ALOGIN-REQ-5)
+  const selfHosted: DevAutologinState = dev.enabled
+    ? { enabled: false }
+    : resolveSelfHostedAutologin(env)
+  if (selfHosted.enabled) {
+    log.warn(
+      `⚠ AUTOLOGIN ENABLED as ${selfHosted.userEmail} — anyone who can open this install's localhost address is signed in as that user`,
+    )
+  } else if (selfHosted.refusedReason) {
+    log.error(
+      `⚠ TEROS_AUTOLOGIN is set but IGNORED: ${selfHosted.refusedReason}. Normal auth required.`,
+    )
+  }
+  state = dev.enabled || !selfHosted.enabled ? dev : selfHosted
   return state
 }
 
 export function getDevAutologin(): DevAutologinState {
   // Belt and braces: even a state resolved earlier never survives production.
-  if (process.env.NODE_ENV === "production") return { enabled: false }
+  // The self-hosted switch is the one deliberate exception (ALOGIN-REQ-1).
+  if (process.env.NODE_ENV === "production" && !(state.enabled && state.selfHosted)) {
+    return { enabled: false }
+  }
   return state
 }
 
@@ -193,6 +268,12 @@ export function isDevAutologinRequestAllowed(
   if (origin) {
     const originHost = urlHost(origin)
     if (!originHost || !isLocalHost(originHost)) return false
+  }
+
+  // @spec ALOGIN-REQ-3 — this machine only, and from the app's own page only
+  if (current.selfHosted) {
+    if (!isLoopbackHost(hostHeaderName(host))) return false
+    if (origin && origin !== current.appOrigin) return false
   }
   return true
 }

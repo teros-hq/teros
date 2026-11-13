@@ -25,6 +25,7 @@ import { TerosLoading } from "../../components/TerosLoading"
 import { Btn, Card, ChipBtn, EmptyHint, IconBtn, Ph, T } from "../../components/ui/ds"
 import { usePendingPermissions } from "../../hooks/usePendingPermissions"
 import { TerminalNeedCard } from "../../components/needsYou/TerminalNeedCard"
+import { terminalNeedKey } from "../../components/needsYou/terminalNeeds"
 import { useTerminalNeeds } from "../../components/needsYou/useTerminalNeeds"
 import { getTerosClient } from "../../services/terosClientSingleton"
 import type { BoardSummary, ProjectData } from "../../services/BoardApi"
@@ -487,7 +488,7 @@ export function HomeWindowContent({ windowId, workspaceId: propWorkspaceId }: Pr
       ) : (
         <View style={{ gap: 8 }}>
           {shownNeeds.map((need) => (
-            <TerminalNeedCard key={need.session.terminalId} need={need} />
+            <TerminalNeedCard key={terminalNeedKey(need)} need={need} />
           ))}
           {shownPermissions.map((p) => {
             const target = targetOf(p.input)

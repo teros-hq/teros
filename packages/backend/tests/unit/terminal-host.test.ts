@@ -15,7 +15,7 @@ import {
   parsePaneModes,
   renderedScreen,
 } from "../../src/services/terminal/snapshot"
-import { cloneRunArgs } from "../../src/services/terminal/term-host"
+import { cloneRunArgs, dockerFailure, TermHost } from "../../src/services/terminal/term-host"
 import {
   TmuxControlClient,
   tmuxQuote,
@@ -272,6 +272,45 @@ describe("agent state option", () => {
     expect(parseAgentState(formatAgentState(s!))).toEqual(s)
     expect(parseAgentState("ended|1|")).toBeNull()
     expect(parseAgentState("")).toBeNull()
+  })
+})
+
+describe("docker failures are never empty", () => {
+  it("says stderr, else stdout, else the exit code (and the timeout when the call was killed)", () => {
+    expect(dockerFailure({ code: 1, stdout: "", stderr: " No such container: x \n" })).toBe("No such container: x")
+    expect(dockerFailure({ code: 1, stdout: "conflict\n", stderr: "" })).toBe("conflict")
+    expect(dockerFailure({ code: 137, stdout: "", stderr: "" })).toBe("docker exited with code 137")
+    expect(dockerFailure({ code: 1, stdout: "", stderr: "", timedOutMs: 15_000 })).toBe(
+      "docker did not answer within 15 s (exit code 1)",
+    )
+  })
+})
+
+describe("window options", () => {
+  function hostWithFakeControl() {
+    const commands: string[] = []
+    const host = new TermHost("c", "app_1", "work_1", (() => null) as any, (async () => ({ code: 0, stdout: "", stderr: "" })) as any, 1000)
+    host.ensureControl = async () => ({ command: async (c: string) => (commands.push(c), []) }) as any
+    return { host, commands }
+  }
+  const quoted = (cmd: string) => cmd.slice(cmd.indexOf("'"))
+
+  it("the driver snapshot (machine data, often > 200 chars with a note) is stored whole", async () => {
+    const { host, commands } = hostWithFakeControl()
+    const snapshot = JSON.stringify({
+      driver: { kind: "human", id: "user_dev", name: "Dev", avatarUrl: "/a.png", since: 1, note: null },
+      priorAgent: { kind: "agent", id: "agent_e280bc28935cf997", name: "Rex", avatarUrl: "http://localhost:3000/static/rex.png" },
+      handedBack: { by: { id: "user_dev", name: "Dev" }, note: "x".repeat(400), to: "agent_e280bc28935cf997" },
+    })
+    expect(snapshot.length).toBeGreaterThan(600)
+    await host.setWindowOption("@1", "@teros_driver", snapshot)
+    expect(quoted(commands[0])).toBe(tmuxQuote(snapshot))
+  })
+
+  it("people's strings (a title) are still cleaned and capped", async () => {
+    const { host, commands } = hostWithFakeControl()
+    await host.setWindowOption("@1", "@teros_title", `a\u0007b${"t".repeat(300)}`)
+    expect(quoted(commands[0])).toBe(tmuxQuote(`a b${"t".repeat(197)}`))
   })
 })
 

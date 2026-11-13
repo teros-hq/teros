@@ -17,12 +17,16 @@ export function useBashApp(workspaceId?: string): {
   appId: string | null
   mcaId: string | null
   status: string | null
+  scope: "personal" | "shared" | null
+  installedBy: string | null
   loading: boolean
   reload: () => void
 } {
   const [appId, setAppId] = useState<string | null>(null)
   const [mcaId, setMcaId] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
+  const [scope, setScope] = useState<"personal" | "shared" | null>(null)
+  const [installedBy, setInstalledBy] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [nonce, setNonce] = useState(0)
   const client = getTerosClient()
@@ -44,21 +48,27 @@ export function useBashApp(workspaceId?: string): {
             setAppId(found.appId)
             setMcaId(found.mcaId)
             setStatus((found as any).status ?? null)
+            setScope(found.scope ?? null)
+            setInstalledBy(found.installedBy ?? null)
             return
           }
         }
         setAppId(null)
         setMcaId(null)
         setStatus(null)
+        setScope(null)
+        setInstalledBy(null)
       })
       .catch(() => {
         setAppId(null)
         setMcaId(null)
         setStatus(null)
+        setScope(null)
+        setInstalledBy(null)
       })
       .finally(() => setLoading(false))
   }, [workspaceId, client, nonce])
 
   const reload = useCallback(() => setNonce((n) => n + 1), [])
-  return { appId, mcaId, status, loading, reload }
+  return { appId, mcaId, status, scope, installedBy, loading, reload }
 }

@@ -57,7 +57,11 @@ const jobManager = new JobManager({
 // Job worker (started on first async job)
 let jobWorker: JobWorker | null = null;
 
-// Cleanup old jobs on startup
+// Jobs a previous run left half-done can never finish: fail them, then clean up.
+const interrupted = jobManager.failInterruptedJobs();
+if (interrupted > 0) {
+  console.error(`⚠️  Marked ${interrupted} interrupted job(s) as failed`);
+}
 const cleaned = jobManager.cleanupOldJobs();
 if (cleaned > 0) {
   console.error(`🧹 Cleaned up ${cleaned} old jobs`);
@@ -811,13 +815,32 @@ server.tool('pdf-to-images', {
     const shown: string[] = [];
     const rotated: string[] = [];
     // One tesseract worker for the whole call, only to check orientation.
-    const detector = autoRotate === false ? null : await createOrientationDetector({ languages: ['spa', 'eng'] });
+    // Straightening is an extra: when the check is unavailable or fails, the
+    // pages are still attached as they are and the output says so.
+    let notStraightened = '';
+    let detector: Awaited<ReturnType<typeof createOrientationDetector>> | null = null;
+    if (autoRotate !== false) {
+      try {
+        detector = await createOrientationDetector({ languages: ['spa', 'eng'] });
+      } catch (error) {
+        notStraightened = error instanceof Error ? error.message : String(error);
+      }
+    }
     try {
       for (const src of sources) {
         const label = src.label === 'img' ? 'image' : `page ${src.label.slice(1)}`;
         // EXIF orientation first (camera photos), then content orientation.
         let png = await sharp(src.png, { failOn: 'none' }).rotate().png().toBuffer();
-        const angle = detector ? await detector.detect(png) : 0;
+        let angle = 0;
+        if (detector) {
+          try {
+            angle = await detector.detect(png);
+          } catch (error) {
+            notStraightened = error instanceof Error ? error.message : String(error);
+            await detector.dispose().catch(() => {});
+            detector = null;
+          }
+        }
         if (angle) {
           png = await sharp(png).rotate(angle).png().toBuffer();
           rotated.push(`${label} ${angle}°`);
@@ -847,8 +870,11 @@ server.tool('pdf-to-images', {
         ? `${shown.length} of ${totalPages} page(s) (${shown.join(', ')})${omitted > 0 ? `; ${omitted} more requested page(s) not shown — call again with \`pages\`` : ''}`
         : 'the image';
     const straightened = rotated.length ? ` Straightened automatically: ${rotated.join(', ')}.` : '';
+    const unchecked = notStraightened
+      ? ` Orientation was not checked${rotated.length ? ' for the remaining pages' : ''} (${notStraightened}); a sideways or upside-down page is shown as scanned.`
+      : '';
     return {
-      output: `Attached ${scope} of ${inputPath} as image(s) in your context.${straightened} Read them visually; if they are reported as not shown, use ocr-extract instead.`,
+      output: `Attached ${scope} of ${inputPath} as image(s) in your context.${straightened}${unchecked} Read them visually; if they are reported as not shown, use ocr-extract instead.`,
       attachments,
     };
   },

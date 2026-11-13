@@ -78,7 +78,7 @@ export function exemptIds(
   const voiceLive = voice.presence === "connecting" || voice.presence === "on"
   const out = new Set<string>()
   for (const w of windows) {
-    if (w.type === "browser") out.add(w.id)
+    if (w.type === "browser" || w.type === "terminal") out.add(w.id)
     else if (voiceLive && w.type === "chat" && voice.channelId && w.props.channelId === voice.channelId)
       out.add(w.id)
   }

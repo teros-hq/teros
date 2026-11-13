@@ -22,6 +22,7 @@
 import type { Db, Document, Filter } from 'mongodb';
 import type { DeletionReason } from '../models/deletion-log';
 import { getDeletionLogService } from './deletion-log-service';
+import { deleteAgentAvatarObjects } from './platform-objects';
 
 interface Step {
   collection: string;
@@ -85,6 +86,9 @@ export class DeletionService {
         { collection: 'agents', filter: { agentId } },
       ]),
     );
+    // The avatars uploaded for the agent end with it (OBJ-REQ-7): files,
+    // stored variants and records.
+    await deleteAgentAvatarObjects(this.db, agentId);
     return report;
   }
 
@@ -215,7 +219,6 @@ export class DeletionService {
         { collection: 'user_credentials', filter: { userId } },
         { collection: 'app_user_auth', filter: { userId } },
         { collection: 'user_providers', filter: { userId } },
-        { collection: 'coding_agent_credentials', filter: { userId } },
         { collection: 'oauth_states', filter: { userId } },
         { collection: 'mca_oauth_states', filter: { userId } },
         { collection: 'email_verifications', filter: { userId } },

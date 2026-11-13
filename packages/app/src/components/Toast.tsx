@@ -19,7 +19,6 @@ import type React from "react"
 import { useEffect } from "react"
 import { Platform, Pressable, useWindowDimensions, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { FONT_SANS } from "./mca/primitives/fonts"
 import { useColors } from "./mca/primitives/useColors"
 import { Ph, T } from "./ui/ds"
 
@@ -36,6 +35,7 @@ declare module "@tamagui/toast" {
   interface CustomData {
     type?: ToastType
     action?: ToastAction
+    secondary?: ToastAction
   }
 }
 
@@ -59,6 +59,7 @@ function CurrentToast() {
 
   const type = (toast.customData?.type as ToastType) || "info"
   const action = toast.customData?.action as ToastAction | undefined
+  const secondary = toast.customData?.secondary as ToastAction | undefined
   const tone = TONE[type]
   const tint = c.tint[tone.tint]
 
@@ -103,7 +104,7 @@ function CurrentToast() {
           {toast.title ? (
             <Toast.Title
               color={c.text}
-              fontFamily={FONT_SANS}
+              fontFamily="$body"
               fontSize={13}
               lineHeight={18}
               fontWeight="400"
@@ -114,7 +115,7 @@ function CurrentToast() {
           {toast.message ? (
             <Toast.Description
               color={c.text2}
-              fontFamily={FONT_SANS}
+              fontFamily="$body"
               fontSize={12}
               lineHeight={16}
               fontWeight="400"
@@ -135,6 +136,21 @@ function CurrentToast() {
           >
             <T step="sm" tone="accent">
               {action.label}
+            </T>
+          </Pressable>
+        ) : null}
+        {action && secondary ? (
+          <Pressable
+            onPress={secondary.onPress}
+            accessibilityRole="button"
+            testID="toast-secondary"
+            style={({ pressed }) => [
+              { marginLeft: 10, opacity: pressed ? 0.7 : 1 },
+              Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null,
+            ]}
+          >
+            <T step="sm" tone="text2">
+              {secondary.label}
             </T>
           </Pressable>
         ) : null}
@@ -200,12 +216,22 @@ export function useToast() {
   return {
     show: (
       title: string,
-      options?: { message?: string; type?: ToastType; duration?: number; action?: ToastAction },
+      options?: {
+        message?: string
+        type?: ToastType
+        duration?: number
+        action?: ToastAction
+        secondary?: ToastAction
+      },
     ) => {
       toast.show(title, {
         message: options?.message,
         duration: options?.duration,
-        customData: { type: options?.type || "info", action: options?.action },
+        customData: {
+          type: options?.type || "info",
+          action: options?.action,
+          secondary: options?.secondary,
+        },
       })
     },
     info: (title: string, message?: string) => {

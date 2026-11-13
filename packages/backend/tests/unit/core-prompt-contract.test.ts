@@ -88,10 +88,6 @@ describe("core prompt contract gate (F4·C3)", () => {
   })
 })
 
-/**
- * The Terminal + Claude Code section rides EVERY agent's prompt, installed or
- * not, so it must stay a short pointer: the playbook lives in the guide topic.
- */
 describe("core prompts — Terminal + Claude Code section", () => {
   const HEADING = "## Terminal and Claude Code"
   const MAX_CHARS = 1400
@@ -118,6 +114,30 @@ describe("core prompts — Terminal + Claude Code section", () => {
       expect(propose).toBeGreaterThan(check)
       expect(save).toBeGreaterThan(propose)
       expect(s).toContain("`user_preferences`")
+    })
+  }
+
+  for (const contract of CORE_PROMPT_CONTRACTS) {
+    it(`${contract.file}: the few must-do rules are in the prompt itself, with where to find the rest (011)`, () => {
+      const s = section(contract.file)
+      for (const needle of [
+        'terminal-create agent="claude"',
+        "API key of the workspace owner's Anthropic provider",
+        "on a login screen, stop and tell the user",
+        "terminal-request-control",
+        "terminal-release-control",
+        '"Agent off"',
+        "failing test",
+        "in your first reply, before you start",
+        "guide topic `terminal-claude-code`",
+        "`terminal-*` tool descriptions",
+      ])
+        expect(s).toContain(needle)
+    })
+
+    it(`[TW-AC-22] ${contract.file}: no Claude sign-in is handled by Teros, and the tools that are gone are not named`, () => {
+      const s = section(contract.file)
+      expect(s).not.toMatch(/request-sign-in|request-wheel|release-wheel|the wheel|\/login|Claude sign-in/i)
     })
   }
 

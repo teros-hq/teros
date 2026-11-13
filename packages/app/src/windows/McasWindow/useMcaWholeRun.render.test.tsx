@@ -11,7 +11,7 @@
  *   cd packages/app && npx vitest run src/windows/McasWindow/useMcaWholeRun.render.test.tsx
  */
 import { act, renderHook } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest"
 import type { McaData, McaResolvability, McaToolSchema } from "../../services/AppApi"
 import { useMcaWholeRun } from "./useMcaWholeRun"
 
@@ -24,9 +24,9 @@ const readOnlySchemas = [
   },
 ] as unknown as McaToolSchema[]
 
-let onRetestPress: ReturnType<typeof vi.fn>
-let ensureResolvability: ReturnType<typeof vi.fn>
-let ensureSchemas: ReturnType<typeof vi.fn>
+let onRetestPress: Mock<(mcaId: string, tool: string) => Promise<void>>
+let ensureResolvability: Mock<(mcaId: string) => Promise<McaResolvability | undefined>>
+let ensureSchemas: Mock<(mcaId: string) => Promise<McaToolSchema[]>>
 
 function mountRunner(cache = new Map<string, McaResolvability>()) {
   return renderHook(() =>

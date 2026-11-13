@@ -10,12 +10,17 @@
 
 import { create } from "zustand"
 import type { NavbarWorkspace } from "../../store/navbarStore"
+import type { MemberRole } from "@teros/shared"
+import { isAskedToUse, isBlockedOn } from "../../windows/TerminalWindow/sessionStatus"
 import type { TerminalSession } from "../../windows/TerminalWindow/terminalSessions"
+
+export type TerminalNeedKind = "blocked" | "request"
 
 export interface TerminalNeed {
   workspaceId: string
   workspaceName: string
   session: TerminalSession
+  kind: TerminalNeedKind
 }
 
 /** Workspaces whose terminals the person may see and answer (terminal.watch needs write). */
@@ -37,29 +42,51 @@ export function isBlocked(s: TerminalSession): boolean {
 export function selectTerminalNeeds(
   feeds: Record<string, TerminalSession[]>,
   workspaces: Pick<NavbarWorkspace, "workspaceId" | "name" | "role">[],
+  me?: string,
 ): TerminalNeed[] {
   const seen = new Set<string>()
   const needs: TerminalNeed[] = []
   for (const w of workspaces) {
     if (w.role === "read") continue
     for (const session of feeds[w.workspaceId] ?? []) {
-      if (!isBlocked(session) || seen.has(session.terminalId)) continue
-      // A session lives in its owner workspace; a stray copy elsewhere is not a second notice.
       if (session.ownerWorkspaceId && session.ownerWorkspaceId !== w.workspaceId) continue
-      seen.add(session.terminalId)
-      needs.push({ workspaceId: w.workspaceId, workspaceName: w.name, session })
+      for (const kind of kindsOf(session, me, w.role)) {
+        const key = `${session.terminalId}:${kind}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        needs.push({ workspaceId: w.workspaceId, workspaceName: w.name, session, kind })
+      }
     }
   }
   return needs.sort(
     (a, b) =>
-      since(a.session) - since(b.session) ||
-      a.session.terminalId.localeCompare(b.session.terminalId),
+      since(a) - since(b) ||
+      a.session.terminalId.localeCompare(b.session.terminalId) ||
+      a.kind.localeCompare(b.kind),
   )
 }
 
-function since(s: TerminalSession): number {
-  const at = s.agentState?.at ? Date.parse(s.agentState.at) : Number.NaN
+function kindsOf(
+  session: TerminalSession,
+  me: string | undefined,
+  role: MemberRole,
+): TerminalNeedKind[] {
+  const kinds: TerminalNeedKind[] = []
+  const blocked = me === undefined ? isBlocked(session) : isBlockedOn(session, me, role)
+  const asked = me === undefined ? !!session.wheelRequest : isAskedToUse(session, me, role)
+  if (blocked) kinds.push("blocked")
+  if (asked) kinds.push("request")
+  return kinds
+}
+
+function since(need: TerminalNeed): number {
+  if (need.kind === "request") return need.session.wheelRequest?.at ?? 0
+  const at = need.session.agentState?.at ? Date.parse(need.session.agentState.at) : Number.NaN
   return Number.isNaN(at) ? 0 : at
+}
+
+export function terminalNeedKey(need: Pick<TerminalNeed, "session" | "kind">): string {
+  return `${need.session.terminalId}:${need.kind}`
 }
 
 /** One question of one session: a new block (new `at`) is a new question. */

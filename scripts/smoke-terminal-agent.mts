@@ -10,8 +10,6 @@
  * the real Claude Code TUI with its hooks. The model behind Claude Code is a
  * local fake Anthropic API (scripts/smoke-terminal-fake-anthropic.mts) unless
  * SMOKE_REAL_ANTHROPIC=1 and ANTHROPIC_API_KEY are set (then the real API).
- * Credentials reach the session through the terminal domain's credential store
- * (a stub returning that key) — the same path "API key" sign-in uses.
  *
  * Steps, each one tool call:
  *   0. (window path) terminal.create preset=claude on a cold host, timed, and
@@ -21,10 +19,6 @@
  *   3. terminal-screen onlyChanges → nothing changed since the prompt's screen
  *   4. terminal-prompt "/exit" → Claude Code left, back at the shell
  *   5. terminal-run echo → output, finished
- *   5b. the wheel: the agent's write puts Atlas (agent record) on the seat;
- *      the user takes the wheel → the agent's terminal-wait returns early and
- *      its write is refused; the user gives it back with a note → the agent's
- *      next terminal-read carries the note, once
  *   6. terminal-list → one entry per session; terminal-destroy
  * Exits 1 on any failed expectation. Removes its containers.
  *
@@ -56,6 +50,7 @@ import { RUN_TOOL_MARKER, startFakeAnthropic } from "./smoke-terminal-fake-anthr
 const { createTestServer } = await import("@teros/testing")
 const { McaHttpClient } = await import("../packages/backend/src/services/mca-http-client")
 const { PtyManager } = await import("../packages/backend/src/services/pty-manager")
+const { ProviderService } = await import("../packages/backend/src/services/provider-service")
 const { runDocker, TermHostManager } = await import(
   "../packages/backend/src/services/terminal/term-host"
 )
@@ -206,27 +201,23 @@ async function main(): Promise<void> {
     const mcaManager = {
       executeTool: async () => ({ output: "", isError: false }),
     } as unknown as McaManager
-    // The person's key, as the credential store hands it to their sessions. Never printed.
     const key = REAL
       ? (process.env.ANTHROPIC_API_KEY as string)
       : `sk-ant-api03-${"fake".repeat(16)}`
-    const credentials = {
-      env: async () => ({
-        env: { ANTHROPIC_API_KEY: key },
-        label: "API key ····test",
-        mode: "apiKey",
-      }),
-    } as any
 
     server = await createTestServer({
       enableNavbarStack: true,
       enableMcaBridge: true,
       ptyManager,
       mcaManager,
-      terminalAgentCredentials: credentials,
       mockResponses: [{ text: "mock" }],
     } as any)
     const { db } = server
+    await new ProviderService(db).addProvider(OWNER_ID, {
+      providerType: "anthropic",
+      displayName: "Anthropic (smoke)",
+      auth: { apiKey: key },
+    })
     await db.collection("workspaces").insertOne({
       workspaceId: WORKSPACE_ID,
       ownerId: OWNER_ID,
@@ -435,7 +426,6 @@ async function main(): Promise<void> {
       run.data.finished === true && /^SMOKE_42$/m.test(run.data.output),
     )
 
-    // ── 5b. The wheel: take it from the agent, give it back with a note
     const driverEvents = events.filter((e) => e.terminalId === terminalId && e.reason === "driver")
     // terminal-create already seated it (the session is the agent's from the start).
     const firstSeat = driverEvents[0]?.session?.driver
@@ -470,51 +460,122 @@ async function main(): Promise<void> {
     const watchingNow = () => events.slice(sinceWait).some(isWatching)
     for (let i = 0; i < 100 && !watchingNow(); i++) await new Promise((r) => setTimeout(r, 100))
     step("the waiting agent is among the watchers", watchingNow())
-    const tookAt = Date.now()
-    const took = await wsAction(ui, "terminal.takeWheel", { terminalId })
+    const offAt = Date.now()
+    const off = await wsAction(ui, "terminal.agentControl", { terminalId, enabled: false })
     step(
-      "terminal.takeWheel: the user drives",
-      took.driver?.kind === "human" && took.driver.id === OWNER_ID && took.driver.name === "Owner",
-      JSON.stringify(took.driver),
+      'terminal.agentControl off ("Agent off"): the person is the one typing',
+      off.agentControl === false &&
+        off.driver?.kind === "human" &&
+        off.driver.id === OWNER_ID &&
+        off.driver.name === "Owner",
+      JSON.stringify(off),
     )
     const stopped = await waiting
-    show("terminal-wait (the user took the wheel)", stopped.text)
+    show('terminal-wait (the person switched to "Agent off")', stopped.text)
     step(
       "the agent's terminal-wait returned early (reason driver)",
-      stopped.data.reason === "driver" && Date.now() - tookAt < 5_000,
-      `reason=${stopped.data.reason} after ${Date.now() - tookAt} ms`,
+      stopped.data.reason === "driver" && Date.now() - offAt < 5_000,
+      `reason=${stopped.data.reason} after ${Date.now() - offAt} ms`,
     )
-    step("…and says who took it", /Owner took the wheel/.test(stopped.text))
+    step(
+      "…and says who switched it off",
+      /Owner switched this session to "Agent off"/.test(stopped.text),
+    )
     const refused = await tool("terminal-run", { terminalId, command: "echo NOPE" }).then(
       (r) => r.text,
       (e: Error) => e.message,
     )
-    show("terminal-run while the user drives", refused)
+    show("terminal-run while the person types", refused)
     step(
-      "the agent's write is refused while the user drives (an answer, not a failed call)",
-      /^Owner has the wheel; wait or ask them in chat/.test(refused) &&
-        /Nothing was typed/.test(refused),
+      "the agent's write is refused while the person types (an answer, not a failed call)",
+      /^Owner is typing in this session\. Ask for control with terminal-request-control/.test(
+        refused,
+      ) && /Nothing was typed/.test(refused),
     )
+    const sinceAsk = events.length
+    const asking = tool("terminal-request-control", { terminalId, reason: "run the numbers" })
+    const requested = () =>
+      events
+        .slice(sinceAsk)
+        .some(
+          (e) =>
+            e.terminalId === terminalId &&
+            e.reason === "wheel_request" &&
+            e.session?.wheelRequest?.agent?.id === AGENT_ID,
+        )
+    for (let i = 0; i < 100 && !requested(); i++) await new Promise((r) => setTimeout(r, 100))
+    step("the request shows on the session (with who asks)", requested())
+    const allowed = await wsAction(ui, "terminal.answerWheel", { terminalId, approve: true })
+    const asked = await asking
+    show("terminal-request-control (allowed)", asked.text)
+    step(
+      '"Allow" switches the session to "Agent" for the agent at once',
+      asked.data.outcome === "approved" &&
+        /Owner allowed it: you have control of/.test(asked.text) &&
+        allowed.driver?.kind === "agent" &&
+        allowed.driver.id === AGENT_ID,
+      JSON.stringify(allowed.driver),
+    )
+    const back = await tool("terminal-run", { terminalId, command: "echo CONTROL_$((40+2))" })
+    step("the agent types again", /^CONTROL_42$/m.test(back.data.output ?? ""))
+
+    await wsAction(ui, "terminal.agentControl", { terminalId, enabled: false })
     const gave = await wsAction(ui, "terminal.giveBack", {
       terminalId,
       note: "SMOKE: I ran the tests myself",
     })
     step(
-      "terminal.giveBack: back to the agent with the note",
+      "the person switches Agent on again and leaves a note",
       gave.driver?.kind === "agent" && gave.driver.note === "SMOKE: I ran the tests myself",
       JSON.stringify(gave.driver),
     )
     const after = await tool("terminal-read", { terminalId, lines: 5 })
-    show("terminal-read after the give-back", after.text)
+    show("terminal-read after the note", after.text)
     step(
       "the agent reads the note (handedBack)",
       after.data.handedBack?.note === "SMOKE: I ran the tests myself" &&
-        /Owner gave you the wheel back/.test(after.text),
+        /Owner switched "Agent" on again/.test(after.text),
     )
     const again = await tool("terminal-read", { terminalId, lines: 5 })
-    step("…only once", !again.data.handedBack && !/gave you the wheel back/.test(again.text))
-    const back = await tool("terminal-run", { terminalId, command: "echo WHEEL_$((40+2))" })
-    step("the agent drives again", /^WHEEL_42$/m.test(back.data.output ?? ""))
+    step("…only once", !again.data.handedBack && !/switched "Agent" on again/.test(again.text))
+
+    const personId = `t_person_${process.pid}`
+    await wsAction(
+      ui,
+      "terminal.create",
+      { terminalId: personId, appId: APP_ID, subscribe: false },
+      180_000,
+    )
+    const hidden = await tool("terminal-list")
+    step(
+      'a session a person opened ("Agent off") is not in the agent\'s list',
+      !hidden.data.sessions.some((s: any) => s.terminalId === personId),
+    )
+    const notYours = await tool("terminal-run", { terminalId: personId, command: "echo NOPE" }).then(
+      (r) => r.text,
+      (e: Error) => e.message,
+    )
+    show("terminal-run into the person's session", notYours)
+    step(
+      'the agent cannot reach it and is told about the "Agent" switch',
+      /"Agent off"/.test(notYours) && /switch it to "Agent"/.test(notYours),
+    )
+    const on = await wsAction(ui, "terminal.agentControl", { terminalId: personId, enabled: true })
+    step('the person switches it to "Agent"', on.agentControl === true, JSON.stringify(on))
+    const listed = await tool("terminal-list")
+    step(
+      "now the agent lists it, as a person's private session",
+      /opened by a person \(private to them\)/.test(
+        listed.text.split("\n").find((l: string) => l.includes(personId)) ?? "",
+      ),
+    )
+    const drove = await tool("terminal-run", {
+      terminalId: personId,
+      command: "echo PERSON_$((3*5))",
+    })
+    show("terminal-run (Agent on in the person's session)", drove.text)
+    step("the agent types there", /^PERSON_15$/m.test(drove.data.output ?? ""))
+    await wsAction(ui, "terminal.destroy", { terminalId: personId })
 
     // ── 6. List and close
     const list = await tool("terminal-list")

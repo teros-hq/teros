@@ -12,7 +12,6 @@ export {
   useFileUpload,
 } from './useFileUpload';
 export { type TabState, type TabWindow, useTabState } from './useTabState';
-export { useWindowDrag } from './useWindowDrag';
 export { type ResizeDirection, useWindowResize } from './useWindowResize';
 export {
   createTypedMcaToolsHook,

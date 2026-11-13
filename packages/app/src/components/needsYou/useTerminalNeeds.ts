@@ -5,11 +5,13 @@
  */
 
 import { useMemo } from "react"
+import { useAuthStore } from "../../store/authStore"
 import { useNavbarStore } from "../../store/navbarStore"
 import { selectTerminalNeeds, type TerminalNeed, useTerminalNeedsStore } from "./terminalNeeds"
 
 export function useTerminalNeeds(): TerminalNeed[] {
   const feeds = useTerminalNeedsStore((s) => s.feeds)
   const workspaces = useNavbarStore((s) => s.workspaces)
-  return useMemo(() => selectTerminalNeeds(feeds, workspaces), [feeds, workspaces])
+  const me = useAuthStore((s) => s.user?.userId)
+  return useMemo(() => selectTerminalNeeds(feeds, workspaces, me ?? ""), [feeds, workspaces, me])
 }

@@ -20,7 +20,17 @@ import React, {
   useRef,
   useState,
 } from "react"
-import { Platform, Pressable, type StyleProp, TextInput, type TextStyle, View } from "react-native"
+import {
+  type LayoutChangeEvent,
+  Platform,
+  Pressable,
+  type StyleProp,
+  StyleSheet,
+  TextInput,
+  type TextStyle,
+  View,
+  type ViewStyle,
+} from "react-native"
 import { FONT_MONO } from "../../components/mca/primitives/fonts"
 import { useColors } from "../../components/mca/primitives/useColors"
 import { Ph, T } from "../../components/ui/ds"
@@ -93,41 +103,245 @@ export function useBrowserInputStyles(): { inputStyle: TextStyle; newTabInputSty
  * agents act in a tab. `consent` is the value shown (optimistic until the
  * browser confirms).
  */
-export function ConsentToggle({ consent, onToggle }: { consent: boolean; onToggle: () => void }) {
+export function ConsentToggle({
+  consent,
+  onToggle,
+  testID = "nbw-consent",
+  disabled = false,
+  labels = CONSENT_LABELS,
+}: {
+  consent: boolean
+  onToggle: () => void
+  testID?: string
+  disabled?: boolean
+  labels?: { on: string; off: string }
+}) {
   const c = useColors()
+  const motion = useConsentMotion()
+  const Icon = motion ? ConsentIconMoving : ConsentIconStill
+  const Words = motion ? ConsentWordsMoving : ConsentWordsStill
   return (
     <Pressable
-      testID="nbw-consent"
+      testID={testID}
       onPress={onToggle}
+      disabled={disabled}
       accessibilityRole="switch"
-      accessibilityState={{ checked: consent }}
+      accessibilityState={{ checked: consent, disabled }}
       accessibilityLabel={consent ? "Agent control on" : "Agent control off"}
       hitSlop={4}
-      style={{
-        height: 30,
-        paddingHorizontal: 8,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 6,
-        borderRadius: 8,
-        flexShrink: 0,
-        backgroundColor: consent ? c.navActive : "transparent",
-        borderWidth: 1,
-        borderColor: consent ? c.borderAccent : "transparent",
-      }}
+      {...({ dataSet: { motion: motion ? "on" : "off" } } as object)}
+      style={[
+        {
+          height: 30,
+          paddingHorizontal: 8,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          borderRadius: 8,
+          flexShrink: 0,
+          backgroundColor: consent ? c.navActive : "transparent",
+          borderWidth: 1,
+          borderColor: consent ? c.borderAccent : "transparent",
+          opacity: disabled ? 0.5 : 1,
+        },
+        motion ? moving("background-color, border-color, opacity") : null,
+      ]}
     >
-      <Ph
-        name="robot"
-        size={16}
-        weight={consent ? "fill" : "regular"}
-        color={consent ? c.accent : c.text3}
-      />
-      <T step="codenote" style={{ color: consent ? c.text : c.text3 }}>
-        {consent ? "Agent" : "Agent off"}
-      </T>
+      <Icon consent={consent} />
+      <Words consent={consent} labels={labels} testID={`${testID}-tail`} />
     </Pressable>
   )
 }
+
+function ConsentIconStill({ consent }: { consent: boolean }) {
+  const c = useColors()
+  return (
+    <Ph
+      name="robot"
+      size={16}
+      weight={consent ? "fill" : "regular"}
+      color={consent ? c.accent : c.text3}
+    />
+  )
+}
+
+interface WordsProps {
+  consent: boolean
+  labels: { on: string; off: string }
+  testID: string
+}
+
+function ConsentWordsStill({ consent, labels }: WordsProps) {
+  const c = useColors()
+  return (
+    <T step="codenote" style={{ color: consent ? c.text : c.text3 }}>
+      {consent ? labels.on : labels.off}
+    </T>
+  )
+}
+
+function ConsentIconMoving({ consent }: { consent: boolean }) {
+  const c = useColors()
+  return (
+    <View style={{ width: 16, height: 16 }}>
+      <View style={[ICON_LAYER, { opacity: consent ? 0 : 1 }, moving("opacity")]}>
+        <Ph name="robot" size={16} weight="regular" color={c.text3} />
+      </View>
+      <View style={[ICON_LAYER, { opacity: consent ? 1 : 0 }, moving("opacity")]}>
+        <Ph name="robot" size={16} weight="fill" color={c.accent} />
+      </View>
+    </View>
+  )
+}
+
+function useLeavingWords(consent: boolean, tails: { on: string; off: string }) {
+  const [shown, setShown] = useState(consent)
+  const [leaving, setLeaving] = useState<string | null>(null)
+  const [moved, setMoved] = useState(false)
+  if (shown !== consent) {
+    setShown(consent)
+    setMoved(true)
+    setLeaving((consent ? tails.off : tails.on) || null)
+  }
+  useEffect(() => {
+    if (!leaving) return
+    const timer = setTimeout(() => setLeaving(null), CONSENT_MOTION_MS)
+    return () => clearTimeout(timer)
+  }, [leaving])
+  return { leaving, moved }
+}
+
+function useWordsWidth(tail: string) {
+  const [widths, setWidths] = useState<Record<string, number>>({})
+  const held = useRef<number | undefined>(undefined)
+  const measure = useCallback(
+    (e: LayoutChangeEvent) => {
+      const node = (e.nativeEvent as { target?: unknown }).target as
+        | Partial<HTMLElement>
+        | undefined
+      const width = node?.getBoundingClientRect?.().width || e.nativeEvent.layout.width
+      if (width > 0) setWidths((w) => (w[tail] === width ? w : { ...w, [tail]: width }))
+    },
+    [tail],
+  )
+  const known = tail === "" ? 0 : widths[tail]
+  if (known !== undefined) held.current = known
+  return { width: held.current, measure }
+}
+
+function ConsentWordsMoving({ consent, labels, testID }: WordsProps) {
+  const c = useColors()
+  const { stem, on, off } = useMemo(() => splitLabels(labels), [labels])
+  const tail = consent ? on : off
+  const { leaving, moved } = useLeavingWords(consent, { on, off })
+  const { width, measure } = useWordsWidth(tail)
+  const ink = [{ color: consent ? c.text : c.text3 }, moving("color")]
+  const shrinking = leaving !== null && leaving.length > tail.length
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      {stem ? (
+        <T step="codenote" style={ink}>
+          {stem}
+        </T>
+      ) : null}
+      <View
+        testID={testID}
+        style={[
+          TAIL,
+          { width },
+          moving("width", WIDTH_MS, shrinking ? CONSENT_MOTION_MS - WIDTH_MS : 0),
+        ]}
+      >
+        {leaving ? (
+          <T key={`out:${leaving}`} step="codenote" aria-hidden style={[ink, TAIL_OUT, fades.out]}>
+            {leaving}
+          </T>
+        ) : null}
+        {tail ? (
+          <T
+            key={`in:${tail}`}
+            step="codenote"
+            onLayout={measure}
+            style={[ink, { flexShrink: 0 }, moved ? fades.in : null]}
+          >
+            {tail}
+          </T>
+        ) : null}
+      </View>
+    </View>
+  )
+}
+
+const TAIL: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  alignSelf: "stretch",
+  minHeight: 12,
+  overflow: "hidden",
+}
+
+export const CONSENT_MOTION_MS = 200
+const CONSENT_EASE = "cubic-bezier(0.22, 1, 0.36, 1)"
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)"
+
+const WIDTH_MS = CONSENT_MOTION_MS * 0.7
+const FADE_MS = CONSENT_MOTION_MS * 0.45
+
+const moving = (property: string, ms = CONSENT_MOTION_MS, delay = 0) =>
+  ({
+    transitionProperty: property,
+    transitionDuration: `${ms}ms`,
+    transitionDelay: `${delay}ms`,
+    transitionTimingFunction: CONSENT_EASE,
+  }) as ViewStyle & TextStyle
+
+const ICON_LAYER: ViewStyle = { position: "absolute", top: 0, left: 0 }
+
+const TAIL_OUT: TextStyle = { position: "absolute", left: 0, flexShrink: 0, opacity: 0 }
+
+const fades = StyleSheet.create({
+  in: {
+    animationKeyframes: [{ "0%": { opacity: 0 }, "100%": { opacity: 1 } }],
+    animationDuration: `${FADE_MS}ms`,
+    animationDelay: `${CONSENT_MOTION_MS - FADE_MS}ms`,
+    animationFillMode: "backwards",
+    animationTimingFunction: "ease-out",
+  } as TextStyle,
+  out: {
+    animationKeyframes: [{ "0%": { opacity: 1 }, "100%": { opacity: 0 } }],
+    animationDuration: `${FADE_MS}ms`,
+    animationTimingFunction: "ease-out",
+  } as TextStyle,
+})
+
+export function splitLabels(labels: { on: string; off: string }) {
+  let n = 0
+  while (n < labels.on.length && n < labels.off.length && labels.on[n] === labels.off[n]) n++
+  return { stem: labels.on.slice(0, n), on: labels.on.slice(n), off: labels.off.slice(n) }
+}
+
+function useConsentMotion(): boolean {
+  const query = useMemo(
+    () =>
+      Platform.OS === "web" &&
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function"
+        ? window.matchMedia(REDUCED_MOTION)
+        : null,
+    [],
+  )
+  const [reduced, setReduced] = useState(() => query?.matches ?? true)
+  useEffect(() => {
+    if (!query) return
+    const onChange = () => setReduced(query.matches)
+    onChange()
+    query.addEventListener?.("change", onChange)
+    return () => query.removeEventListener?.("change", onChange)
+  }, [query])
+  return query !== null && !reduced
+}
+
+const CONSENT_LABELS = { on: "Agent", off: "Agent off" }
 
 /** The bookmark chips of the new-tab page (DBAB-REQ-10). */
 export function BookmarkRow({ onOpen }: { onOpen: (url: string) => void }) {

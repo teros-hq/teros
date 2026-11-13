@@ -23,7 +23,7 @@ import {
   PROVIDER_TYPES,
   type OAuthState,
 } from "../../components/onboarding/AddProviderForm"
-import { ProviderIcon } from "../../components/providers/ProviderIcons"
+import { hasProviderIcon, ProviderIcon } from "../../components/providers/ProviderIcons"
 import { resolveRetention } from "@teros/shared"
 import {
   RetentionBadge,
@@ -54,7 +54,6 @@ import {
 function ProviderLogo({ providerType, color }: { providerType: string; color?: string }) {
   const c = useColors()
   const tint = color || c.accent
-  const icon = <ProviderIcon providerType={providerType} size={20} color={tint} />
   return (
     <View
       style={{
@@ -67,8 +66,12 @@ function ProviderLogo({ providerType, color }: { providerType: string; color?: s
         flexShrink: 0,
       }}
     >
-      {/* ProviderIcon returns null for unknown types — fall back to a key */}
-      {icon ?? <Ph name="key" size={20} color={tint} />}
+      {/* No brand glyph for this type — fall back to a key */}
+      {hasProviderIcon(providerType) ? (
+        <ProviderIcon providerType={providerType} size={20} color={tint} />
+      ) : (
+        <Ph name="key" size={20} color={tint} />
+      )}
     </View>
   )
 }

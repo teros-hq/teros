@@ -26,6 +26,6 @@
     "@replit/codemirror-vim": "^6.3.0"
   },
   "devDependencies": {
-    "esbuild": "^0.20.0"
+    "esbuild": "^0.25.0"
   }
 }

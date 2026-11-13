@@ -47,12 +47,13 @@ function OpenRouterIcon({ size = 13, color = "currentColor" }: { size?: number; 
   )
 }
 
-function OllamaIcon({ size = 13 }: { size?: number; color?: string }) {
+function OllamaIcon({ size = 13, color = "#22c55e" }: { size?: number; color?: string }) {
   // Served by the configured backend (works offline with a local backend).
   return (
     <Image
       source={{ uri: `${backendUrl()}/static/logo-b26b34b9-83b.svg` }}
-      style={{ width: size, height: size, tintColor: "#22c55e" } as any}
+      tintColor={color}
+      style={{ width: size, height: size }}
     />
   )
 }
@@ -220,6 +221,11 @@ const PROVIDER_ICON_MAP: Record<string, React.FC<{ size?: number; color?: string
 }
 
 // ─── Public component ─────────────────────────────────────────────────────────
+
+/** Whether a provider type has a brand glyph — callers draw their own fallback when it does not. */
+export function hasProviderIcon(providerType: string): boolean {
+  return providerType in PROVIDER_ICON_MAP
+}
 
 export function ProviderIcon({
   providerType,

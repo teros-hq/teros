@@ -8,16 +8,17 @@
  */
 
 import type React from 'react';
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import type { SplitDirection } from '../../store/tilingStore';
 import { useTilingStore } from '../../store/tilingStore';
+import { beginResizeDrag, endResizeDrag } from '../../lib/resizeGuard';
 
 // ============================================
 // TYPES
 // ============================================
 
-export type DropZone = 'left' | 'right' | 'bottom' | 'tabs' | 'center';
+export type DropZone = 'left' | 'right' | 'bottom' | 'tabs' | 'center' | 'float';
 
 export interface DragState {
   /** ID de la ventana siendo arrastrada (o null si es grupo) */
@@ -39,6 +40,7 @@ export interface DropTarget {
   zone: DropZone;
   /** Insertion index for tabs (only when zone === 'tabs') */
   tabIndex?: number;
+  point?: { x: number; y: number };
 }
 
 interface DragDropContextValue {
@@ -58,7 +60,7 @@ interface DragDropContextValue {
   setDropTarget: (target: DropTarget | null) => void;
 
   /** Finalizar drag (drop o cancel) */
-  endDrag: () => void;
+  endDrag: (cancelled?: boolean) => void;
 
   /** Check whether a drag is in progress */
   isDragging: boolean;
@@ -100,6 +102,27 @@ export function DragDropProvider({ children, onDrop }: Props) {
 
   const setGlobalDrag = useTilingStore((state) => state.setGlobalDrag);
   const clearGlobalDrag = useTilingStore((state) => state.clearGlobalDrag);
+  const releaseRef = useRef<(() => void) | null>(null);
+  const shielding = useRef(false);
+  const shield = useCallback((on: boolean) => {
+    if (shielding.current === on) return;
+    shielding.current = on;
+    if (Platform.OS !== 'web') return;
+    const release = () => shield(false);
+    const events = ['dragend', 'drop', 'pointerdown'] as const;
+    if (on) {
+      beginResizeDrag();
+      for (const name of events) window.addEventListener(name, release, { capture: true, once: true });
+      releaseRef.current = () => {
+        for (const name of events) window.removeEventListener(name, release, true);
+      };
+    } else {
+      endResizeDrag();
+      releaseRef.current?.();
+      releaseRef.current = null;
+    }
+  }, []);
+  useEffect(() => () => shield(false), [shield]);
 
   const startDrag = useCallback((windowId: string, sourceContainerId: string, title: string) => {
     console.log('[DragDrop] Start drag:', windowId, 'from', sourceContainerId);
@@ -111,12 +134,13 @@ export function DragDropProvider({ children, onDrop }: Props) {
       isGroup: false,
     });
     setGlobalDrag(windowId, [windowId], false);
+    shield(true);
 
     // Change cursor on web
     if (Platform.OS === 'web') {
       document.body.style.cursor = 'grabbing';
     }
-  }, [setGlobalDrag]);
+  }, [setGlobalDrag, shield]);
 
   const startGroupDrag = useCallback(
     (windowIds: string[], sourceContainerId: string, title: string) => {
@@ -134,20 +158,22 @@ export function DragDropProvider({ children, onDrop }: Props) {
         isGroup: true,
       });
       setGlobalDrag(null, windowIds, true);
+      shield(true);
 
       if (Platform.OS === 'web') {
         document.body.style.cursor = 'grabbing';
       }
     },
-    [setGlobalDrag],
+    [setGlobalDrag, shield],
   );
 
   const setDropTarget = useCallback((target: DropTarget | null) => {
     setDropTargetState(target);
   }, []);
 
-  const endDrag = useCallback(() => {
-    if (dragState && dropTarget) {
+  const endDrag = useCallback((cancelled?: boolean) => {
+    const dropped = !(cancelled && dropTarget?.zone === 'float');
+    if (dragState && dropTarget && dropped) {
       console.log(
         '[DragDrop] Drop:',
         dragState.isGroup ? 'group' : dragState.windowId,
@@ -167,12 +193,13 @@ export function DragDropProvider({ children, onDrop }: Props) {
     setDragState(null);
     setDropTargetState(null);
     clearGlobalDrag();
+    shield(false);
 
     // Restaurar cursor
     if (Platform.OS === 'web') {
       document.body.style.cursor = '';
     }
-  }, [dragState, dropTarget, onDrop, clearGlobalDrag]);
+  }, [dragState, dropTarget, onDrop, clearGlobalDrag, shield]);
 
   const value: DragDropContextValue = {
     dragState,

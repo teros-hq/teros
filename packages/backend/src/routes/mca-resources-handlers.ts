@@ -32,7 +32,7 @@ import { checkRateLimit } from '../handlers/domains/workspace/add-member';
 import type { AgentInstance, AppToolPermissions, McpCatalogEntry, ToolPermission } from '../types/database';
 import { buildToolPermissionsView, isPrivateTool, normalizeToolName } from '../types/permissions';
 import { buildAppPermissionsView } from '../handlers/domains/app/_permissions-view';
-import { buildAvatarUrl } from '../lib/avatar-url';
+import { buildAvatarUrl, toStoredAvatarValue } from '../lib/avatar-url';
 import {
   broadcastAgentUpdated,
   buildAgentCreatedPayload,
@@ -274,7 +274,8 @@ export async function handleAgentUpdate(
   if (body.role) updates.role = body.role;
   if (body.intro) updates.intro = body.intro;
   if (body.responseStyle) updates.responseStyle = body.responseStyle;
-  if (body.avatarUrl) updates.avatarUrl = body.avatarUrl;
+  // A caller holds the resolved object URL: store the object id (OBJ-REQ-5).
+  if (body.avatarUrl) updates.avatarUrl = toStoredAvatarValue(body.avatarUrl);
   if (body.context !== undefined) updates.context = body.context;
 
   const agents = db.collection<AgentInstance>('agents');

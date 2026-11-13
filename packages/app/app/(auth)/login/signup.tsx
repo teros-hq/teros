@@ -2,23 +2,21 @@ import { useRouter } from "expo-router"
 import React, { useEffect, useRef, useState } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { Linking, Pressable, TextInput, View } from "react-native"
-import { GoogleIcon, MicrosoftIcon } from "../../../src/components/SocialIcons"
-import { useColors } from "../../../src/components/mca/primitives/useColors"
 import { normalizeAuthUser, useAuthStore } from "../../../src/store/authStore"
 import { setUser as setSentryUser } from "../../../src/lib/sentry"
 import { getTerosClient } from "../../../src/services/terosClientSingleton"
 import { setPendingEmailVerification } from "../../../src/services/pendingEmailVerification"
-import { Btn, Check, Field, FieldLabel, IconBtn, Ph, T } from "../../../src/components/ui/ds"
+import { Btn, Check, Field, FieldLabel, IconBtn, T } from "../../../src/components/ui/ds"
 import {
   AuthBanner,
   AuthBrand,
-  AuthDivider,
   AuthShell,
   AuthSwitch,
   AuthTitle,
-  ProviderBtn,
 } from "../../../src/components/auth/AuthShell"
 import { useSocialAuth } from "../../../src/components/auth/useSocialAuth"
+import { SocialSignIn } from "../../../src/components/auth/SocialSignIn"
+import { useSignInMethods } from "../../../src/components/auth/useSignInMethods"
 import { peekInviteParams } from "../../../src/lib/inviteParams"
 import { wsUrl } from "../../../src/config/runtime"
 
@@ -39,10 +37,10 @@ export default function SignUp() {
   const client = getTerosClient()
   const { login: authLogin, isAuthenticated } = useAuthStore()
   const { t } = useTranslation()
-  const c = useColors()
 
   // The terms gate EVERY way in: a social button without the box ticked
   // shows the same error the email path does and opens nothing.
+  const signInMethods = useSignInMethods()
   const social = useSocialAuth({
     intent: "signup",
     canStart: () => {
@@ -205,33 +203,10 @@ export default function SignUp() {
           </AuthBanner>
         ) : null}
 
-        {/* Providers — the same row as the sign-in card: most people land
-            here to create an account with the method they already use. */}
-        <View style={{ gap: 8 }}>
-          <ProviderBtn
-            full
-            icon={<GoogleIcon size={18} />}
-            label={t("auth.continueWithGoogle")}
-            onPress={social.google}
-            testID="signup-google"
-          />
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <ProviderBtn
-              icon={<Ph name="github-logo" size={17} color={c.text2} />}
-              label="GitHub"
-              onPress={social.github}
-              testID="signup-github"
-            />
-            <ProviderBtn
-              icon={<MicrosoftIcon size={15} />}
-              label="Microsoft"
-              onPress={social.microsoft}
-              testID="signup-microsoft"
-            />
-          </View>
-        </View>
-
-        <AuthDivider label={t("auth.orWithEmail", { defaultValue: "or with your email" })} />
+        {/* Providers the backend offers — the same block as the sign-in card:
+            most people land here to create an account with the method they
+            already use. Nothing when the backend offers none (SIGNM). */}
+        <SocialSignIn methods={signInMethods} onPress={social} testIDPrefix="signup" />
 
         {/* Name */}
         <View style={{ marginBottom: 14 }}>

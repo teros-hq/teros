@@ -17,9 +17,10 @@ import * as emailModule from "../../src/services/email-service"
 
 // Spread the real module so the EmailService class export stays intact;
 // mock.module is process-global in bun, and afterAll restores it.
+let configured = true
 mock.module("../../src/services/email-service", () => ({
   ...emailModule,
-  isEmailConfigured: () => true,
+  isEmailConfigured: () => configured,
   getEmailService: () => ({ sendAccessGranted }),
 }))
 
@@ -45,6 +46,7 @@ function makeUserService(transitioned: boolean) {
 }
 
 afterAll(() => {
+  configured = false
   mock.restore()
 })
 

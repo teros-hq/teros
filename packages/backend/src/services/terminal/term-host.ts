@@ -27,6 +27,12 @@
  * unpauses first: nothing ever waits on a frozen host.
  */
 
+import {
+  isSpace,
+  type Space,
+  terminalSessionPerson,
+  terminalSessionSpace,
+} from "@teros/shared"
 import { spawn } from "child_process"
 import { createHash } from "crypto"
 import { StringDecoder } from "string_decoder"
@@ -45,6 +51,30 @@ import { TmuxControlClient, tmuxQuote } from "./tmux-control"
 export const TERM_LABEL_STACK = "teros.term.stack"
 export const TERM_LABEL_APP = "teros.term.app"
 export const TERM_LABEL_WORKSPACE = "teros.term.workspace"
+export const TERM_LABEL_PERSON = "teros.term.person"
+export const HOME_LABEL_STACK = "teros.home.stack"
+export const HOME_LABEL_WORKSPACE = "teros.home.workspace"
+export const HOME_LABEL_PERSON = "teros.home.person"
+
+export function termHostKey(appId: string, person: string | null | undefined): string {
+  return person ? `${appId}~${person}` : appId
+}
+
+export const personOfCreator = terminalSessionPerson
+
+export const spaceOfSession = terminalSessionSpace
+
+export function hostPersonOf(session: {
+  createdBy?: string | null
+  space?: Space | null
+}): string | null {
+  return spaceOfSession(session) === "personal" ? personOfCreator(session.createdBy) : null
+}
+
+export interface PersonalHost {
+  person: string
+  seedSharedHome?: boolean
+}
 
 /** tmux socket name and session inside every host. */
 const TMUX_SOCKET = "teros"
@@ -72,6 +102,7 @@ export interface TermWindowMeta {
   createdAt: number
   /** How a coding agent in it signs in (chip text, never a secret), "" for none. */
   auth?: string
+  space?: Space
 }
 
 export interface TermWindow extends TermWindowMeta {
@@ -109,6 +140,7 @@ const META_FIELDS = [
   "#{@teros_created}",
   "#{@teros_auth}",
   "#{@teros_driver}",
+  "#{@teros_space}",
   "#{@teros_title}",
 ].join("\u001f")
 
@@ -135,8 +167,9 @@ function parseWindow(line: string): TermWindow | null {
     createdAt: Number(f[15]) || 0,
     auth: f[16] ?? "",
     lease: f[17] ?? "",
+    ...(isSpace(f[18]) ? { space: f[18] } : {}),
     // Last: a title may hold the separator.
-    title: f.slice(18).join("\u001f"),
+    title: f.slice(19).join("\u001f"),
   }
 }
 
@@ -145,12 +178,28 @@ function clean(value: string): string {
   return replaceControls(value, " ").slice(0, 200)
 }
 
+const MACHINE_OPTIONS = new Set(["@teros_driver"])
+
+function optionValue(name: string, value: string): string {
+  return MACHINE_OPTIONS.has(name) ? replaceControls(value, " ") : clean(value)
+}
+
 // ── docker CLI helper ───────────────────────────────────────────────────────
 
 export interface DockerResult {
   code: number
   stdout: string
   stderr: string
+  timedOutMs?: number
+}
+
+export function dockerFailure(r: DockerResult): string {
+  const said = r.stderr.trim() || r.stdout.trim()
+  if (r.timedOutMs) {
+    const late = `docker did not answer within ${Math.round(r.timedOutMs / 1000)} s (exit code ${r.code})`
+    return said ? `${said} (${late})` : late
+  }
+  return said || `docker exited with code ${r.code}`
 }
 
 export type DockerRunner = (
@@ -177,14 +226,18 @@ export const runDocker: DockerRunner = (args, timeoutMs = 30_000, input) =>
     child.stderr?.on("data", (d: Buffer) => {
       stderr += d.toString("utf8")
     })
-    const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs)
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      child.kill("SIGKILL")
+    }, timeoutMs)
     child.on("error", (err) => {
       clearTimeout(timer)
       resolve({ code: 127, stdout, stderr: stderr || err.message })
     })
     child.on("close", (code) => {
       clearTimeout(timer)
-      resolve({ code: code ?? 1, stdout, stderr })
+      resolve({ code: code ?? 1, stdout, stderr, ...(timedOut ? { timedOutMs: timeoutMs } : {}) })
     })
   })
 
@@ -238,7 +291,12 @@ export class TermHost {
     ) => ExecStream,
     private readonly docker: DockerRunner,
     private readonly historyLimit: number,
+    readonly person: string | null = null,
   ) {}
+
+  get key(): string {
+    return termHostKey(this.appId, this.person)
+  }
 
   get connected(): boolean {
     return this.control?.alive === true
@@ -270,7 +328,7 @@ export class TermHost {
         `tmux -L ${TMUX_SOCKET} -f /dev/null new-session -d -s ${TMUX_SESSION} -n keep -x 200 -y 50 'exec tail -f /dev/null'`,
     ])
     if (boot.code !== 0)
-      throw new Error(`terminal host ${this.container}: tmux did not start: ${boot.stderr.trim()}`)
+      throw new Error(`terminal host ${this.container}: tmux did not start: ${dockerFailure(boot)}`)
 
     const stream = this.execStream(
       this.container,
@@ -419,6 +477,7 @@ export class TermHost {
       control.command(`set -w ${target} @teros_created ${meta.createdAt}`),
       control.command(`set -w ${target} @teros_title ${tmuxQuote(clean(meta.title))}`),
       control.command(`set -w ${target} @teros_auth ${tmuxQuote(clean(meta.auth ?? ""))}`),
+      control.command(`set -w ${target} @teros_space ${tmuxQuote(spaceOfSession(meta))}`),
     ])
     return {
       ...meta,
@@ -445,7 +504,7 @@ export class TermHost {
 
   async setWindowOption(windowId: string, name: string, value: string): Promise<void> {
     const control = await this.ensureControl()
-    await control.command(`set -w -t ${windowId} ${name} ${tmuxQuote(clean(value))}`)
+    await control.command(`set -w -t ${windowId} ${name} ${tmuxQuote(optionValue(name, value))}`)
   }
 
   async setPaneOption(paneId: string, name: string, value: string): Promise<void> {
@@ -604,7 +663,7 @@ export class TermHost {
       if (r.code !== 0 && !/already paused/i.test(r.stderr)) {
         this.paused = false
         this.pausedAt = null
-        throw new Error(`terminal host ${this.container}: pause failed: ${r.stderr.trim()}`)
+        throw new Error(`terminal host ${this.container}: pause failed: ${dockerFailure(r)}`)
       }
       if (control.busy) await this.unpauseNow(Date.now())
     })
@@ -630,49 +689,10 @@ export class TermHost {
     if (!this.paused) return
     const r = await this.docker(["unpause", this.container], 15_000)
     if (r.code !== 0 && !/is not paused/i.test(r.stderr))
-      throw new Error(`terminal host ${this.container}: unpause failed: ${r.stderr.trim()}`)
+      throw new Error(`terminal host ${this.container}: unpause failed: ${dockerFailure(r)}`)
     this.paused = false
     this.pausedAt = null
     this.onUnpause?.(Date.now() - started)
-  }
-
-  // ── Scratch sessions: private flows no viewer can attach to ─────────────
-  // A separate tmux session (not `teros`): our control client never streams
-  // it, discovery never adopts it, and kill-session takes its history along.
-
-  async startScratch(
-    name: string,
-    command: string,
-    env: Record<string, string> = {},
-    cols = 200,
-    rows = 50,
-  ): Promise<void> {
-    const control = await this.ensureControl()
-    const envArgs = Object.entries(env).map(([k, v]) => `-e ${tmuxQuote(`${k}=${v}`)}`)
-    await control.command(
-      `new-session -d -s ${tmuxQuote(name)} -x ${cols} -y ${rows} ${envArgs.join(" ")} ${tmuxQuote(command)}`.replace(
-        / +/g,
-        " ",
-      ),
-    )
-  }
-
-  /** Rendered rows of a scratch session (trailing spaces trimmed). */
-  async scratchLines(name: string): Promise<string[]> {
-    const control = await this.ensureControl()
-    const lines = await control.command(`capture-pane -p -t ${tmuxQuote(`${name}:`)}`)
-    return lines.map((l) => l.replace(/\s+$/, ""))
-  }
-
-  async scratchType(name: string, text: string): Promise<void> {
-    const control = await this.ensureControl()
-    const paneLine = await control.command(`display -p -t ${tmuxQuote(`${name}:`)} '#{pane_id}'`)
-    await control.sendInput(paneLine[0] ?? "", text)
-  }
-
-  async killScratch(name: string): Promise<void> {
-    const control = await this.ensureControl()
-    await control.command(`kill-session -t ${tmuxQuote(name)}`).catch(() => {})
   }
 
   /** Run a bash script (stdin) in the host container, as root, outside any session. */
@@ -747,42 +767,47 @@ export class TermHostManager {
       options.historyLimit ?? (Number(process.env.TERMINAL_HISTORY_LIMIT) || 10_000)
   }
 
-  /** Container name of the host for a bash app: stack-scoped, deterministic. */
-  containerName(appId: string): string {
+  containerName(appId: string, person: string | null = null): string {
     const stack = createHash("sha256").update(this.stackId).digest("hex").slice(0, 6)
-    return `teros-term-${stack}-${appId
+    const app = appId
       .replace(/[^a-zA-Z0-9]/g, "")
       .slice(-8)
-      .toLowerCase()}`
+      .toLowerCase()
+    return person ? `teros-term-${stack}-${app}-u${shortHash(person)}` : `teros-term-${stack}-${app}`
   }
 
-  get(appId: string): TermHost | undefined {
-    return this.hosts.get(appId)
+  homeVolumeName(workspaceId: string, person: string): string {
+    const stack = createHash("sha256").update(this.stackId).digest("hex").slice(0, 6)
+    return `teros-home-${stack}-${shortHash(workspaceId)}-${shortHash(person)}`
+  }
+
+  get(key: string): TermHost | undefined {
+    return this.hosts.get(key)
   }
 
   all(): TermHost[] {
     return [...this.hosts.values()]
   }
 
-  /** The running host for this app, if there is one (no container is started). */
-  async running(appId: string): Promise<TermHost | null> {
-    const known = this.hosts.get(appId)
+  async running(appId: string, person: string | null = null): Promise<TermHost | null> {
+    const known = this.hosts.get(termHostKey(appId, person))
     if (known && (await this.isRunning(known.container))) return known
     return null
   }
 
-  /**
-   * Get or create the host for a bash app. `cloneFrom` is the warmed bash MCA
-   * container whose configuration the host copies; it is only read when the
-   * host has to be created.
-   */
-  ensure(appId: string, workspaceId: string, cloneFrom: () => Promise<string>): Promise<TermHost> {
-    const pending = this.starting.get(appId)
+  ensure(
+    appId: string,
+    workspaceId: string,
+    cloneFrom: () => Promise<string>,
+    personal?: PersonalHost,
+  ): Promise<TermHost> {
+    const key = termHostKey(appId, personal?.person)
+    const pending = this.starting.get(key)
     if (pending) return pending
-    const p = this.ensureInner(appId, workspaceId, cloneFrom).finally(() =>
-      this.starting.delete(appId),
+    const p = this.ensureInner(appId, workspaceId, cloneFrom, personal).finally(() =>
+      this.starting.delete(key),
     )
-    this.starting.set(appId, p)
+    this.starting.set(key, p)
     return p
   }
 
@@ -790,9 +815,11 @@ export class TermHostManager {
     appId: string,
     workspaceId: string,
     cloneFrom: () => Promise<string>,
+    personal?: PersonalHost,
   ): Promise<TermHost> {
-    const name = this.containerName(appId)
-    const known = this.hosts.get(appId)
+    const person = personal?.person ?? null
+    const name = this.containerName(appId, person)
+    const known = this.hosts.get(termHostKey(appId, person))
     if (known && (await this.isRunning(name))) return known
     if (!(await this.isRunning(name))) {
       if (this.hosts.size >= this.maxHosts && !known) {
@@ -800,18 +827,26 @@ export class TermHostManager {
           `Terminal host limit reached (${this.maxHosts}). Close idle terminals and retry.`,
         )
       }
-      await this.create(name, appId, workspaceId, await cloneFrom())
+      await this.create(name, appId, workspaceId, await cloneFrom(), personal)
     }
     const host = this.track(
-      new TermHost(name, appId, workspaceId, this.execStream, this.docker, this.historyLimit),
+      new TermHost(
+        name,
+        appId,
+        workspaceId,
+        this.execStream,
+        this.docker,
+        this.historyLimit,
+        person,
+      ),
     )
     await host.ensureControl()
     return host
   }
 
   private track(host: TermHost): TermHost {
-    this.hosts.get(host.appId)?.disconnect()
-    this.hosts.set(host.appId, host)
+    this.hosts.get(host.key)?.disconnect()
+    this.hosts.set(host.key, host)
     return host
   }
 
@@ -820,34 +855,92 @@ export class TermHostManager {
     return r.code === 0 && r.stdout.trim() === "true"
   }
 
-  /** `docker run` the host as a clone of the bash MCA container's isolation settings. */
   private async create(
     name: string,
     appId: string,
     workspaceId: string,
     source: string,
+    personal?: PersonalHost,
   ): Promise<void> {
     const inspect = await this.docker(["inspect", source], 15_000)
-    if (inspect.code !== 0) throw new Error(`cannot inspect ${source}: ${inspect.stderr.trim()}`)
+    if (inspect.code !== 0) throw new Error(`cannot inspect ${source}: ${dockerFailure(inspect)}`)
     const [info] = JSON.parse(inspect.stdout) as InspectedContainer[]
+    const home = personal ? await this.privateHome(info, workspaceId, personal) : null
     const args = cloneRunArgs(info, {
       name,
       labels: {
         [TERM_LABEL_STACK]: this.stackId,
         [TERM_LABEL_APP]: appId,
         [TERM_LABEL_WORKSPACE]: workspaceId,
+        ...(personal ? { [TERM_LABEL_PERSON]: personal.person } : {}),
       },
+      home,
     })
     await this.docker(["rm", "-f", name], 30_000)
     const run = await this.docker(args.run, 120_000)
     if (run.code !== 0)
       throw new Error(
-        `terminal host ${name} did not start: ${run.stderr.trim() || run.stdout.trim()}`,
+        `terminal host ${name} did not start: ${dockerFailure(run)}`,
       )
     for (const net of args.extraNetworks) {
       await this.docker(["network", "connect", net, name], 15_000)
     }
     console.log(`[TermHost] started ${name} for app ${appId} (clone of ${source})`)
+  }
+
+  private async privateHome(
+    info: InspectedContainer,
+    workspaceId: string,
+    personal: PersonalHost,
+  ): Promise<PrivateHome | null> {
+    const path = homeOf(info)
+    if (!path) return null
+    const volume = this.homeVolumeName(workspaceId, personal.person)
+    const exists = (await this.docker(["volume", "inspect", volume], 15_000)).code === 0
+    if (!exists) {
+      const made = await this.docker(
+        [
+          "volume",
+          "create",
+          "--label",
+          `${HOME_LABEL_STACK}=${this.stackId}`,
+          "--label",
+          `${HOME_LABEL_WORKSPACE}=${workspaceId}`,
+          "--label",
+          `${HOME_LABEL_PERSON}=${personal.person}`,
+          volume,
+        ],
+        30_000,
+      )
+      if (made.code !== 0) throw new Error(`private home ${volume}: ${dockerFailure(made)}`)
+      const shared = sharedHomeSource(info, path)
+      if (personal.seedSharedHome && shared) await this.seedHome(info.Config.Image, shared, volume)
+    }
+    return { volume, path }
+  }
+
+  private async seedHome(image: string, shared: string, volume: string): Promise<void> {
+    const copy = await this.docker(
+      [
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "-v",
+        `${shared}:/from:ro`,
+        "-v",
+        `${volume}:/to`,
+        "--entrypoint",
+        "cp",
+        image,
+        "-a",
+        "/from/.",
+        "/to/",
+      ],
+      120_000,
+    )
+    if (copy.code !== 0)
+      console.warn(`[TermHost] could not copy the shared home into ${volume}: ${dockerFailure(copy)}`)
   }
 
   /** Re-attach every host of this stack still running or frozen (backend boot). Returns them. */
@@ -858,17 +951,25 @@ export class TermHostManager {
         "--filter",
         `label=${TERM_LABEL_STACK}=${this.stackId}`,
         "--format",
-        `{{.Names}}\t{{.Label "${TERM_LABEL_APP}"}}\t{{.Label "${TERM_LABEL_WORKSPACE}"}}\t{{.State}}`,
+        `{{.Names}}\t{{.Label "${TERM_LABEL_APP}"}}\t{{.Label "${TERM_LABEL_WORKSPACE}"}}\t{{.State}}\t{{.Label "${TERM_LABEL_PERSON}"}}`,
       ],
       30_000,
     )
     if (r.code !== 0) return []
     const found: TermHost[] = []
     for (const row of r.stdout.split("\n").filter(Boolean)) {
-      const [name, appId, workspaceId, state] = row.split("\t")
+      const [name, appId, workspaceId, state, person] = row.split("\t")
       if (!name || !appId || !workspaceId) continue
       const host = this.track(
-        new TermHost(name, appId, workspaceId, this.execStream, this.docker, this.historyLimit),
+        new TermHost(
+          name,
+          appId,
+          workspaceId,
+          this.execStream,
+          this.docker,
+          this.historyLimit,
+          person || null,
+        ),
       )
       // Frozen, not dead (`docker ps` lists paused containers): the first command unpauses it.
       host.paused = state === "paused"
@@ -882,16 +983,40 @@ export class TermHostManager {
    * its sessions were saved to sleep. The tmux server is stopped first, so the
    * shells get their SIGHUP and save their history on the persistent volume.
    */
-  async remove(appId: string, why = "no terminals left"): Promise<void> {
-    const host = this.hosts.get(appId)
+  async remove(key: string, why = "no terminals left"): Promise<void> {
+    const host = this.hosts.get(key)
     host?.disconnect()
-    this.hosts.delete(appId)
-    const name = this.containerName(appId)
+    this.hosts.delete(key)
+    const [appId, person] = key.split("~")
+    const name = host?.container ?? this.containerName(appId ?? key, person ?? null)
     await this.docker(["unpause", name], 15_000)
     await this.docker(["exec", name, "tmux", "-L", TMUX_SOCKET, "kill-server"], 15_000)
     await this.docker(["rm", "-f", name], 30_000)
     console.log(`[TermHost] removed ${name} (${why})`)
   }
+}
+
+function shortHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 12)
+}
+
+interface PrivateHome {
+  volume: string
+  path: string
+}
+
+function homeOf(info: InspectedContainer): string | null {
+  const home = (info.Config?.Env ?? []).find((e) => e.startsWith("HOME="))?.slice(5)
+  return home?.startsWith("/") ? home : null
+}
+
+function sharedHomeSource(info: InspectedContainer, home: string): string | null {
+  for (const m of info.Mounts ?? []) {
+    if (m.Type !== "bind") continue
+    if (home === m.Destination) return m.Source
+    if (home.startsWith(`${m.Destination}/`)) return `${m.Source}${home.slice(m.Destination.length)}`
+  }
+  return null
 }
 
 function sanitize(value: string): string {
@@ -904,7 +1029,7 @@ function sanitize(value: string): string {
  */
 export function cloneRunArgs(
   info: InspectedContainer,
-  opts: { name: string; labels: Record<string, string> },
+  opts: { name: string; labels: Record<string, string>; home?: PrivateHome | null },
 ): { run: string[]; extraNetworks: string[] } {
   const hc = info.HostConfig ?? {}
   // No healthcheck: the image's probes the MCA server, which a terminal host never runs.
@@ -934,6 +1059,7 @@ export function cloneRunArgs(
     const source = m.Type === "volume" && m.Name ? m.Name : m.Source
     run.push("-v", `${source}:${m.Destination}:${m.RW ? "rw" : "ro"}`)
   }
+  if (opts.home) run.push("-v", `${opts.home.volume}:${opts.home.path}:rw`)
   for (const e of info.Config?.Env ?? []) {
     if (!SKIPPED_ENV.test(e)) run.push("-e", e)
   }

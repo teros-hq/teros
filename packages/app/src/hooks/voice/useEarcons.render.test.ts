@@ -54,7 +54,7 @@ describe('useEarcons (§3.6 — the second state channel)', () => {
       resume: vi.fn(),
       close: vi.fn(),
     }
-    vi.stubGlobal('AudioContext', vi.fn(() => ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return ctx }))
     // The web guard checks Platform.OS === 'web' — jsdom reports web.
     const { result } = renderHook(() => useEarcons())
     expect(() => result.current.play('presence_on')).not.toThrow()

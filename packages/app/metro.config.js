@@ -96,7 +96,24 @@ const QDRANT_BROWSER_BUILD = path.resolve(
 //
 // This only manifests during `expo export --platform web` (static rendering),
 // not during dev. Pointing directly to the CJS entry avoids the wrapper.
-const UUID_CJS_ENTRY = path.resolve(monorepoRoot, 'node_modules/uuid/dist/index.js');
+//
+// The entry is looked up, not hard-coded: where yarn puts `uuid` depends on
+// which workspaces are installed (the frontend image installs only some), and
+// the CJS file moved from `dist/index.js` (v9) to `dist/cjs-browser/index.js`
+// (v11). `@teros/shared` is the package that asks for it, so its copy wins.
+const UUID_CJS_ENTRY = (() => {
+  const fs = require('fs');
+  for (const dir of [
+    path.resolve(monorepoRoot, 'packages/shared/node_modules/uuid'),
+    path.resolve(monorepoRoot, 'node_modules/uuid'),
+  ]) {
+    for (const file of ['dist/cjs-browser/index.js', 'dist/index.js']) {
+      const candidate = path.join(dir, file);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  throw new Error('metro.config.js: no CJS entry of `uuid` found under node_modules');
+})();
 
 // 6. Per-icon Lucide imports resolve to the ESM files on web (LOADP-REQ-1).
 //

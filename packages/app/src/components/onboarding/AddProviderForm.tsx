@@ -32,6 +32,7 @@ import { Button, Input, Text, XStack, YStack } from 'tamagui'
 import { colors as semanticColors } from '../mca/primitives/colors'
 import { useColors } from '../mca/primitives/useColors'
 import { useEdition } from '../../config/edition'
+import { hasProviderIcon, ProviderIcon } from '../providers/ProviderIcons'
 
 // ── Edition gate (TER-EDITION) ────────────────────────────────────────────────
 // Local Ollama is self-hosted-only: the daemon would run on the shared cloud
@@ -234,6 +235,14 @@ export const PROVIDER_TYPES: ProviderTypeInfo[] = [
     authType: 'openai-compatible' as const,
   },
 ]
+
+// ── ProviderTypeGlyph ─────────────────────────────────────────────────────────
+
+/** The brand glyph of a provider type, a generic cloud when the type has none. */
+function ProviderTypeGlyph({ type, size, color }: { type: string; size: number; color?: string }) {
+  if (!hasProviderIcon(type)) return <Cloud size={size} color={color} />
+  return <ProviderIcon providerType={type} size={size} color={color} />
+}
 
 // ── OAuthState ────────────────────────────────────────────────────────────────
 
@@ -599,7 +608,7 @@ export function AddProviderForm({
                 backgroundColor={`${type.color}15`}
                 justifyContent="center" alignItems="center"
               >
-                <Cloud size={18} color={type.color} />
+                <ProviderTypeGlyph type={type.id} size={18} color={type.color} />
               </YStack>
               <YStack flex={1}>
                 <Text fontSize="$3" fontWeight="500" color={c.text}>{type.name}</Text>
@@ -620,7 +629,7 @@ export function AddProviderForm({
               backgroundColor={`${typeInfo?.color}15`}
               justifyContent="center" alignItems="center"
             >
-              <Cloud size={14} color={typeInfo?.color} />
+              <ProviderTypeGlyph type={typeInfo?.id ?? ''} size={14} color={typeInfo?.color} />
             </YStack>
             <Text fontSize="$3" color={c.text}>{typeInfo?.name}</Text>
             {!oauthState && (

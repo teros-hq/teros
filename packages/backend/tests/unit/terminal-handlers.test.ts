@@ -46,6 +46,9 @@ type PtySeed = {
   lifecycle?: "awake" | "frozen" | "sleeping"
   /** ensureAwake() fails (a sleeping session that cannot be brought back). */
   wakeFails?: boolean
+  createdBy?: string
+  space?: "personal" | "shared"
+  watchable?: boolean
 }
 function makePtyManager(seed: PtySeed[] = []) {
   const sessions = new Map<string, PtySeed>(
@@ -60,6 +63,7 @@ function makePtyManager(seed: PtySeed[] = []) {
     read: [] as any[],
     waitFor: [] as any[],
     ensureAwake: [] as any[],
+    spaces: [] as any[],
   }
   return {
     calls,
@@ -83,8 +87,9 @@ function makePtyManager(seed: PtySeed[] = []) {
     },
     ownerOf: (id: string) => sessions.get(id)?.ownerWorkspaceId,
     isHost: (id: string) => sessions.get(id)?.host === true,
-    create(id: string, containerId: string, cols: number, rows: number, owner?: string) {
+    create(id: string, containerId: string, cols: number, rows: number, owner?: string, by?: string, space?: string) {
       calls.create.push([id, containerId, cols, rows, owner])
+      calls.spaces.push([id, by, space])
       if (sessions.has(id)) return
       sessions.set(id, { terminalId: id, ownerWorkspaceId: owner, bufferStartLine: 0, buffer: [] })
     },
@@ -172,6 +177,9 @@ function makePtyManager(seed: PtySeed[] = []) {
         lifecycle: s.lifecycle ?? "awake",
         bufferSize: (s.buffer ?? []).length,
         ownerWorkspaceId: s.ownerWorkspaceId,
+        createdBy: s.createdBy ?? "",
+        space: s.space,
+        watchable: s.watchable,
       }))
     },
     describe(id: string) {
@@ -255,7 +263,11 @@ function setup(
     subscribeSession: mock(() => {}),
     unsubscribeSession: mock(() => {}),
   } as any
-  const mcaService = { getApp: mock(async () => opts.app ?? null) } as any
+  const mcaService = {
+    getApp: mock(async (appId: string) =>
+      appId === "app_terminal" ? { appId, ownerId: "work_mine" } : (opts.app ?? null),
+    ),
+  } as any
   const mcaManager = { executeTool: mock(async () => ({})) } as any
   const exec = mock(() => opts.execResult ?? "mca-teros-bash-34567890\n")
   register(router, {
@@ -278,23 +290,20 @@ function setup(
 // ---------------------------------------------------------------------------
 
 describe("terminal register", () => {
-  it("registra exactamente las 27 actions del dominio", () => {
+  it("registra exactamente las 27 actions del dominio: ninguna para iniciar sesión", () => {
     const { handlers } = setup()
     expect([...handlers.keys()].sort()).toEqual([
-      "terminal.agentAuthLoginCancel",
-      "terminal.agentAuthLoginFinish",
-      "terminal.agentAuthLoginStart",
-      "terminal.agentAuthLoginState",
-      "terminal.agentAuthSet",
-      "terminal.agentAuthShare",
-      "terminal.agentAuthSignOut",
-      "terminal.agentAuthStatus",
+      "terminal.agentControl",
+      "terminal.answerWheel",
+      "terminal.cancelClose",
       "terminal.create",
       "terminal.destroy",
       "terminal.giveBack",
       "terminal.input",
       "terminal.list",
       "terminal.read",
+      "terminal.releaseWheel",
+      "terminal.requestWheel",
       "terminal.resize",
       "terminal.reveal",
       "terminal.screen",
@@ -308,6 +317,7 @@ describe("terminal register", () => {
       "terminal.wait",
       "terminal.waitFor",
       "terminal.watch",
+      "terminal.watchable",
       "terminal.write",
       "terminal.yield",
     ])
@@ -548,6 +558,52 @@ describe("terminal.destroy", () => {
     expect(res).toEqual({ ok: true })
     expect(ptyManager.calls.destroy).toEqual([["t1"]])
     expect(pubSubService.unsubscribeSession).toHaveBeenCalledWith("sess1", "terminal:t1")
+  })
+
+  it("un agente que cierra un id que no existe → TERMINAL_NOT_FOUND (no 'Closed') (016)", async () => {
+    const { handlers, ptyManager } = setup()
+    await expect(
+      handlers.get("terminal.destroy")!(bridgeCtx("u1"), { terminalId: "term_does_not_exist_qa" }),
+    ).rejects.toMatchObject({ code: "TERMINAL_NOT_FOUND" })
+    expect(ptyManager.calls.destroy).toEqual([])
+  })
+
+  it("con undoMs el servidor cierra al acabar la ventana, sin el cliente; cancelClose dentro de ella la conserva (017)", async () => {
+    const { handlers, ptyManager } = setup({
+      ptySeed: [
+        { terminalId: "t1", ownerWorkspaceId: "work_mine" },
+        { terminalId: "t2", ownerWorkspaceId: "work_mine" },
+      ],
+      ownerByWorkspace: { work_mine: "u1" },
+    })
+    expect(await handlers.get("terminal.destroy")!(ctx("u1"), { terminalId: "t1", undoMs: 40 })).toMatchObject({
+      ok: true,
+      closingInMs: 40,
+    })
+    await handlers.get("terminal.destroy")!(ctx("u1"), { terminalId: "t2", undoMs: 40 })
+    expect(ptyManager.calls.destroy).toEqual([])
+    expect(await handlers.get("terminal.cancelClose")!(ctx("u1"), { terminalId: "t2" })).toEqual({
+      ok: true,
+      cancelled: true,
+    })
+    await new Promise((r) => setTimeout(r, 80))
+    expect(ptyManager.calls.destroy).toEqual([["t1"]])
+  })
+
+  it("el cierre diferido hace lo mismo que el inmediato (quita la suscripción); un cancelClose tardío dice que ya no (017)", async () => {
+    const { handlers, ptyManager, pubSubService } = setup({
+      ptySeed: [{ terminalId: "t1", ownerWorkspaceId: "work_mine" }],
+      ownerByWorkspace: { work_mine: "u1" },
+    })
+    await handlers.get("terminal.destroy")!(ctx("u1"), { terminalId: "t1", undoMs: 30 })
+    expect(pubSubService.unsubscribeSession).not.toHaveBeenCalled()
+    await new Promise((r) => setTimeout(r, 60))
+    expect(ptyManager.calls.destroy).toEqual([["t1"]])
+    expect(pubSubService.unsubscribeSession).toHaveBeenCalledWith("sess1", "terminal:t1")
+    expect(await handlers.get("terminal.cancelClose")!(ctx("u1"), { terminalId: "t1" })).toEqual({
+      ok: true,
+      cancelled: false,
+    })
   })
 
   it("sin sesión PTY → {ok:true} y limpia la suscripción propia", async () => {
@@ -1369,7 +1425,7 @@ describe("terminal.wait / terminal.reveal — validation and authz", () => {
 
   it("reveal → the manager's reveal for an own session", async () => {
     const { handlers, ptyManager } = setup({
-      ptySeed: [{ terminalId: "t1", ownerWorkspaceId: "work_mine" }],
+      ptySeed: [{ terminalId: "t1", ownerWorkspaceId: "work_mine", createdBy: "agent:app_terminal" }],
       ownerByWorkspace: { work_mine: "u1" },
     })
     expect(await handlers.get("terminal.reveal")!(bridgeCtx("u1"), { terminalId: "t1" })).toEqual({
@@ -1389,7 +1445,7 @@ describe("frozen and sleeping sessions wake on use (pty-manager lifecycle)", () 
     setup({
       app: APP,
       ptySeed: [
-        { terminalId: "t1", ownerWorkspaceId: "work_mine", buffer: ["a"], lifecycle, ...extra },
+        { terminalId: "t1", ownerWorkspaceId: "work_mine", buffer: ["a"], lifecycle, createdBy: "agent:app_terminal", ...extra },
       ],
       ownerByWorkspace: { work_mine: "u1" },
     })
@@ -1466,5 +1522,57 @@ describe("frozen and sleeping sessions wake on use (pty-manager lifecycle)", () 
     })
     // No setPinned on the manager any more: nothing to call, no error.
     expect(res).toHaveProperty("session")
+  })
+})
+
+describe("spaces on the paths without a terminal host, and for someone who only watches", () => {
+  it("[SPACE-AC-10] without terminal hosts a shared terminal is still recorded as shared, a personal one as personal", async () => {
+    const { handlers, ptyManager } = setup({ app: APP, ownerByWorkspace: { work_mine: "u1" } })
+    await handlers.get("terminal.create")!(ctx("u1"), {
+      terminalId: "t_shared",
+      appId: APP.appId,
+      space: "shared",
+    })
+    await handlers.get("terminal.create")!(ctx("u1"), { terminalId: "t_mine", appId: APP.appId })
+    expect(ptyManager.calls.spaces).toEqual([
+      ["t_shared", "u1", "shared"],
+      ["t_mine", "u1", "personal"],
+    ])
+  })
+
+  it("[SPACE-AC-15] a member who only watches cannot wake the terminal: asleep stays asleep until its person uses it", async () => {
+    const { handlers, ptyManager } = setup({
+      app: APP,
+      ptySeed: [
+        {
+          terminalId: "t1",
+          ownerWorkspaceId: "work_mine",
+          createdBy: "u1",
+          watchable: true,
+          lifecycle: "sleeping",
+          buffer: ["a"],
+        },
+      ],
+      ownerByWorkspace: { work_mine: "u1" },
+      members: [["work_mine", "u2", "write"]],
+    })
+    for (const [action, data] of [
+      ["terminal.read", {}],
+      ["terminal.screen", {}],
+      ["terminal.status", { wake: true }],
+      ["terminal.wait", { until: "quiet", quietMs: 100, timeoutMs: 200 }],
+      ["terminal.create", { appId: APP.appId }],
+    ] as Array<[string, Record<string, unknown>]>)
+      await expect(
+        handlers.get(action)!(ctx("u2"), { terminalId: "t1", ...data }),
+      ).rejects.toMatchObject({ code: "TERMINAL_ASLEEP" })
+    expect(ptyManager.calls.ensureAwake).toEqual([])
+    expect((await handlers.get("terminal.status")!(ctx("u2"), { terminalId: "t1" })).status).toBeTruthy()
+    const mine = await handlers.get("terminal.read")!(ctx("u1"), { terminalId: "t1" })
+    expect(mine.woke).toBe("sleeping")
+    expect(ptyManager.calls.ensureAwake).toEqual([["t1", "u1"]])
+    await expect(
+      handlers.get("terminal.read")!(ctx("u2"), { terminalId: "t1" }),
+    ).resolves.toMatchObject({ output: "a" })
   })
 })

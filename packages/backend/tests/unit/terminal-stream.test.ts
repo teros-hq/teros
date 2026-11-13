@@ -293,8 +293,8 @@ describe("/ws/terminal", () => {
     send(ws, { t: "in", id: "t1", d: "ls\r" })
     const err = await next((f) => f.kind === "text" && f.data.t === "err")
     expect(err.data.code).toBe("WHEEL_HELD")
-    expect(err.data.msg).toContain("Atlas has the wheel")
-    expect(err.data.msg).toContain("Take the wheel")
+    expect(err.data.msg).toContain("Atlas is typing in this session")
+    expect(err.data.msg).toContain('Switch "Agent off" to type')
     expect(pty.writes).toEqual([])
     expect(pty.inputs).toEqual([])
     // The wheel never moved: the agent keeps it.
@@ -330,6 +330,111 @@ describe("/ws/terminal", () => {
     send(ws, { t: "resize", id: "t1", cols: 120, rows: 40 })
     await sleep(80)
     expect(pty.size()).toEqual({ cols: 80, rows: 24 })
+  })
+
+  it("[SPACE-AC-12] in a shared terminal anyone may type: a member's keys are typed although a colleague holds the keyboard", async () => {
+    const { url, pty } = await start({ owner: "write", quinn: "write" })
+    pty.describe = () => ({ terminalId: "t1", title: "one", createdBy: "owner", space: "shared" })
+    pty.wheel = { kind: "human", id: "owner", name: "Owner" }
+    const { ws, next, frames } = await connect(url(stream!.issueTicket("quinn", "Quinn")))
+    send(ws, { t: "attach", id: "t1", cols: 80, rows: 24 })
+    await next((f) => f.kind === "snapshot")
+    send(ws, { t: "in", id: "t1", d: "ls\r" })
+    await next((f) => f.kind === "text" && f.data.t === "state")
+    expect(pty.writes).toEqual(["ls\r"])
+    expect(pty.inputs).toEqual([{ kind: "human", id: "quinn", name: "Quinn" } as any])
+    expect(frames.some((f) => f.kind === "text" && f.data.t === "err")).toBe(false)
+  })
+
+  it("[SPACE-AC-18] a member watching someone's personal terminal sees it; their keys and their size are refused", async () => {
+    const { url, pty } = await start({ owner: "write", quinn: "write" })
+    pty.describe = () => ({
+      terminalId: "t1",
+      title: "one",
+      createdBy: "owner",
+      space: "personal",
+      watchable: true,
+    })
+    const { ws, next } = await connect(url(stream!.issueTicket("quinn", "Quinn")))
+    send(ws, { t: "attach", id: "t1", cols: 100, rows: 30 })
+    const attached = await next((f) => f.kind === "text" && f.data.t === "attached")
+    expect(attached.data.viewOnly).toBe(true)
+    await next((f) => f.kind === "snapshot")
+    expect(pty.size()).toEqual({ cols: 80, rows: 24 })
+    send(ws, { t: "in", id: "t1", d: "whoami\r" })
+    const err = await next((f) => f.kind === "text" && f.data.t === "err")
+    expect(err.data.code).toBe("TERMINAL_VIEW_ONLY")
+    send(ws, { t: "resize", id: "t1", cols: 120, rows: 40 })
+    await sleep(80)
+    expect(pty.writes).toEqual([])
+    expect(pty.inputs).toEqual([])
+    expect(pty.size()).toEqual({ cols: 80, rows: 24 })
+  })
+
+  it("[SPACE-AC-15] a watcher's window does not wake a sleeping personal terminal: it is told it is asleep", async () => {
+    const { url, pty } = await start({ owner: "write", quinn: "write" })
+    pty.describe = () => ({
+      terminalId: "t1",
+      title: "one",
+      createdBy: "owner",
+      space: "personal",
+      watchable: true,
+      lifecycle: "sleeping",
+    })
+    const woken: string[] = []
+    pty.ensureAwake = async (_id: string, by: { userId: string }) => {
+      woken.push(by.userId)
+      return { from: "sleeping", ms: 5 }
+    }
+    const other = await connect(url(stream!.issueTicket("quinn", "Quinn")))
+    send(other.ws, { t: "attach", id: "t1", cols: 80, rows: 24 })
+    const err = await other.next((f) => f.kind === "text" && f.data.t === "err")
+    expect(err.data.code).toBe("TERMINAL_ASLEEP")
+    expect(woken).toEqual([])
+    expect(other.frames.some((f) => f.kind === "snapshot")).toBe(false)
+    const mine = await connect(url(stream!.issueTicket("owner", "Owner")))
+    send(mine.ws, { t: "attach", id: "t1", cols: 80, rows: 24 })
+    await mine.next((f) => f.kind === "text" && f.data.t === "attached")
+    expect(woken).toEqual(["owner"])
+  })
+
+  it("[SPACE-AC-15] a watch that stops while a window is attaching leaves that window out", async () => {
+    const { url, pty } = await start({ owner: "write", quinn: "write" })
+    let watchable = true
+    let looks = 0
+    pty.describe = () => {
+      looks++
+      return { terminalId: "t1", title: "one", createdBy: "owner", space: "personal", watchable }
+    }
+    const ownerOf = pty.ownerOf
+    pty.ownerOf = (id: string) => {
+      if (looks >= 1) watchable = false
+      return ownerOf(id)
+    }
+    const other = await connect(url(stream!.issueTicket("quinn", "Quinn")))
+    send(other.ws, { t: "attach", id: "t1", cols: 80, rows: 24 })
+    const err = await other.next((f) => f.kind === "text" && f.data.t === "err")
+    expect(err.data.code).toBe("FORBIDDEN_TERMINAL")
+    await sleep(80)
+    expect(other.frames.some((f) => f.kind === "snapshot")).toBe(false)
+    expect(other.frames.some((f) => f.kind === "text" && f.data.t === "attached")).toBe(false)
+  })
+
+  it("[SPACE-AC-18] its person types in it as usual, and a personal terminal nobody may watch refuses the attach", async () => {
+    const { url, pty } = await start({ owner: "write", quinn: "write" })
+    pty.describe = () => ({ terminalId: "t1", title: "one", createdBy: "owner", space: "personal" })
+    const mine = await connect(url(stream!.issueTicket("owner", "Owner")))
+    send(mine.ws, { t: "attach", id: "t1", cols: 80, rows: 24 })
+    const attached = await mine.next((f) => f.kind === "text" && f.data.t === "attached")
+    expect(attached.data.viewOnly).toBe(false)
+    await mine.next((f) => f.kind === "snapshot")
+    send(mine.ws, { t: "in", id: "t1", d: "ls\r" })
+    await mine.next((f) => f.kind === "text" && f.data.t === "state")
+    expect(pty.writes).toEqual(["ls\r"])
+    const other = await connect(url(stream!.issueTicket("quinn", "Quinn")))
+    send(other.ws, { t: "attach", id: "t1", cols: 80, rows: 24 })
+    const err = await other.next((f) => f.kind === "text" && f.data.t === "err")
+    expect(err.data.code).toBe("FORBIDDEN_TERMINAL")
   })
 
   it("the driver's own keys still reach the pane (the gate is per viewer, not global)", async () => {

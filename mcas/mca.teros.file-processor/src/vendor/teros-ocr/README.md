@@ -73,3 +73,23 @@ with a one-line browser header) failed to render, for OCR and pdf-to-images.
 
 Exported for the MCA's `pdf-to-images` tool: colour pages on a white
 background at a chosen dpi, capped by `maxPages`, via the same `openDocument()`.
+
+## Local patch in `index.js`: offline language data + bounded start
+
+tesseract.js downloads `<lang>.traineddata` from `cdn.jsdelivr.net` the first
+time a worker starts. When that download cannot finish (no route to the CDN,
+DNS, a proxy), `createWorker` never settles — errors go to `errorHandler` — so
+every OCR and orientation call hung forever: production `pdf-to-images` with
+`autoRotate` failed, and OCR jobs stayed `processing` indefinitely.
+
+- `spa` and `eng` ship with this MCA in `tessdata/` (`4.0.0_best_int`, the
+  variant tesseract.js fetches for OEM 1, from
+  `https://cdn.jsdelivr.net/npm/@tesseract.js-data/<lang>/4.0.0_best_int/`) and
+  are read from disk (`langPath`). Any other language still downloads.
+  sha256: spa `40be52f97b5d4eb7460073dc1f94cd546b27150333c0bf854ed7e7132db6bceb`,
+  eng `45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91`.
+- `startTesseractWorker()` bounds the start (`WORKER_START_TIMEOUT_MS`, 30 s):
+  past it, an `OcrError` (`ENGINE_FAILURE`) instead of a hang.
+- `TesseractPool` no longer caches a failed start: the next call starts again.
+
+Keep this patch when updating the file.

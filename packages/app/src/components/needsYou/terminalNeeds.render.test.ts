@@ -16,6 +16,7 @@ import {
   isBlocked,
   needKey,
   selectTerminalNeeds,
+  terminalNeedKey,
   useTerminalNeedsStore,
   writableWorkspaceIds,
 } from "./terminalNeeds"
@@ -199,5 +200,91 @@ describe("screen question", () => {
       detail: null,
       options: [],
     })
+  })
+})
+
+describe("an agent asking to use a session is a pending notice too", () => {
+  const ME = "u_me"
+  const request = (at: number) => ({
+    agent: { id: "agent:ada", name: "Ada" },
+    reason: "run the tests",
+    at,
+  })
+  const mine = (extra: Partial<TerminalSession> = {}) =>
+    s({ createdBy: ME, space: "personal", agentState: null, ...extra })
+
+  it("[FLOAT-AC-21] a pending request is listed as its own kind of notice, next to blocked sessions", () => {
+    const feeds = {
+      w1: [
+        mine({ terminalId: "asked", wheelRequest: request(Date.parse("2026-10-21T10:02:00.000Z")) }),
+        mine({ terminalId: "quiet" }),
+        mine({
+          terminalId: "blocked",
+          agentState: { state: "blocked", at: "2026-10-21T10:05:00.000Z" },
+        }),
+      ],
+    }
+    const needs = selectTerminalNeeds(feeds, [ws("w1")], ME)
+    expect(needs.map((n) => [n.kind, n.session.terminalId])).toEqual([
+      ["request", "asked"],
+      ["blocked", "blocked"],
+    ])
+  })
+
+  it("[FLOAT-AC-21] a session both blocked and asked for gives two notices, each with its own key", () => {
+    const both = mine({
+      terminalId: "both",
+      wheelRequest: request(Date.parse("2026-10-21T10:09:00.000Z")),
+      agentState: { state: "blocked", at: "2026-10-21T10:05:00.000Z" },
+    })
+    const needs = selectTerminalNeeds({ w1: [both] }, [ws("w1")], ME)
+    expect(needs.map((n) => n.kind)).toEqual(["blocked", "request"])
+    expect(new Set(needs.map(terminalNeedKey)).size).toBe(2)
+  })
+
+  it("[FLOAT-AC-21] a request that is answered, withdrawn or expired leaves the list at once", () => {
+    const asked = mine({ terminalId: "asked", wheelRequest: request(1) })
+    expect(selectTerminalNeeds({ w1: [asked] }, [ws("w1")], ME)).toHaveLength(1)
+    const after = { ...asked, wheelRequest: null }
+    expect(selectTerminalNeeds({ w1: [after] }, [ws("w1")], ME)).toEqual([])
+  })
+
+  it("[FLOAT-AC-21] requests come from every workspace the person can write in, never a read one", () => {
+    const feeds = {
+      w1: [mine({ terminalId: "a", ownerWorkspaceId: "w1", wheelRequest: request(2) })],
+      w2: [mine({ terminalId: "b", ownerWorkspaceId: "w2", wheelRequest: request(1) })],
+      w3: [mine({ terminalId: "c", ownerWorkspaceId: "w3", wheelRequest: request(3) })],
+    }
+    const needs = selectTerminalNeeds(feeds, [ws("w1"), ws("w2", "write"), ws("w3", "read")], ME)
+    expect(needs.map((n) => [n.workspaceId, n.session.terminalId])).toEqual([
+      ["w2", "b"],
+      ["w1", "a"],
+    ])
+  })
+
+  it("[FLOAT-AC-20] a colleague's personal session is never a notice of mine, asked for or blocked", () => {
+    const theirs = s({
+      terminalId: "theirs",
+      createdBy: "u_other",
+      space: "personal",
+      watchable: true,
+      wheelRequest: request(1),
+    })
+    expect(selectTerminalNeeds({ w1: [theirs] }, [ws("w1")], ME)).toEqual([])
+    const shared = s({
+      terminalId: "ours",
+      createdBy: "u_other",
+      space: "shared",
+      agentState: null,
+      wheelRequest: request(1),
+    })
+    const agents = s({
+      terminalId: "agents",
+      createdBy: "agent:ada",
+      agentState: null,
+      wheelRequest: request(2),
+    })
+    const needs = selectTerminalNeeds({ w1: [shared, agents] }, [ws("w1", "write")], ME)
+    expect(needs.map((n) => n.session.terminalId)).toEqual(["ours", "agents"])
   })
 })

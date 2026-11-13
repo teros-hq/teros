@@ -157,18 +157,40 @@ export const AGENT_TITLES: Record<Exclude<TerminalPreset, "shell">, string> = {
  * session started with the user's key goes straight to the prompt. The
  * script comes through stdin; the suffix never appears in a command line.
  */
-export function claudeApproveKeyScript(apiKey: string): string {
+export function claudeApproveKeyScript(apiKey: string, configDir?: string): string {
   const suffix = JSON.stringify(apiKey.slice(-20))
   return [
     "node - <<'TEROS_EOF'",
     "const fs = require('fs')",
-    "const path = process.env.HOME + '/.claude.json'",
+    configDir
+      ? `const path = ${JSON.stringify(`${configDir}/.claude.json`)}`
+      : "const path = process.env.HOME + '/.claude.json'",
     "let cfg = {}",
     "try { cfg = JSON.parse(fs.readFileSync(path, 'utf8')) } catch {}",
     "cfg.customApiKeyResponses = cfg.customApiKeyResponses || { approved: [], rejected: [] }",
     `const s = ${suffix}`,
     "if (!cfg.customApiKeyResponses.approved.includes(s)) cfg.customApiKeyResponses.approved.push(s)",
     "cfg.customApiKeyResponses.rejected = (cfg.customApiKeyResponses.rejected || []).filter((x) => x !== s)",
+    "fs.writeFileSync(path, JSON.stringify(cfg, null, 2))",
+    "TEROS_EOF",
+  ].join("\n")
+}
+
+export function claudeSessionPrepScript(cwd: string): string {
+  const trust = cwd === "/workspace" || cwd.startsWith("/workspace/") ? cwd : ""
+  return [
+    "node - <<'TEROS_EOF'",
+    "const fs = require('fs')",
+    "const path = process.env.HOME + '/.claude.json'",
+    "let cfg = {}",
+    "try { cfg = JSON.parse(fs.readFileSync(path, 'utf8')) } catch {}",
+    "cfg.hasCompletedOnboarding = true",
+    "if (!cfg.theme) cfg.theme = 'dark'",
+    `const trust = ${JSON.stringify(trust)}`,
+    "if (trust) {",
+    "  cfg.projects = cfg.projects || {}",
+    "  cfg.projects[trust] = { ...(cfg.projects[trust] || {}), hasTrustDialogAccepted: true }",
+    "}",
     "fs.writeFileSync(path, JSON.stringify(cfg, null, 2))",
     "TEROS_EOF",
   ].join("\n")
@@ -186,11 +208,12 @@ const SHELL_COMMANDS = new Set(["", "bash", "sh", "zsh", "fish", "dash", "-bash"
  * wrong one), `--continue` (latest conversation of the directory) otherwise.
  * No `clear`: the old scrollback printed above stays visible.
  */
-export function claudeResumeLine(sessionId: string): string {
+export function claudeResumeLine(sessionId: string, onMiss: "continue" | "fresh" = "continue"): string {
   const id = /^[A-Za-z0-9-]{8,64}$/.test(sessionId) ? sessionId : ""
+  const otherwise = onMiss === "fresh" ? "claude" : "claude --continue"
   const run = id
-    ? `if ls "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/${id}.jsonl >/dev/null 2>&1; then claude --resume ${id}; else claude --continue; fi`
-    : "claude --continue"
+    ? `if ls "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/${id}.jsonl >/dev/null 2>&1; then claude --resume ${id}; else ${otherwise}; fi`
+    : otherwise
   return `export PATH="$HOME/.local/bin:$PATH"; command -v claude >/dev/null || curl -fsSL https://claude.ai/install.sh | bash; ${run}`
 }
 

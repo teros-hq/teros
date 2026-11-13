@@ -401,37 +401,45 @@ Chat message text ~4000 chars (a counter shows in the **native app**; the **web 
   {
     id: 'terminal-claude-code',
     title: 'Terminal & Claude Code',
-    summary: 'Claude Code in a terminal the user watches, on their own Claude sign-in: when to propose it (once), remembering the answer, enabling it, and driving a session.',
-    keywords: ['terminal', 'claude code', 'coding agent', 'codex', 'opencode', 'shell', 'cli', 'repo', 'repository', 'subscription', 'pro', 'max', 'wheel', 'sign in claude', 'bash'],
+    summary: 'Claude Code in a terminal the user watches: when to propose it (once), remembering the answer, enabling it, the "Agent" switch of a session, and driving one.',
+    keywords: ['terminal', 'claude code', 'coding agent', 'codex', 'opencode', 'shell', 'cli', 'repo', 'repository', 'subscription', 'pro', 'max', 'agent off', 'agent switch', 'control', 'session', 'login screen', 'api key', 'bash'],
     body: `# Terminal & Claude Code
 
 ## What it is
-- The **Terminal** app (in the **Catalog**; it needs the **Bash** app installed in the same workspace — same Linux machine and files) lets an agent open sessions there: a shell, or **Claude Code** (also Codex and opencode).
-- Claude Code runs on the **user's own sign-in**: **Sign in with Claude** (their Pro/Max subscription), an **API key**, or **Use Teros** (one of their Teros providers). You never see or type the secret.
-- The user watches every session in their **Terminal window** beside the chat (or floating over it) and can type in it. **The wheel**: whoever has it types. The user can take it and give it back, with an optional note for you.
+- The **Terminal** app (in the **Catalog**; needs the **Bash** app in the same workspace) lets an agent open sessions on the **workspace's Linux machine** (Bash's machine and files, not the user's computer): a shell, or **Claude Code** (also Codex and opencode).
+- Claude Code in a session **you** open runs on the **API key of the workspace owner's Anthropic provider** in Teros (**Providers**). Teros never asks for, stores or shares a Claude sign-in.
+- **One window, one session**: the user watches each session **live** in its own **Terminal** window beside the chat, opened from the launcher or from the window's **"Sessions"** list. Closing a window doesn't end the session; **"End session"** in the window's **⋯** menu does.
+- **Spaces**: a person's terminal is **Personal** (theirs; **"Let the workspace watch"**: view only) or **Shared** (workspace's machine, visible to the workspace's members; people open one only if **Bash** is shared). Sessions you open are always shared. You only reach sessions of your own workspace.
 - You have it when you have \`terminal-*\` tools.
 
 ## When it fits
-- Fits: coding in a repository (fix a bug, build a feature, run the tests, refactor), long command-line work (builds, migrations, scripts, data jobs), work the user wants to watch.
+- Fits: coding in a repository (fix a bug, build a feature, run the tests, refactor), long command-line work (builds, migrations, scripts), work the user wants to watch.
 - Doesn't fit: quick questions, small edits or lookups you can do with your own tools, tasks with no code or CLI.
 
 ## Proposing it — once, never insisting
 1. Check the remembered preference first: memory already shown to you this turn, or search your memory (category \`user_preferences\`, e.g. "Claude Code terminal"). A no → don't propose. A scoped yes (e.g. "only for repo X") → only inside that scope.
-2. At most one mention per conversation, in one line, with the concrete benefit, in the user's language — e.g. "Puedo abrir Claude Code en tu terminal con tu suscripción y lo verás al lado del chat. ¿Quieres?" Then go on with the task either way.
+2. At most one mention per conversation, in one line, with the concrete benefit, in the user's language. A bug or a failing test in a repo fits even if Bash could do it: say it in your first reply, before you start. E.g. "Puedo abrir Claude Code en una terminal y lo verás trabajar al lado del chat. ¿Quieres?" Then go on with the task either way.
 3. Save the answer to memory as a \`user_preferences\` item, with the scope the user gave and no narrower ("don't use it or propose it" is a general no, not "no for this bug"): "Prefers not to use Claude Code in the terminal; don't propose it", or "Yes to Claude Code in the terminal for coding tasks in repo X". Update it if they change their mind.
 4. After a no: no more mentions in this conversation, and in later ones only if the context clearly changes or the user brings it up. Another coding task, in this or another repo, is not a change of context; the user asking for something only Claude Code can do well, or saying they changed their mind, is. Without memory tools, still respect it for this conversation.
 
 ## Enabling it (only after the user's explicit yes)
 - **You have platform tools** (\`install-app\`, \`grant-app-access\`): offer to set it up, say what you'll install, and act only after a yes in chat — install **Bash** and **Terminal** in this workspace and grant **Terminal** to the agent that will use it.
 - **Otherwise** give the steps: **Catalog** → install **Bash** and **Terminal** in this workspace → agent editor → **Apps** tab → turn **Terminal** ON for the agent. The tools appear in the next message.
-- **Sign-in** (once per person): **Terminal** window → new session → **Claude Code** → **Sign in with Claude** (Pro/Max), **API key** or **Use Teros**, with **"Share with this workspace's agents"** on — without it, sessions an agent opens don't get the sign-in. To change it later: a Claude Code session's menu → "Claude Code sign-in". Never ask for or type passwords, codes or keys.
+- **The key**: the workspace owner needs an **Anthropic** API-key provider in Teros (**Providers** → **+ Add Provider**). Without one, Claude Code opens on its login screen: stop and tell the user that, or that a person can open Claude Code in their own Terminal and sign in there by themselves. Never ask for or type passwords, codes or keys.
 
 ## Driving a session
 - Tell the user in one line what you're doing ("Abro Claude Code en tu terminal para arreglar el test de login").
 - \`terminal-list\` first and reuse your own session; otherwise \`terminal-create agent="claude"\` with a clear title. Give it the task with \`terminal-prompt\`; \`terminal-wait until="turn"\` while it works; answer its permission prompts only within the task.
-- If the tools say the user's sign-in is missing or not shared, ask the user to do the sign-in steps above, then \`terminal-wait until="ready"\`.
-- **The wheel**: if the user has it, don't type — wait (\`terminal-wait\` returns when they give it back) or ask in chat. When it comes back, read their note and follow it.
-- Report the outcome in chat in a few lines: the user saw the details.
+- If a session shows Claude Code's login screen (the tools say so): stop, type nothing into it and tell the user what **The key** says above.
+- **The "Agent" switch**: every session has one. It is on in the sessions you open and off in the sessions a person opens. A person's session that reads "Agent off" isn't in \`terminal-list\` and you can't read or type in it: ask them to switch it to "Agent" in that session's window.
+- With it on you read and type, except while a person typed there in the last 60 s: your write is refused ("<name> is typing in this session"), so don't type: wait (\`terminal-wait\` returns when control changes) or ask with \`terminal-request-control\`. A note they left when switching "Agent" on leads your next call.
+- **Asked to stop, let go or let them type**: call \`terminal-release-control\`, then tell them how to type (below). Never say you let go without calling it.
+- Report the outcome in chat in a few lines. Say only what you did: never claim a call you didn't make.
+
+- **What the person sees** (use these exact labels):
+- The switch in the toolbar of each session's window reads **"Agent"** when on and **"Agent off"** when off (Spanish UI: "Agente" / "Agente off").
+- To type in a session you are typing in, they switch it to "Agent off": while you type, their keys are not sent. A click or scroll alone changes nothing. In a session you opened you may type again once they have typed nothing for 60 s; their own session stays off until they switch it on.
+- Your request for control: a card in the chat and in that session's window, **"Allow" / "Keep off"** (Spanish UI: "Permitir" / "Mantener apagado").
 - When done, close the sessions you opened (\`terminal-destroy\`) unless the user wants to keep them. Never close the user's sessions.`,
     related: ['apps-and-providers', 'agents', 'files'],
   },

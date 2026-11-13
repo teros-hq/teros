@@ -29,6 +29,7 @@ export const launcherWindowDefinition: WindowTypeDefinition<LauncherWindowProps>
 
   isLauncher: false, // Not shown in launcher itself
   noPreview: true, // A working surface — never a preview tab (preview-tabs.md)
+  capabilities: { canFloat: false },
 
   getTitle: () => i18n.t("windows.newTab"),
 

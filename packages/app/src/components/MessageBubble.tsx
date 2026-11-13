@@ -395,7 +395,13 @@ export function AgentMessage({
           Platform.OS === "web" ? ({ userSelect: "text" } as any) : null,
         ]}
       >
-        <ToolCallAuthorContext.Provider value={{ name: agentName }}>
+        <ToolCallAuthorContext.Provider
+          value={{
+            name: agentName,
+            agentId: message.senderInfo?.type === "agent" ? message.senderInfo.id : undefined,
+            at: message.timestamp instanceof Date ? message.timestamp.getTime() : undefined,
+          }}
+        >
           <ToolCallBlock tool={message.content} />
         </ToolCallAuthorContext.Provider>
         {showTimestamp && !authorShown && (

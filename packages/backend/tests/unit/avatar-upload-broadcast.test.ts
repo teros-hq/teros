@@ -11,33 +11,26 @@
  * `HttpUploadHandler.handleRoute` con un `POST /api/upload/avatar/:agentId`
  * multipart real— sobre un `db` falso, un `authService` falso y un
  * `pubSubService` espía, y afirma que se emite `agent.updated` con el avatarUrl
- * ya resuelto. `fs/promises` está mockeado para no tocar disco.
+ * ya resuelto. El avatar se guarda como object de plataforma (OBJ-REQ-4) en un
+ * directorio temporal; nada se escribe en packages/backend/static.
  *
  * Cubre además el invariante de robustez del fix: un broadcast que revienta NO
  * debe convertir una subida ya persistida en un 500.
  */
 
-import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, it } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { config } from '../../src/config'
+import { HttpUploadHandler } from '../../src/handlers/http-upload-handler'
 
-// fs/promises mockeado ANTES de importar el handler: la subida hace mkdir +
-// writeFile reales y no queremos ensuciar packages/backend/static en un unit
-// test. Restauramos en afterAll porque mock.module persiste entre archivos del
-// mismo proceso.
-const realFsPromises = { ...(await import('fs/promises')) }
-mock.module('fs/promises', () => ({
-  ...realFsPromises,
-  mkdir: async () => undefined,
-  writeFile: async () => undefined,
-}))
+const OBJ_PATH = mkdtempSync(join(tmpdir(), 'avatar-upload-broadcast-test-'))
+const OBJECTS_BASE = `${config.agentApps.publicUrl.replace(/\/$/, '')}/objects/`
 
 afterAll(() => {
-  mock.module('fs/promises', () => realFsPromises)
+  rmSync(OBJ_PATH, { recursive: true, force: true })
 })
-
-const { HttpUploadHandler } = await import('../../src/handlers/http-upload-handler')
-const { config } = await import('../../src/config')
-
-const BASE = config.static.baseUrl
 
 // --- Fakes -----------------------------------------------------------------
 
@@ -50,7 +43,8 @@ function makeMultipartReq(opts: { boundary?: string; filename?: string; contentT
     Buffer.from(`--${boundary}\r\n`),
     Buffer.from(`Content-Disposition: form-data; name="file"; filename="${filename}"\r\n`),
     Buffer.from(`Content-Type: ${contentType}\r\n\r\n`),
-    Buffer.from([0x89, 0x50, 0x4e, 0x47]), // bytes PNG de mentira
+    // Firma PNG real: el tipo se detecta por el contenido (OBJ-REQ-4).
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     Buffer.from(`\r\n--${boundary}--\r\n`),
   ])
   return {
@@ -95,8 +89,13 @@ function makeDb(overrides: {
   matchedCount?: number
   found?: Record<string, unknown> | null
 } = {}) {
-  const calls = { updateOne: [] as any[], findOne: [] as any[] }
+  const calls = { updateOne: [] as any[], findOne: [] as any[], insertOne: [] as any[] }
   const agents = {
+    // Registro del object de plataforma (colección agent_app_objects).
+    insertOne: async (doc: unknown) => {
+      calls.insertOne.push(doc)
+      return { acknowledged: true }
+    },
     updateOne: async (filter: unknown, update: unknown) => {
       calls.updateOne.push({ filter, update })
       return { matchedCount: overrides.matchedCount ?? 1 }
@@ -105,7 +104,7 @@ function makeDb(overrides: {
       calls.findOne.push({ filter })
       if (overrides.found !== undefined) return overrides.found
       // Refleja lo que acaba de escribir updateOne (avatarUrl nuevo).
-      return { ...AGENT_DOC, avatarUrl: 'agent_iria-avatar-abcd1234.png' }
+      return { ...AGENT_DOC, avatarUrl: 'obj_0123456789abcdef' }
     },
   }
   const db = { collection: () => agents } as any
@@ -144,7 +143,7 @@ describe('HttpUploadHandler · avatar upload → agent.updated (TER-644)', () =>
   it('emite agent.updated con el avatarUrl resuelto tras subir el avatar', async () => {
     const { db, calls } = makeDb()
     const { calls: pub, pubSub } = makePubSubSpy()
-    const handler = new HttpUploadHandler(db, authService, pubSub)
+    const handler = new HttpUploadHandler(db, authService, pubSub, OBJ_PATH)
 
     const res = makeRes()
     handled = await handler.handleRoute(
@@ -155,22 +154,28 @@ describe('HttpUploadHandler · avatar upload → agent.updated (TER-644)', () =>
 
     expect(handled).toBe(true)
     expect(res.captured.status).toBe(200)
-    // Persistió el filename DESNUDO (no una URL absoluta): agentId saneado
-    // (':' → '_') + sufijo uuid + extensión. Guardar la URL absoluta producía
-    // doble-wrapping y 404 al recargar.
+    // Persistió el id del object (no una URL absoluta, que producía
+    // doble-wrapping y 404 al recargar), con el agente global como dueño.
     const persisted = calls.updateOne[0].update.$set.avatarUrl
-    expect(persisted).toMatch(/^agent_iria-avatar-[0-9a-f]{8}\.png$/)
+    expect(persisted).toMatch(/^obj_[a-f0-9]{16}$/)
+    expect(calls.insertOne[0]).toMatchObject({
+      objectId: persisted,
+      purpose: 'agent-avatar',
+      agentId: 'agent:iria',
+      userId: 'user:1',
+      contentType: 'image/png',
+    })
     // El broadcast es el corazón del fix: agente global → broadcastToUser.
     expect(pub.user).toHaveLength(1)
     expect(pub.user[0].event.type).toBe('agent.updated')
     expect(pub.user[0].event.agent.agentId).toBe('agent:iria')
-    expect(pub.user[0].event.agent.avatarUrl).toBe(`${BASE}/agent_iria-avatar-abcd1234.png`)
+    expect(pub.user[0].event.agent.avatarUrl).toBe(`${OBJECTS_BASE}obj_0123456789abcdef`)
   })
 
   it('un broadcast que revienta NO convierte la subida persistida en 500', async () => {
     const { db } = makeDb()
     const { pubSub } = makePubSubSpy({ throwOnUser: true })
-    const handler = new HttpUploadHandler(db, authService, pubSub)
+    const handler = new HttpUploadHandler(db, authService, pubSub, OBJ_PATH)
 
     const res = makeRes()
     await handler.handleRoute(makeMultipartReq(), res, '/api/upload/avatar/agent%3Airia')
@@ -181,7 +186,7 @@ describe('HttpUploadHandler · avatar upload → agent.updated (TER-644)', () =>
   it('no emite agent.updated si el agente no existe (matchedCount 0 → 404)', async () => {
     const { db } = makeDb({ matchedCount: 0 })
     const { calls: pub, pubSub } = makePubSubSpy()
-    const handler = new HttpUploadHandler(db, authService, pubSub)
+    const handler = new HttpUploadHandler(db, authService, pubSub, OBJ_PATH)
 
     const res = makeRes()
     await handler.handleRoute(makeMultipartReq(), res, '/api/upload/avatar/agent%3Airia')

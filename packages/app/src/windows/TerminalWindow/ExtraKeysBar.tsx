@@ -3,9 +3,11 @@
  * lacks, plus sticky Ctrl / Alt applied to the next key typed.
  */
 
+import { useRef } from "react"
 import { Platform, Pressable, ScrollView } from "react-native"
+import { useColors } from "../../components/mca/primitives/useColors"
 import { T } from "../../components/ui/ds"
-import { useK } from "./crew/tokens"
+import { isTouchPress } from "./terminalLayout"
 
 interface ExtraKey {
   label: string
@@ -45,7 +47,9 @@ interface Props {
 }
 
 export function ExtraKeysBar({ ctrl, alt, bottomInset, onKey, onModifier }: Props) {
-  const K = useK()
+  const c = useColors()
+  const sentOnTouch = useRef(false)
+  const press = (key: ExtraKey) => (key.modifier ? onModifier(key.modifier) : onKey(key.seq))
   return (
     <ScrollView
       horizontal
@@ -54,8 +58,8 @@ export function ExtraKeysBar({ ctrl, alt, bottomInset, onKey, onModifier }: Prop
         flexGrow: 0,
         flexShrink: 0,
         borderTopWidth: 1,
-        borderTopColor: K.keysLine,
-        backgroundColor: K.keysBg,
+        borderTopColor: c.border,
+        backgroundColor: c.bgSheet,
         marginBottom: bottomInset,
       }}
       contentContainerStyle={{ paddingHorizontal: 4, paddingVertical: 4, gap: 4 }}
@@ -67,22 +71,36 @@ export function ExtraKeysBar({ ctrl, alt, bottomInset, onKey, onModifier }: Prop
         return (
           <Pressable
             key={key.label}
-            onPress={() => (key.modifier ? onModifier(key.modifier) : onKey(key.seq))}
+            onPress={() => {
+              if (sentOnTouch.current) {
+                sentOnTouch.current = false
+                return
+              }
+              press(key)
+            }}
             // Keep focus (and the virtual keyboard) on the terminal.
-            onPressIn={Platform.OS === "web" ? (e: any) => e.preventDefault() : undefined}
+            onPressIn={
+              Platform.OS === "web"
+                ? (e: any) => {
+                    e.preventDefault()
+                    sentOnTouch.current = isTouchPress(e?.nativeEvent)
+                    if (sentOnTouch.current) press(key)
+                  }
+                : undefined
+            }
             tabIndex={-1}
             focusable={false}
             style={({ pressed }) => ({
               paddingHorizontal: 10,
               paddingVertical: 6,
               borderRadius: 6,
-              backgroundColor: active ? K.keyActive : pressed ? K.keyPressed : K.keyBg,
+              backgroundColor: active ? c.navActive : pressed ? c.nestHover : c.field,
               borderWidth: 1,
-              borderColor: active ? K.keyActiveLine : K.keyLine,
+              borderColor: active ? c.borderAccent : c.border,
               userSelect: "none",
             })}
           >
-            <T step="code" style={{ color: active ? K.keyActiveText : K.keyText, fontSize: 12 }}>
+            <T step="code" style={{ color: active ? c.accent : c.text2, fontSize: 12 }}>
               {key.label}
             </T>
           </Pressable>

@@ -43,8 +43,6 @@ export const STORAGE_KEYS = {
 
   // ── persisted (backend WS, por workspaceId) ───────────────────────────────
   WORKSPACE_LAYOUT:     'teros_workspace_layout',
-  // Floating terminal windows (rect, minimised, z) per terminal id
-  TERMINAL_FLOAT:       'teros_terminal_float',
 } as const
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]
@@ -71,5 +69,4 @@ export const KEY_DOMAIN: Record<StorageKey, StorageDomain> = {
   [STORAGE_KEYS.ACTIVE_DESKTOP_INDEX]:        'tab-state',
   [STORAGE_KEYS.VOICE_SESSION]:        'tab-state',
   [STORAGE_KEYS.WORKSPACE_LAYOUT]:     'persisted',
-  [STORAGE_KEYS.TERMINAL_FLOAT]:       'persisted',
 }

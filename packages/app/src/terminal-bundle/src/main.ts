@@ -31,10 +31,13 @@ import { TerminalConnection } from "./connection"
 import { applyModifiers, csiUFor, isMac, localShortcut, osc52Text } from "./keys"
 import {
   DEFAULT_LABELS,
+  isAsleep,
+  isViewOnly,
   KIND_SNAPSHOT,
   type PageMessage,
   type PaneLabels,
   type ParentMessage,
+  paneStateForError,
   parseMessage,
   type ThemeMode,
 } from "./protocol"
@@ -224,6 +227,7 @@ let foreground = ""
  *  someone else drives (an agent, or another person) — keys are not sent, the
  *  chip says who drives and offers the wheel. Null until the server says. */
 let driver: { kind: "agent" | "human" | "none"; id?: string; name?: string } | null = null
+let watchOnly = false
 const SHELLS = new Set(["bash", "sh", "zsh", "fish", "dash"])
 let pane = { cols: terminal.cols, rows: terminal.rows }
 
@@ -258,6 +262,8 @@ function onServerMessage(msg: Record<string, unknown>): void {
       } | null
       foreground = session?.command ?? ""
       driver = session?.driver ?? { kind: "none" }
+      watchOnly = msg.viewOnly === true
+      if (watchOnly) terminal.blur()
       updateReadOnly()
       // Legacy PTY sessions have no tmux in between: xterm is the terminal.
       suppressReports = session?.persistent !== false
@@ -333,8 +339,19 @@ function onServerMessage(msg: Record<string, unknown>): void {
         showReadOnly()
         return
       }
-      toParent({ type: "status", conn: "denied", detail: code })
-      showState("denied")
+      if (isViewOnly(code)) {
+        watchOnly = true
+        updateReadOnly()
+        return
+      }
+      if (isAsleep(code)) {
+        toParent({ type: "status", conn: "failed", detail: code })
+        showState("asleep")
+        return
+      }
+      const state = paneStateForError(code)
+      toParent({ type: "status", conn: state, detail: code })
+      showState(state)
       return
     }
     default:
@@ -347,6 +364,10 @@ function onServerMessage(msg: Record<string, unknown>): void {
 function updateReadOnly(): void {
   const el = stateEl
   if (!el) return
+  if (watchOnly) {
+    renderState("read-only" as PaneState)
+    return
+  }
   const d = driver
   if (!d || d.kind === "none" || d.kind === "human") {
     if (shownState === "read-only" as PaneState) renderState(null)
@@ -359,7 +380,11 @@ function updateReadOnly(): void {
 }
 
 function showReadOnly(): void {
-  if (driver) renderState("read-only" as PaneState)
+  if (driver || watchOnly) renderState("read-only" as PaneState)
+}
+
+function mayNotType(): boolean {
+  return watchOnly || (!!driver && driver.kind !== "none" && driver.kind !== "human")
 }
 
 /** How long a session may be missing before the pane gives up (a cold create takes a while). */
@@ -428,7 +453,7 @@ terminal.onData((data) => {
   if (ended) return
   // Read-only while someone else drives: the keys never leave the page (the
   // server refuses them too — this keeps the pane quiet and the chip up).
-  if (driver && driver.kind !== "none" && driver.kind !== "human") {
+  if (mayNotType()) {
     showReadOnly()
     return
   }
@@ -442,7 +467,7 @@ terminal.onData((data) => {
 })
 terminal.onBinary((data) => {
   if (ended) return
-  if (driver && driver.kind !== "none" && driver.kind !== "human") {
+  if (mayNotType()) {
     showReadOnly()
     return
   }
@@ -495,6 +520,7 @@ terminal.attachCustomKeyEventHandler((event) => {
       case "prev-session":
       case "next-session":
       case "take-wheel":
+      case "go-session":
       case "float":
       case "rail-left":
       case "rail-right":
@@ -577,6 +603,7 @@ function attachTo(id: string, focus: boolean): void {
   terminalId = id
   ended = false
   driver = null
+  watchOnly = false
   terminal.reset()
   const size = fittedSize() ?? pane
   conn.attach(id, size.cols, size.rows)
@@ -591,7 +618,14 @@ function attachTo(id: string, focus: boolean): void {
 
 // ── Pane states (drawn by the page: they work the same in the iframe and the WebView) ──
 
-type PaneState = "starting" | "reconnecting" | "ended" | "denied" | "read-only"
+type PaneState =
+  | "starting"
+  | "reconnecting"
+  | "ended"
+  | "denied"
+  | "failed"
+  | "read-only"
+  | "asleep"
 let labels: PaneLabels = DEFAULT_LABELS
 const stateEl = document.getElementById("state") as HTMLElement | null
 let stateTimer: ReturnType<typeof setTimeout> | null = null
@@ -612,6 +646,17 @@ function renderState(state: PaneState | null): void {
   stateEl.className = state ? `show ${state}` : ""
   if (!state) return
   const text = document.createElement("span")
+  if (state === "read-only" && watchOnly) {
+    text.textContent = labels.watchOnly
+    stateEl.append(text)
+    return
+  }
+  if (state === "asleep") {
+    text.textContent = labels.asleep
+    stateEl.append(text)
+    stateEl.append(button(labels.retry, () => conn.reattach()))
+    return
+  }
   if (state === "read-only") {
     const d = driver
     const name = d?.kind === "agent" ? d.name || "The agent" : d?.name || "Someone"
@@ -629,9 +674,12 @@ function renderState(state: PaneState | null): void {
         ? labels.reconnecting
         : state === "ended"
           ? labels.ended
-          : labels.denied
+          : state === "failed"
+            ? labels.failed
+            : labels.denied
   stateEl.append(text)
   if (state === "reconnecting") stateEl.append(button(labels.retry, () => conn.wake()))
+  if (state === "failed") stateEl.append(button(labels.retry, () => conn.reattach()))
   if (state === "ended") {
     stateEl.append(button(labels.restart, () => toParent({ type: "action", action: "restart" })))
     stateEl.append(button(labels.close, () => toParent({ type: "action", action: "close" })))

@@ -106,6 +106,8 @@ import migration_20261103_001 from './20261103_001_teros_sizes.js';
 import migration_20261104_001 from './20261104_001_rename_browser_mca.js';
 import migration_20261109_001 from './20261109_001_teros_lanes.js';
 import migration_20261109_002 from './20261109_002_conversation_summary_pref.js';
+import migration_20261110_001 from './20261110_001_drop_coding_agent_credentials.js';
+import migration_20261113_001 from './20261113_001_agent_avatars_to_objects.js';
 
 export interface MigrationEntry {
   name: string;
@@ -444,6 +446,14 @@ export const MIGRATIONS: MigrationEntry[] = [
   {
     name: '20261109_002_conversation_summary_pref',
     migration: migration_20261109_002,
+  },
+  {
+    name: '20261110_001_drop_coding_agent_credentials',
+    migration: migration_20261110_001,
+  },
+  {
+    name: '20261113_001_agent_avatars_to_objects',
+    migration: migration_20261113_001,
   },
 ];
 

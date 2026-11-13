@@ -80,7 +80,7 @@ describe('useTtsPlayer.resume() — background suspension recovery (F5g)', () =>
 
   it('resumes a context the browser suspended while the tab was hidden', async () => {
     const ctx = makeContext('suspended')
-    vi.stubGlobal('AudioContext', vi.fn(() => ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
     // Force the graph to exist (the player creates its context lazily).
@@ -103,7 +103,7 @@ describe('useTtsPlayer.resume() — background suspension recovery (F5g)', () =>
 
   it('does NOT touch a running context (resume is a no-op)', async () => {
     const ctx = makeContext('running')
-    vi.stubGlobal('AudioContext', vi.fn(() => ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
     await act(async () => {
@@ -122,7 +122,7 @@ describe('useTtsPlayer.resume() — background suspension recovery (F5g)', () =>
 
   it('does NOT touch a closed context (session already stopped)', async () => {
     const ctx = makeContext('closed')
-    vi.stubGlobal('AudioContext', vi.fn(() => ctx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return ctx }))
 
     const { result } = renderHook(() => useTtsPlayer())
     await act(async () => {

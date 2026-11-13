@@ -118,8 +118,6 @@ export interface WebSocketHandlerOptions {
   terminalStream?: TerminalStreamServer | null
   /** MCA streams relay (spec MCS), resolved lazily: it is created after this handler. */
   getStreamRelay?: () => McaStreamRelay | null
-  /** Coding-agent credentials for terminal sessions (default: the DB-backed store). Tests/smokes. */
-  terminalAgentCredentials?: TerminalDomainDeps["agentCredentials"]
   /** F4·C0 — Latitude score emitter for the 👎 feedback hook. Null when not wired. */
   latitudeScoreEmitter?: LatitudeScoreEmitter | null
 
@@ -468,7 +466,6 @@ export class WebSocketHandler {
         db,
         stream: options.terminalStream ?? null,
         providerService: this.providerService,
-        agentCredentials: options?.terminalAgentCredentials,
       })
     }
 

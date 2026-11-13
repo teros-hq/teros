@@ -82,7 +82,7 @@
     "jsdom": "^29.1.1",
     "react-test-renderer": "19.1.0",
     "typescript": "~5.9.2",
-    "vitest": "^3"
+    "vitest": "^4.1.12"
   },
   "expo": {
     "doctor": {

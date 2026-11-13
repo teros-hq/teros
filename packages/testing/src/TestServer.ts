@@ -165,13 +165,6 @@ export interface TestServerOptions {
   ptyManager?: PtyManager;
 
   /**
-   * Coding-agent credentials for terminal sessions (terminal.create preset
-   * claude/codex/opencode). Default: the DB-backed per-user store. Smokes pass
-   * a stub that returns a fixed env (e.g. a fake Anthropic endpoint's key).
-   */
-  terminalAgentCredentials?: WebSocketHandlerOptions['terminalAgentCredentials'];
-
-  /**
    * Wire the MCA WebSocket bridge on /mca (McaConnectionManager), mirroring
    * server-bootstrap.ts production routing. Required for E2E tests that
    * connect a real MCA process to the TestServer. Off by default.
@@ -503,7 +496,6 @@ export async function createTestServer(
     eventHandler,
     mcaManager: options?.mcaManager,
     ptyManager: options?.ptyManager,
-    terminalAgentCredentials: options?.terminalAgentCredentials,
   });
 
   // MCA WS bridge — created after the handler so it can share its WsRouter

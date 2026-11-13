@@ -20,23 +20,41 @@ import {
   View,
 } from "react-native"
 import { useTranslation } from "react-i18next"
-import { Circle, Popover, Separator, Text, XStack, YStack } from "tamagui"
+import { Popover, Separator, Text, XStack, YStack } from "tamagui"
 import { LinearGradient } from "expo-linear-gradient"
 import { useTabState } from "../../hooks/useTabState"
-import { windowRegistry } from "../../services/windowRegistry"
+import { canFloatWindowType, windowRegistry } from "../../services/windowRegistry"
 import {
   type ContainerNode,
   selectActiveContainerId,
   useTilingStore,
 } from "../../store/tilingStore"
-import { TerosLoading } from "../TerosLoading"
 import { useColors } from "../mca/primitives/useColors"
 import { colors as semanticColors, surface } from "../mca/primitives/colors"
 import { type DropZone, useDragDrop } from "./DragDropContext"
 import { WindowContent } from "./WindowContent"
 import { useAwakeTabs } from "./useAwakeTabs"
+import { requestCloseWindow, requestCloseWindows } from "./windowClose"
 import { TabContext, type TabContextValue } from "./TabContext"
+import { TabStatusSlot } from "./TabStatusSlot"
+import {
+  TabContextMenu,
+  TabMarks,
+  TabTitleInput,
+  WindowMenuSection,
+  WindowRing,
+} from "./WindowChrome"
+import { useWindowChromeOf } from "../../store/windowChromeStore"
 import { buildTabColors } from "./tabColors"
+import {
+  measureTab,
+  measureTabStrip,
+  TAB_FADE,
+  TAB_SNAP_LEAD,
+  TAB_TITLE_KEEP,
+  tabStripEndPad,
+  tabStripReveal,
+} from "./tabStrip"
 import { CountPill, Ph, WorkingDot } from "../ui/ds"
 
 interface Props {
@@ -52,6 +70,7 @@ export function TilingContainer({ container }: Props) {
   const TC = buildTabColors(c)
   const [tabDropIndex, setTabDropIndex] = useState<number | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [tabMenu, setTabMenu] = useState<{ windowId: string; x: number; y: number } | null>(null)
   // Horizontal overflow of the tab row — drives the edge fade indicators
   // (same pattern as the navbar's vertical scroll gradients): a fade shows
   // on a side only while there are more tabs that way.
@@ -67,7 +86,6 @@ export function TilingContainer({ container }: Props) {
     windows,
     setActiveTab,
     focusContainer,
-    closeWindow,
     splitContainer,
     closeContainer,
     openWindow,
@@ -75,6 +93,7 @@ export function TilingContainer({ container }: Props) {
     navigateBack,
     navigateForward,
     pinWindow,
+    floatWindow,
   } = useTilingStore()
 
   // Use selectors for derived state from active desktop
@@ -87,6 +106,9 @@ export function TilingContainer({ container }: Props) {
   const isActive = activeContainerId === container.id
   const containerWindows = container.windowIds.map((id) => windows[id]).filter(Boolean)
   const activeWindow = container.activeWindowId ? windows[container.activeWindowId] : null
+  const canFloatActive = activeWindow ? canFloatWindowType(activeWindow.type) : false
+  const activeChrome = useWindowChromeOf(activeWindow?.id)
+  const tabMenuWindow = tabMenu ? windows[tabMenu.windowId] : null
 
   const isAwakeTab = useAwakeTabs(containerWindows, container.activeWindowId)
 
@@ -148,18 +170,28 @@ export function TilingContainer({ container }: Props) {
         // Centro - solo si no es el mismo container de origen
         if (dragState?.sourceContainerId !== container.id) {
           zone = "center"
+        } else if (
+          !dragState.isGroup &&
+          dragState.windowId &&
+          canFloatWindowType(windows[dragState.windowId]?.type ?? "")
+        ) {
+          zone = "float"
         }
       }
 
       if (zone) {
-        setDropTarget({ containerId: container.id, zone })
+        setDropTarget({
+          containerId: container.id,
+          zone,
+          ...(zone === "float" ? { point: { x: e.clientX, y: e.clientY } } : {}),
+        })
       } else {
         if (dropTarget?.containerId === container.id) {
           setDropTarget(null)
         }
       }
     },
-    [isDragging, container.id, setDropTarget, dropTarget, dragState],
+    [isDragging, container.id, setDropTarget, dropTarget, dragState, windows],
   )
 
   const calculateTabDropIndex = useCallback((clientX: number, tabBarRect: DOMRect): number => {
@@ -262,6 +294,43 @@ export function TilingContainer({ container }: Props) {
     measureTabOverflow()
   }, [containerWindows.length, measureTabOverflow])
 
+  const [tabEndPad, setTabEndPad] = useState(0)
+  const tabEndPadRef = useRef(0)
+  const measureTabEndPad = useCallback(() => {
+    const el = tabScrollRef.current
+    if (!el) return
+    const strip = measureTabStrip(el, tabEndPadRef.current)
+    const pad = tabStripEndPad(strip.starts, strip.contentWidth, strip.viewWidth)
+    if (pad === tabEndPadRef.current) return
+    tabEndPadRef.current = pad
+    setTabEndPad(pad)
+  }, [])
+  useEffect(() => {
+    measureTabEndPad()
+    const el = tabScrollRef.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(() => {
+      measureTabEndPad()
+      measureTabOverflow()
+    })
+    observer.observe(el)
+    for (const tab of Array.from(el.querySelectorAll("[data-tab]"))) observer.observe(tab)
+    return () => observer.disconnect()
+  }, [containerWindows.length, measureTabEndPad, measureTabOverflow])
+
+  const activeTabId = container.activeWindowId
+  const tabCount = containerWindows.length
+  useEffect(() => {
+    const el = tabScrollRef.current
+    if (!el || !activeTabId || tabCount === 0) return
+    if (el.scrollWidth <= el.clientWidth) return
+    const tab = measureTab(el, activeTabId)
+    if (!tab) return
+    const strip = measureTabStrip(el, tabEndPad)
+    const at = tabStripReveal(strip.starts, tab.start, tab.end, strip.viewWidth, el.scrollLeft)
+    if (at !== null && Math.abs(at - el.scrollLeft) > 1) el.scrollLeft = at
+  }, [activeTabId, tabCount, tabEndPad])
+
   // Strip ref (the whole tab bar XStack) — the drop-indicator math reads its
   // rect and queries its [data-tab] children.
   const setTabBarRefCallback = useCallback((node: View | null) => {
@@ -339,6 +408,32 @@ export function TilingContainer({ container }: Props) {
 
   const renderDropZoneIndicators = () => {
     if (!isDragging) return null
+    if (currentDropZone === "float") {
+      return (
+        <YStack
+          testID="pane-drop-float"
+          position="absolute"
+          top={44}
+          left={DROP_ZONE_SIZE}
+          right={DROP_ZONE_SIZE}
+          bottom={DROP_ZONE_SIZE}
+          backgroundColor={TC.dropAccentBgSubtle}
+          borderWidth={2}
+          borderColor={TC.dropAccentBorder}
+          borderRadius={14}
+          justifyContent="center"
+          alignItems="center"
+          gap={6}
+          pointerEvents="none"
+          zIndex={100}
+        >
+          <Ph name="picture-in-picture" size={22} color={TC.dropAccent} />
+          <Text color={TC.dropAccent} fontSize={12} fontFamily="Saans">
+            {t("windows.float.dropHere", { defaultValue: "Drop to float it here" })}
+          </Text>
+        </YStack>
+      )
+    }
     // Don't show if dragging from this container and it's the only source
     if (dragState?.sourceContainerId === container.id && !dragState.isGroup) {
       if (containerWindows.length <= 1) return null
@@ -480,6 +575,7 @@ export function TilingContainer({ container }: Props) {
       overflow="hidden"
       position="relative"
       onPress={handleContainerPress}
+      {...({ "data-pane": container.id } as unknown as Record<string, never>)}
       {...webEventHandlers}
     >
       {/* Tab bar (`.tabbar`, pill tabs) */}
@@ -526,15 +622,36 @@ export function TilingContainer({ container }: Props) {
         </XStack>
 
         {/* Tabs — horizontal scroll when overflowing, pills with 4px gap */}
-        <View style={{ flex: 1, position: "relative", minWidth: 0 }}>
+        <View
+          testID="tab-strip-scroll"
+          style={{
+            flexGrow: 0,
+            flexShrink: 1,
+            flexBasis: "auto",
+            position: "relative",
+            minWidth: 0,
+          }}
+        >
           <ScrollView
             ref={setTabScrollRefCallback as any}
             onScroll={onTabRowScroll}
             scrollEventThrottle={16}
-            style={{ flex: 1 }}
+            style={[
+              { flex: 1 },
+              Platform.OS === "web"
+                ? ({
+                    scrollSnapType: "x mandatory",
+                    scrollPaddingLeft: TAB_SNAP_LEAD,
+                  } as object)
+                : null,
+            ]}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ alignItems: "center", gap: 4, paddingRight: 8 }}
+            contentContainerStyle={{
+              alignItems: "center",
+              gap: 4,
+              paddingRight: 8 + tabEndPad,
+            }}
           >
             {containerWindows.map((window, index) => (
               <React.Fragment key={window.id}>
@@ -545,8 +662,9 @@ export function TilingContainer({ container }: Props) {
                   isActive={container.activeWindowId === window.id}
                   isContainerActive={isActive}
                   onSelect={() => setActiveTab(container.id, window.id)}
-                  onClose={() => closeWindow(window.id)}
+                  onClose={() => requestCloseWindow(window.id)}
                   onPin={() => pinWindow(window.id)}
+                  onMenu={(x, y) => setTabMenu({ windowId: window.id, x, y })}
                   tabCount={containerWindows.length}
                 />
               </React.Fragment>
@@ -554,23 +672,6 @@ export function TilingContainer({ container }: Props) {
             {tabDropIndex === containerWindows.length && currentDropZone === "tabs" && (
               <TabDropIndicator />
             )}
-            {/* `.newtab` — opens the launcher next to the active window */}
-            <XStack
-              width={30}
-              height={30}
-              justifyContent="center"
-              alignItems="center"
-              borderRadius={8}
-              marginLeft={4}
-              cursor="pointer"
-              hoverStyle={{ backgroundColor: c.wash }}
-              pressStyle={{ scale: 0.96 }}
-              accessibilityRole="button"
-              accessibilityLabel="Open launcher - new window"
-              onPress={() => openNewTab(activeWindow?.id)}
-            >
-              <Ph name="plus" size={14} color={c.text3} />
-            </XStack>
           </ScrollView>
 
           {tabOverflow.left && (
@@ -578,7 +679,7 @@ export function TilingContainer({ container }: Props) {
               colors={[c.bgSheet, "transparent"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 24, zIndex: 3 }}
+              style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: TAB_FADE, zIndex: 3 }}
               pointerEvents="none"
             />
           )}
@@ -587,14 +688,42 @@ export function TilingContainer({ container }: Props) {
               colors={["transparent", c.bgSheet]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 24, zIndex: 3 }}
+              style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: TAB_FADE, zIndex: 3 }}
               pointerEvents="none"
             />
           )}
         </View>
 
+        <XStack
+          width={30}
+          height={30}
+          flexShrink={0}
+          justifyContent="center"
+          alignItems="center"
+          borderRadius={8}
+          cursor="pointer"
+          hoverStyle={{ backgroundColor: c.wash }}
+          pressStyle={{ scale: 0.96 }}
+          accessibilityRole="button"
+          accessibilityLabel="Open launcher - new window"
+          testID="tab-strip-new"
+          onPress={() => openNewTab(activeWindow?.id)}
+        >
+          <Ph name="plus" size={14} color={c.text3} />
+        </XStack>
+        <View testID="tab-strip-rest" style={{ flex: 1, minWidth: 0 }} />
+
         {/* End tools (`.end`): split right + menu */}
         <XStack alignItems="center" gap={2} height={30} marginLeft={8}>
+          {canFloatActive && activeWindow ? (
+            <TabCtl
+              icon="picture-in-picture"
+              size={28}
+              testID="pane-float"
+              title={t("windows.float.action", { defaultValue: "Float this window" })}
+              onPress={() => floatWindow(activeWindow.id)}
+            />
+          ) : null}
           <TabCtl
             icon="columns"
             size={28}
@@ -631,12 +760,25 @@ export function TilingContainer({ container }: Props) {
               {...(Platform.OS === "web" ? ({ style: { boxShadow: c.elevRaised } } as any) : {})}
             >
               <YStack minWidth={200}>
+                {activeWindow ? (
+                  <WindowMenuSection window={activeWindow} onDone={() => setMenuOpen(false)} />
+                ) : null}
                 {activeWindow?.preview ? (
                   <MenuItem
                     icon="push-pin"
                     label={t("windows.pinTab")}
                     onPress={() => {
                       pinWindow(activeWindow.id)
+                      setMenuOpen(false)
+                    }}
+                  />
+                ) : null}
+                {canFloatActive && activeWindow ? (
+                  <MenuItem
+                    icon="picture-in-picture"
+                    label={t("windows.float.action", { defaultValue: "Float this window" })}
+                    onPress={() => {
+                      floatWindow(activeWindow.id)
                       setMenuOpen(false)
                     }}
                   />
@@ -663,7 +805,7 @@ export function TilingContainer({ container }: Props) {
                   label={t("windows.closePanel")}
                   danger
                   onPress={() => {
-                    closeContainer(container.id)
+                    requestCloseWindows(container.windowIds, () => closeContainer(container.id))
                     setMenuOpen(false)
                   }}
                 />
@@ -724,10 +866,28 @@ export function TilingContainer({ container }: Props) {
             )
           })
         )}
+        {activeChrome.ring ? <WindowRing /> : null}
       </YStack>
 
       {/* Drop zone indicators */}
       {renderDropZoneIndicators()}
+      {tabMenu && tabMenuWindow ? (
+        <TabContextMenu
+          window={tabMenuWindow}
+          x={tabMenu.x}
+          y={tabMenu.y}
+          onClose={() => setTabMenu(null)}
+        >
+          <MenuItem
+            icon="x"
+            label={t("windows.closeTab", { defaultValue: "Close tab" })}
+            onPress={() => {
+              requestCloseWindow(tabMenuWindow.id)
+              setTabMenu(null)
+            }}
+          />
+        </TabContextMenu>
+      ) : null}
     </YStack>
   )
 }
@@ -742,12 +902,14 @@ function TabCtl({
   disabled,
   size = 22,
   title,
+  testID,
 }: {
   icon: string
   onPress?: () => void
   disabled?: boolean
   size?: number
   title?: string
+  testID?: string
 }) {
   const c = useColors()
   return (
@@ -763,6 +925,7 @@ function TabCtl({
       pressStyle={disabled ? {} : { scale: 0.94 }}
       onPress={disabled ? undefined : onPress}
       accessibilityRole="button"
+      testID={testID}
       {...(Platform.OS === "web" && title ? ({ title } as any) : {})}
     >
       <Ph name={icon} size={14} color={c.text3} />
@@ -832,6 +995,7 @@ interface DraggableTabProps {
   onClose: () => void
   /** Turn a preview tab into a pinned one (pin button, double-click). */
   onPin: () => void
+  onMenu?: (x: number, y: number) => void
   tabCount: number
 }
 
@@ -847,6 +1011,7 @@ function DraggableTab({
   onSelect,
   onClose,
   onPin,
+  onMenu,
   tabCount,
 }: DraggableTabProps) {
   const { t } = useTranslation()
@@ -856,10 +1021,21 @@ function DraggableTab({
   const c = useColors()
   const TC = buildTabColors(c)
 
-  const { Icon, title, showSpinner, showRedDot, showBlueDot, showIcon, definition, meta } =
-    useTabState(window, isActive)
-  const phIcon = meta?.phIcon ?? ((definition as any)?.phIcon as string | undefined)
+  const tabState = useTabState(window, isActive)
+  const { title } = tabState
   const isPreview = Boolean(window.preview)
+  const chrome = tabState.chrome
+  const titleEdit = chrome?.titleEdit
+  const hasMenu = (chrome?.menu?.entries.length ?? 0) > 0
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (!hasMenu || !onMenu) return
+      e.preventDefault()
+      e.stopPropagation()
+      onMenu(e.clientX, e.clientY)
+    },
+    [hasMenu, onMenu],
+  )
 
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
@@ -899,7 +1075,7 @@ function DraggableTab({
     (e: React.DragEvent) => {
       e.stopPropagation()
       setIsDraggingThis(false)
-      endDrag()
+      endDrag(e.dataTransfer?.dropEffect === "none")
     },
     [endDrag],
   )
@@ -939,41 +1115,6 @@ function DraggableTab({
   const fg = on ? (isPreview ? c.text2 : c.text) : c.text3
   const glyph = on && isContainerActive ? c.accent : c.text3
 
-  const statusSlot = (
-    <View
-      style={{
-        width: 16,
-        height: 16,
-        flexShrink: 0,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      {showSpinner && <TerosLoading size={14} color={TC.spinnerAccent} />}
-      {showRedDot && <Circle size={8} backgroundColor={TC.redDot} />}
-      {showBlueDot && <Circle size={8} backgroundColor={TC.blueDot} />}
-      {showIcon &&
-        (meta?.spinner && meta.dotColor ? (
-          <WorkingDot size={8} color={meta.dotColor} />
-        ) : meta?.dotColor ? (
-          <View
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: meta.dotHollow ? "transparent" : meta.dotColor,
-              borderWidth: meta.dotHollow ? 1.5 : 0,
-              borderColor: meta.dotColor,
-            }}
-          />
-        ) : phIcon ? (
-          <Ph name={phIcon} size={14} color={glyph} />
-        ) : Icon ? (
-          <Icon size={14} color={glyph} />
-        ) : null)}
-    </View>
-  )
-
   return (
     <XStack
       data-tab="true"
@@ -999,26 +1140,41 @@ function DraggableTab({
             onMouseEnter: () => setIsHovered(true),
             onMouseLeave: () => setIsHovered(false),
             onDoubleClick: isPreview ? handlePinClick : undefined,
-            title: isPreview ? t("windows.previewTabHint") : undefined,
-            style: { transition: "background 0.2s, color 0.2s" },
+            onContextMenu: handleContextMenu,
+            title: isPreview ? t("windows.previewTabHint") : chrome?.icon?.tooltip,
+            style: { transition: "background 0.2s, color 0.2s", scrollSnapAlign: "start" },
           }
         : {})}
       // @ts-expect-error - Web drag events
-      draggable={Platform.OS === "web"}
+      draggable={Platform.OS === "web" && !titleEdit}
       onDragStart={Platform.OS === "web" ? handleDragStart : undefined}
       onDragEnd={Platform.OS === "web" ? handleDragEnd : undefined}
     >
-      {statusSlot}
-      <Text
-        flex={1}
-        fontSize={13}
-        fontFamily="Saans"
-        color={fg}
-        numberOfLines={1}
-        pointerEvents="none"
-      >
-        {title}
-      </Text>
+      <TabStatusSlot state={tabState} glyph={glyph} />
+      {titleEdit ? (
+        <TabTitleInput edit={titleEdit} />
+      ) : (
+        <Text
+          data-tab-title="true"
+          flexGrow={1}
+          flexShrink={1}
+          flexBasis={TAB_TITLE_KEEP}
+          minWidth={0}
+          fontSize={13}
+          fontFamily="Saans"
+          color={fg}
+          numberOfLines={1}
+          pointerEvents="none"
+        >
+          {title}
+        </Text>
+      )}
+      <TabMarks
+        marks={chrome?.marks}
+        color={c.text3}
+        compact={!useFixedWidth && tabCount > 4}
+        yields
+      />
       {window.hasNotification &&
       !isActive &&
       typeof (window as any).notificationCount === "number" &&

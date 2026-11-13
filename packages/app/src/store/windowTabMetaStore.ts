@@ -23,12 +23,25 @@ export interface WindowTabMeta {
   phIcon?: string
 }
 
+export type WindowStatus = "working" | "needs-you" | "finished"
+
 interface WindowTabMetaState {
   meta: Record<string, WindowTabMeta>
   setMeta: (windowId: string, meta: WindowTabMeta | null) => void
+  status: Record<string, WindowStatus>
+  setStatus: (windowId: string, status: WindowStatus | null) => void
 }
 
 export const useWindowTabMetaStore = create<WindowTabMetaState>()((set) => ({
+  status: {},
+  setStatus: (windowId, status) =>
+    set((state) => {
+      if ((state.status[windowId] ?? null) === status) return state
+      const next = { ...state.status }
+      if (status) next[windowId] = status
+      else delete next[windowId]
+      return { status: next }
+    }),
   meta: {},
   setMeta: (windowId, meta) =>
     set((state) => {
@@ -71,4 +84,19 @@ export function useWindowTabMeta(windowId: string | undefined, meta: WindowTabMe
     if (!windowId) return
     return () => setMeta(windowId, null)
   }, [windowId, setMeta])
+}
+
+export function setWindowStatus(windowId: string, status: WindowStatus | null): void {
+  useWindowTabMetaStore.getState().setStatus(windowId, status)
+}
+
+export function useWindowStatus(windowId: string | undefined, status: WindowStatus | null): void {
+  useEffect(() => {
+    if (!windowId) return
+    setWindowStatus(windowId, status)
+  }, [windowId, status])
+  useEffect(() => {
+    if (!windowId) return
+    return () => setWindowStatus(windowId, null)
+  }, [windowId])
 }

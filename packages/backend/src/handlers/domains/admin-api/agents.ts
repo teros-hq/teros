@@ -16,7 +16,7 @@ import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
 import { requireSuperAdmin } from '../../../auth/auth-helpers'
 import { AgentProvisioningService } from '../../../services/agent-provisioning-service'
-import { buildAvatarUrl } from '../../../lib/avatar-url'
+import { buildAvatarUrl, toStoredAvatarValue } from '../../../lib/avatar-url'
 import type { McaService } from '../../../services/mca-service'
 import type { FeatureFlagService } from '../../../services/feature-flag-service'
 
@@ -137,7 +137,8 @@ export function createAgentsUpdateHandler(db: Db) {
     if (data.fullName !== undefined) updateFields.fullName = data.fullName
     if (data.role !== undefined) updateFields.role = data.role
     if (data.intro !== undefined) updateFields.intro = data.intro
-    if (data.avatarUrl !== undefined) updateFields.avatarUrl = data.avatarUrl
+    // A client holds the resolved object URL: store the object id (OBJ-REQ-5).
+    if (data.avatarUrl !== undefined) updateFields.avatarUrl = toStoredAvatarValue(data.avatarUrl)
     if (data.maxSteps !== undefined) updateFields.maxSteps = data.maxSteps
 
     const result = await agents.findOneAndUpdate(

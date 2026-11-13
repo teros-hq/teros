@@ -8,11 +8,11 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react"
-import { Platform, Pressable, ScrollView, View } from "react-native"
+import { Platform, Pressable, ScrollView } from "react-native"
 import { useTranslation } from "react-i18next"
 import { LinearGradient } from "expo-linear-gradient"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { Circle, Text, XStack, YStack } from "tamagui"
+import { Text, XStack, YStack } from "tamagui"
 import { useTabState } from "../../hooks/useTabState"
 import { useNavbarStore } from "../../store/navbarStore"
 import { type ContainerNode, type LayoutNode, useTilingStore } from "../../store/tilingStore"
@@ -20,11 +20,13 @@ import { useWorkspaceStore } from "../../store/workspaceStore"
 import { NewConversationModal } from "../NewConversationModal"
 import { PermissionIndicator } from "../navbar/PermissionIndicator"
 import { TerosLogo } from "../TerosLogo"
-import { TerosLoading } from "../TerosLoading"
 import { useColors } from "../mca/primitives/useColors"
-import { Btn, CountPill, IconBtn, Ph, T, WorkingDot } from "../ui/ds"
+import { Btn, CountPill, IconBtn, Ph, T } from "../ui/ds"
 import { WindowContent } from "./WindowContent"
-import { buildTabColors } from "./tabColors"
+import { requestCloseWindow } from "./windowClose"
+import { TabStatusSlot } from "./TabStatusSlot"
+import { TabMarks, TabTitleInput, WindowMenuButton, WindowRing } from "./WindowChrome"
+import { useWindowChromeOf } from "../../store/windowChromeStore"
 
 /** Collect all windows from all containers in the layout tree */
 function collectAllWindows(node: LayoutNode | null): string[] {
@@ -52,7 +54,6 @@ export function MobileTilingLayout() {
 
   const windows = useTilingStore((state) => state.windows)
   const activeDesktop = useTilingStore((state) => state.desktops[state.activeDesktopIndex])
-  const closeWindow = useTilingStore((state) => state.closeWindow)
   const focusWindow = useTilingStore((state) => state.focusWindow)
   const openWindow = useTilingStore((state) => state.openWindow)
   const openNewTab = useTilingStore((state) => state.openNewTab)
@@ -93,7 +94,7 @@ export function MobileTilingLayout() {
   }, [layout, activeContainerId, windows, allWindows])
 
   const handleTabPress = useCallback((windowId: string) => focusWindow(windowId), [focusWindow])
-  const handleCloseTab = useCallback((windowId: string) => closeWindow(windowId), [closeWindow])
+  const handleCloseTab = useCallback((windowId: string) => requestCloseWindow(windowId), [])
   const handleOpenLauncher = useCallback(() => openNewTab(), [openNewTab])
 
   const handleSelectAgent = (agent: { agentId: string; name: string; fullName: string }) => {
@@ -124,6 +125,7 @@ export function MobileTilingLayout() {
     : false
 
   const empty = !layout || allWindows.length === 0
+  const activeChrome = useWindowChromeOf(activeWindow?.id)
 
   return (
     <YStack flex={1} backgroundColor={c.bgFrame}>
@@ -179,6 +181,7 @@ export function MobileTilingLayout() {
               ))}
             </ScrollView>
             <IconBtn icon="plus" plain sm onPress={handleOpenLauncher} />
+            {activeWindow ? <WindowMenuButton window={activeWindow} /> : null}
           </>
         ) : (
           <XStack flex={1} alignItems="center" gap={8} paddingLeft={4}>
@@ -219,6 +222,7 @@ export function MobileTilingLayout() {
         paddingBottom={insets.bottom}
         position="relative"
       >
+        {!empty && activeChrome.ring ? <WindowRing line /> : null}
         {insets.bottom > 0 ? (
           <LinearGradient
             colors={["transparent", c.bgFrame]}
@@ -316,12 +320,8 @@ interface MobileTabProps {
 
 function MobileTab({ window, isActive, onSelect, onClose, onPin }: MobileTabProps) {
   const c = useColors()
-  const TC = buildTabColors(c)
-  const { Icon, title, showSpinner, showRedDot, showBlueDot, showIcon, definition, meta } = useTabState(
-    window,
-    isActive,
-  )
-  const phIcon = meta?.phIcon ?? ((definition as any)?.phIcon as string | undefined)
+  const tabState = useTabState(window, isActive)
+  const { title } = tabState
   const isPreview = Boolean(window.preview)
 
   const handleCloseClick = useCallback(
@@ -348,33 +348,17 @@ function MobileTab({ window, isActive, onSelect, onClose, onPin }: MobileTabProp
       pressStyle={{ backgroundColor: c.wash2 }}
       onPress={onSelect}
     >
-      <View style={{ width: 16, height: 16, alignItems: "center", justifyContent: "center" }}>
-        {showSpinner && <TerosLoading size={14} color={TC.spinnerAccent} />}
-        {showRedDot && <Circle size={8} backgroundColor={TC.redDot} />}
-        {showBlueDot && <Circle size={8} backgroundColor={TC.blueDot} />}
-        {showIcon &&
-          (meta?.spinner && meta.dotColor ? (
-          <WorkingDot size={8} color={meta.dotColor} />
-        ) : meta?.dotColor ? (
-            <View
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: meta.dotHollow ? "transparent" : meta.dotColor,
-                borderWidth: meta.dotHollow ? 1.5 : 0,
-                borderColor: meta.dotColor,
-              }}
-            />
-          ) : phIcon ? (
-            <Ph name={phIcon} size={14} color={glyph} />
-          ) : Icon ? (
-            <Icon size={14} color={glyph} />
-          ) : null)}
-      </View>
-      <Text fontSize={13} fontFamily="Saans" color={fg} numberOfLines={1} maxWidth={140}>
-        {title}
-      </Text>
+      <TabStatusSlot state={tabState} glyph={glyph} />
+      {isActive && tabState.chrome?.titleEdit ? (
+        <XStack width={140}>
+          <TabTitleInput edit={tabState.chrome.titleEdit} />
+        </XStack>
+      ) : (
+        <Text fontSize={13} fontFamily="Saans" color={fg} numberOfLines={1} maxWidth={140}>
+          {title}
+        </Text>
+      )}
+      <TabMarks marks={tabState.chrome?.marks} color={c.text3} compact />
       {!isActive && window.hasNotification && (window.notificationCount ?? 0) > 0 ? (
         <CountPill n={window.notificationCount!} />
       ) : null}

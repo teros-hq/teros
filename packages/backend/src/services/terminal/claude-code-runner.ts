@@ -9,12 +9,6 @@
  * task's kick-off message, and watches the session's turns to keep the task
  * in step (CCR-REQ-6). A runner also reviews (CCR-REQ-7).
  *
- * Everything goes through the WS router with a bridge context — the same
- * calls (`terminal.create`, `terminal.wait`, `terminal.write`) the terminal
- * MCA makes for a Teros agent — so authz, the owner's shared credentials,
- * Claude Code's hooks, the crew seat and the sleep/wake cycle all apply
- * unchanged. Nothing here runs on the person's machine (CCR-NFR-1).
- *
  * @spec CCR-REQ-2
  * @spec CCR-REQ-3
  * @spec CCR-REQ-6
@@ -371,7 +365,7 @@ export function readyVerdict(ready: WaitResult): {
   if (ready.reason === "driver")
     return { ok: true, personDrove: true, error: null }
   const error = ready.needsAuth
-    ? `Claude Code needs a sign-in in the terminal (${ready.needsAuth}) — share the owner's Claude credentials with the workspace's agents`
+    ? `Claude Code needs a sign-in in the terminal (${ready.needsAuth}) — the workspace owner needs an Anthropic API-key provider in Teros`
     : `Claude Code did not become ready (${ready.reason}${ready.message ? `: ${ready.message}` : ""})`
   return { ok: false, personDrove: false, error }
 }

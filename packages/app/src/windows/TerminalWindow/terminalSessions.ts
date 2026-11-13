@@ -1,16 +1,7 @@
-/**
- * Live terminal sessions of a workspace — one shared, ref-counted watch per
- * workspace (terminal.watch + `terminal_sessions` events), so the Terminal
- * windows and the attention watcher (toasts, badges) share one subscription.
- *
- * Also a tiny event bus: "show this session" requests (from a toast's Open
- * action) that an open Terminal window picks up.
- */
-
 import { useEffect, useSyncExternalStore } from "react"
 import { getTerosClient } from "../../services/terosClientSingleton"
+import { useAuthStore } from "../../store/authStore"
 import { useTilingStore } from "../../store/tilingStore"
-import { assignFaceColors } from "./crew/crewModel"
 import { dedupeSessions, upsertSession } from "./terminalLayout"
 
 export type AgentStateName = "working" | "blocked" | "done" | "idle"
@@ -29,24 +20,29 @@ export interface TerminalSession {
   cols: number
   rows: number
   agentState: { state: AgentStateName; message?: string; at: string } | null
-  /** How a coding agent in it signs in (chip text), "" for none. */
   auth?: string
-  /** A coding agent in it shows its login screen ("claude"). */
   needsAuth?: string | null
   viewers: number
-  /** Who is looking at it: identities (crew contract), or names from older backends. */
   watchers: Array<TerminalWatcher | string>
-  /** Who typed last (server clock). Newer backends only. */
   lastInput?: { kind: "human" | "agent"; id: string; name?: string; at: number } | null
-  /** awake, frozen (host paused) or sleeping (saved, no container): both wake on use. */
   lifecycle?: "awake" | "frozen" | "sleeping"
-  /** Who has the wheel (crew contract; absent on older backends: derived from lastInput). */
   driver?: TerminalDriver | null
-  /** Two different people typed within 2 s. */
   conflict?: { ids: string[]; at: number } | null
+  wheelRequest?: TerminalWheelRequest | null
+  priorAgent?: TerminalWheelRequest["agent"] | null
+  agentControl?: boolean
+  space?: "personal" | "shared"
+  watchable?: boolean
+  openedBy?: "person" | "agent"
 }
 
-/** Who drives a terminal (server clock, ms). */
+export interface TerminalWheelRequest {
+  agent: { id: string; name?: string; avatarUrl?: string | null }
+  reason: string | null
+  at: number
+  openerAnswers?: boolean
+}
+
 export interface TerminalDriver {
   kind: "agent" | "human" | "none"
   id?: string
@@ -56,7 +52,6 @@ export interface TerminalDriver {
   note?: string | null
 }
 
-/** Someone looking at a terminal; typingAt is their last keystroke (server clock, ms). */
 export interface TerminalWatcher {
   id: string
   kind: "human" | "agent"
@@ -70,9 +65,7 @@ interface WorkspaceEntry {
   loaded: boolean
   error: string | null
   refs: number
-  /** Latest watch request: an older response never overwrites a newer one. */
   gen: number
-  /** Events received while a watch is in flight (null: the session ended), replayed on its response. */
   pending: Map<string, TerminalSession | null> | null
 }
 
@@ -81,8 +74,6 @@ const listeners = new Set<() => void>()
 let version = 0
 
 function emit(): void {
-  // Faces get their colours in creation order before anyone draws them.
-  for (const e of entries.values()) assignFaceColors(e.sessions.map((s) => s.terminalId))
   version++
   for (const l of listeners) l()
 }
@@ -108,7 +99,6 @@ async function watch(workspaceId: string): Promise<void> {
     }
     if (entries.get(workspaceId) !== e || gen !== e.gen) return
     let list = dedupeSessions(res.sessions ?? [])
-    // Events that raced the response are newer than it.
     for (const [id, session] of e.pending ?? []) {
       list = session ? upsertSession(list, session) : list.filter((s) => s.terminalId !== id)
     }
@@ -124,7 +114,23 @@ async function watch(workspaceId: string): Promise<void> {
   emit()
 }
 
-/** The client whose events are wired (a new client after sign-in needs wiring again). */
+type RevealListener = (workspaceId: string, session: TerminalSession) => void
+const revealListeners = new Set<RevealListener>()
+
+export function onSessionRevealed(listener: RevealListener): () => void {
+  revealListeners.add(listener)
+  return () => revealListeners.delete(listener)
+}
+
+export function endsSessionFor(
+  event: { reason?: string; session?: unknown },
+  known: Pick<TerminalSession, "createdBy"> | undefined,
+  me: string | undefined,
+): boolean {
+  if (event.reason === "unwatchable") return !known || known.createdBy !== me
+  return event.reason === "exit" || !event.session
+}
+
 let wired: unknown = null
 function wireEvents(): void {
   const client = getTerosClient()
@@ -133,19 +139,25 @@ function wireEvents(): void {
   client.on("terminal_sessions", (event: any) => {
     const e = entries.get(event?.workspaceId)
     if (!e || typeof event.terminalId !== "string") return
+    const known = e.sessions.find((s) => s.terminalId === event.terminalId)
+    if (
+      event.reason === "unwatchable" &&
+      !endsSessionFor(event, known, useAuthStore.getState().user?.userId)
+    )
+      return
     const ended = event.reason === "exit" || !event.session
     if (ended) e.sessions = e.sessions.filter((s) => s.terminalId !== event.terminalId)
     else e.sessions = upsertSession(e.sessions, event.session as TerminalSession)
     e.pending?.set(event.terminalId, ended ? null : (event.session as TerminalSession))
     emit()
+    if (event.reason === "reveal" && !ended)
+      for (const l of revealListeners) l(event.workspaceId, event.session as TerminalSession)
   })
-  // A new connection has no subscriptions: watch every workspace again.
   client.on("authenticated", () => {
     for (const [workspaceId, e] of entries) if (e.refs > 0) void watch(workspaceId)
   })
 }
 
-/** Live sessions of a workspace (null workspace → empty). */
 export function useTerminalSessions(workspaceId: string | null | undefined): {
   sessions: TerminalSession[]
   loaded: boolean
@@ -180,60 +192,77 @@ export function useTerminalSessions(workspaceId: string | null | undefined): {
 
 const EMPTY: TerminalSession[] = []
 
-/** Does this session want the user (agent blocked on a question/permission, or a finished turn)? */
 export function needsAttention(s: TerminalSession): boolean {
   return s.agentState?.state === "blocked" || s.agentState?.state === "done"
 }
 
-/** Label for a session: its title, else what runs in it. */
 export function sessionLabel(s: Pick<TerminalSession, "title" | "command" | "kind">): string {
-  // A shell where the person started Claude Code is a Claude Code session now.
   if (s.kind === "claude" && (!s.title || /^Shell \d+$/.test(s.title))) return "Claude Code"
   if (s.title) return s.title
   if (s.command && s.command !== "bash") return s.command
   return s.kind === "agent" ? "Agent shell" : "Shell"
 }
 
-// ── "Show this session" requests ──────────────────────────────────────────────
-
-const focusListeners = new Set<(terminalId: string) => boolean>()
-
-/** A Terminal window offers to show sessions; return true when it took the request. */
-export function onFocusSessionRequest(listener: (terminalId: string) => boolean): () => void {
-  focusListeners.add(listener)
-  return () => focusListeners.delete(listener)
+interface WindowLike {
+  id: string
+  type: string
+  props?: Record<string, any>
 }
 
-/** Ask an open Terminal window to show a session. False when no window took it. */
-export function requestFocusSession(terminalId: string): boolean {
-  for (const l of focusListeners) if (l(terminalId)) return true
-  return false
+export function windowOfSession(
+  windows: Record<string, WindowLike>,
+  terminalId: string,
+): WindowLike | undefined {
+  return Object.values(windows).find(
+    (w) => w.type === "terminal" && w.props?.terminalId === terminalId,
+  )
 }
 
-/**
- * Show a session: in the Terminal window on screen, else in the workspace's
- * existing Terminal window (even one in a background tab, not mounted), else
- * in a new one — never a second window for the same session.
- */
+export function goToWindow(windowId: string): void {
+  const tiling = useTilingStore.getState()
+  const target = tiling.windows[windowId]
+  if (!target) return
+  const floating = Boolean(tiling.floats?.[windowId])
+  const desktop = target.desktopIndex
+  if (!floating && typeof desktop === "number" && desktop !== tiling.activeDesktopIndex)
+    tiling.switchToDesktop(desktop)
+  tiling.focusWindow(windowId)
+}
+
 export function showTerminalSession(
   workspaceId: string | null | undefined,
   terminalId: string,
 ): void {
-  if (requestFocusSession(terminalId)) return
   const tiling = useTilingStore.getState()
-  const win = Object.values(tiling.windows).find(
-    (w) =>
-      w.type === "terminal" &&
-      (!w.props?.workspaceId || !workspaceId || w.props.workspaceId === workspaceId),
-  )
-  if (win) {
-    tiling.updateWindowProps(win.id, { active: terminalId })
-    tiling.focusWindow(win.id)
+  const open = windowOfSession(tiling.windows, terminalId)
+  if (open) {
+    goToWindow(open.id)
     return
   }
-  tiling.openWindow("terminal", { workspaceId, active: terminalId })
+  tiling.openWindow(
+    "terminal",
+    { ...(workspaceId ? { workspaceId } : {}), terminalId },
+    { inNewTab: true },
+  )
 }
 
 export function newTerminalId(): string {
   return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+}
+
+export function floatTerminalSession(
+  workspaceId: string | null | undefined,
+  terminalId: string,
+): void {
+  const tiling = useTilingStore.getState()
+  const open = windowOfSession(tiling.windows, terminalId)
+  if (open) {
+    if (!tiling.floatWindow(open.id)) goToWindow(open.id)
+    return
+  }
+  tiling.openWindow(
+    "terminal",
+    { ...(workspaceId ? { workspaceId } : {}), terminalId },
+    { float: true, inNewTab: true },
+  )
 }

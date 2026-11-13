@@ -18,6 +18,7 @@ import { enforceHttpRateLimit, type RateLimiter } from '../services/rate-limiter
 import { checkApiKeyScope, costsAccessLogger } from '../services/costs-auth'
 import { buildHealthReport } from './health'
 import { getDevAutologin, isDevAutologinRequestAllowed } from '../auth/dev-autologin'
+import { getSignInMethods } from '../auth/sign-in-methods'
 import { EventHandler, type ScheduledEvent } from '../handlers/event-handler'
 import { AppWebhookHandler } from '../handlers/app-webhook-handler'
 import { FlowWebhookHandler } from '../handlers/flow-webhook-handler'
@@ -443,6 +444,15 @@ export function createHttpHandler(handlers: HttpHandlers) {
         devAutologin: true,
         user: devState.enabled ? devState.userEmail : null,
       }))
+      return
+    }
+
+    // Which sign-in methods this backend offers; the sign-in screens draw a
+    // button only for these. Public on purpose: it is asked before any session
+    // exists. @spec SIGNM-REQ-1 SIGNM-REQ-3
+    if (url === '/api/auth-methods' && method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+      res.end(JSON.stringify(getSignInMethods()))
       return
     }
 

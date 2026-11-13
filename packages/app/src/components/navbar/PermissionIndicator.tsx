@@ -35,6 +35,7 @@ import { Avatar } from "../Avatar"
 import { PermissionContext } from "../mca/types"
 import { PendingPermissionCards } from "../permissions/PendingPermissionCards"
 import { TerminalNeedCard } from "../needsYou/TerminalNeedCard"
+import { terminalNeedKey } from "../needsYou/terminalNeeds"
 import { useTerminalNeeds } from "../needsYou/useTerminalNeeds"
 import { useColors } from "../mca/primitives/useColors"
 import { FONT_MONO, FONT_SANS, FONT_SERIF } from "../mca/primitives/fonts"
@@ -127,7 +128,7 @@ export function PermissionIndicator({ collapsed = false }: PermissionIndicatorPr
                   </View>
                   {terminalNeeds.map((need) => (
                     <TerminalNeedCard
-                      key={need.session.terminalId}
+                      key={terminalNeedKey(need)}
                       need={need}
                       onOpen={() => setOpen(false)}
                     />

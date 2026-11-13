@@ -67,6 +67,7 @@ export type AuditEventType =
   | 'password_reset.requested'
   | 'password_reset.request_limited'
   | 'password_reset.request_decoy'
+  | 'password_reset.provisioned_identity'
   | 'password_reset.verify_failed'
   | 'password_reset.decoy_consumed'
   | 'password_reset.completed'

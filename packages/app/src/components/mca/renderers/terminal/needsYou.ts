@@ -5,6 +5,57 @@
  * mca.teros.terminal returns with a blocked terminal-wait / terminal-prompt.
  */
 
+interface TerminalResult {
+  terminalId?: string
+  reason?: string
+  message?: string | null
+  question?: string | null
+  screen?: string | null
+}
+
+const BLOCKED_TEXT = /is waiting for an answer(?::\s*"([^"]*)")?/
+const SCREEN_BLOCK = /--- screen \([^)]*\) ---\n([\s\S]*?)\n--- end of screen ---/
+
+function asResult(value: unknown): TerminalResult | null {
+  if (!value || typeof value !== "object") return null
+  const v = value as { structuredContent?: unknown }
+  if (v.structuredContent && typeof v.structuredContent === "object")
+    return v.structuredContent as TerminalResult
+  return value as TerminalResult
+}
+
+function fromText(output: string): TerminalResult | null {
+  const blocked = BLOCKED_TEXT.exec(output)
+  if (!blocked) return null
+  return { reason: "blocked", question: blocked[1] ?? null, screen: SCREEN_BLOCK.exec(output)?.[1] ?? null }
+}
+
+function resultOf(structured: unknown, output?: string): TerminalResult | null {
+  const direct = asResult(structured)
+  if (direct) return direct
+  if (!output) return null
+  try {
+    const parsed = asResult(JSON.parse(output))
+    if (parsed) return parsed
+  } catch {}
+  return fromText(output)
+}
+
+export function needsYouOf(props: {
+  status: string
+  output?: string
+  input?: Record<string, unknown>
+  structuredContent?: unknown
+}): { terminalId: string; screen: string | null; hint: string | null } | null {
+  if (props.status !== "completed") return null
+  const r = resultOf(props.structuredContent, props.output)
+  if (!r) return null
+  const blocked = r.reason === "blocked" || (!!r.question && r.reason !== "done")
+  const terminalId = r.terminalId ?? (props.input?.terminalId as string | undefined)
+  if (!blocked || !terminalId) return null
+  return { terminalId, screen: r.screen ?? null, hint: r.question ?? r.message ?? null }
+}
+
 export interface TerminalOption {
   /** The key that picks it ("1"). */
   key: string
@@ -115,4 +166,72 @@ export function shortOptionLabel(
     return t("terminal.chat.noEllipsis", "No…")
   const plain = l.replace(/\s*\(esc\)$/i, "")
   return plain.length > 26 ? `${plain.slice(0, 25)}…` : plain
+}
+
+export function controlRequestOf(props: {
+  toolName: string
+  status: string
+  input?: Record<string, unknown>
+}): string | null {
+  if (!props.toolName.endsWith("terminal-request-control") || props.status === "failed") return null
+  const terminalId = props.input?.terminalId
+  return typeof terminalId === "string" && terminalId ? terminalId : null
+}
+
+export type ControlOutcome = "granted" | "approved" | "denied" | "pending" | "busy" | "ended"
+
+const CONTROL_OUTCOMES: readonly ControlOutcome[] = ["granted", "approved", "denied", "pending", "busy", "ended"]
+
+const CONTROL_TEXTS: Array<[RegExp, ControlOutcome]> = [
+  [/You have control of \S+: nobody was typing in it/, "granted"],
+  [/allowed it: you have control of/, "approved"],
+  [/kept it off\. Don't type into/, "denied"],
+  [/already asked for control of/, "busy"],
+  [/ended before anyone answered/, "ended"],
+  [/nobody has answered yet/, "pending"],
+]
+
+export function controlOutcomeOf(props: { structuredContent?: unknown; output?: string }): ControlOutcome | null {
+  const outcome = (props.structuredContent as { outcome?: unknown } | null | undefined)?.outcome
+  if (typeof outcome === "string" && (CONTROL_OUTCOMES as readonly string[]).includes(outcome))
+    return outcome as ControlOutcome
+  const text = props.output ?? ""
+  return CONTROL_TEXTS.find(([re]) => re.test(text))?.[1] ?? null
+}
+
+export interface ChatControlSeen {
+  agentId: string
+  ended: "approved" | "denied" | null
+}
+
+export function chatControlCard(p: {
+  request: { agent: { id: string }; at?: number } | null
+  driver: { kind: string; id?: string } | null
+  outcome: ControlOutcome | null
+  seen: ChatControlSeen | null
+  call?: { agentId?: string; at?: number } | null
+}): { show: boolean; answeredAs: "approved" | "denied" | null; seen: ChatControlSeen | null } {
+  if (p.outcome === "busy") return { show: false, answeredAs: null, seen: p.seen }
+  const own =
+    p.request &&
+    (!p.call?.agentId || p.request.agent.id === p.call.agentId) &&
+    (p.call?.at == null || (p.request.at ?? 0) >= p.call.at)
+      ? p.request
+      : null
+  const settled = p.seen?.ended || p.outcome === "approved" || p.outcome === "denied" || p.outcome === "granted"
+  if (own && !settled) return { show: true, answeredAs: null, seen: { agentId: own.agent.id, ended: null } }
+  if (p.seen) {
+    const ended =
+      p.seen.ended ?? (p.driver?.kind === "agent" && p.driver.id === p.seen.agentId ? "approved" : "denied")
+    return { show: true, answeredAs: ended, seen: { ...p.seen, ended } }
+  }
+  const after = answeredAfterReload(p.outcome)
+  if (!after) return { show: false, answeredAs: null, seen: null }
+  return { show: true, answeredAs: after === "answered" ? null : after, seen: null }
+}
+
+export function answeredAfterReload(outcome: ControlOutcome | null): "approved" | "denied" | "answered" | null {
+  if (outcome === "approved" || outcome === "granted") return "approved"
+  if (outcome === "denied") return "denied"
+  return outcome === "pending" ? "answered" : null
 }

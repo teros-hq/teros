@@ -9,6 +9,7 @@ import type { Collection, Db } from 'mongodb'
 import { assertOwnProviders } from './provider-ownership'
 import { canAccessAgent } from '../../../auth/workspace-access'
 import { broadcastAgentUpdated, buildAgentUpdatedPayload } from '../../../lib/agent-payload'
+import { toStoredAvatarValue } from '../../../lib/avatar-url'
 import type { PubSubService } from '../../../services/pubsub-service'
 
 interface Agent {
@@ -110,7 +111,8 @@ export function createUpdateAgentHandler(db: Db, pubSubService?: PubSubService |
     if (fullName !== undefined) updateFields.fullName = fullName
     if (role !== undefined) updateFields.role = role
     if (intro !== undefined) updateFields.intro = intro
-    if (avatarUrl !== undefined) updateFields.avatarUrl = avatarUrl
+    // A client holds the resolved object URL: store the object id (OBJ-REQ-5).
+    if (avatarUrl !== undefined) updateFields.avatarUrl = toStoredAvatarValue(avatarUrl)
     if (maxSteps !== undefined) updateFields.maxSteps = maxSteps
     if (context !== undefined) updateFields.context = context
     if (selectedProviderId !== undefined) updateFields.selectedProviderId = selectedProviderId

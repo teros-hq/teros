@@ -185,6 +185,28 @@ export class JobManager {
   }
 
   /**
+   * Fail the jobs a previous run left in `processing`. Called once on startup:
+   * this process has not picked anything up yet, so whatever is `processing`
+   * belonged to a process that stopped mid-job and will never finish it.
+   * Without this they stay `processing` forever and are never cleaned up.
+   */
+  failInterruptedJobs(): number {
+    let failed = 0;
+    for (const job of this.jobs.values()) {
+      if (job.status === 'processing') {
+        job.status = 'failed';
+        job.completedAt = new Date().toISOString();
+        job.error = 'Interrupted: the file processor stopped while this job was running. Start it again.';
+        failed++;
+      }
+    }
+    if (failed > 0) {
+      this.saveJobs();
+    }
+    return failed;
+  }
+
+  /**
    * Clean up old completed jobs
    */
   cleanupOldJobs(): number {

@@ -74,6 +74,7 @@ export type WindowShortcut =
   | "prev-session"
   | "next-session"
   | "take-wheel"
+  | "go-session"
   | "float"
   | "rail-left"
   | "rail-right"
@@ -89,6 +90,7 @@ export function localShortcut(event: KeyLike, mac: boolean): LocalAction | null 
   // Cmd+Shift+K / F (Ctrl+Shift+Alt+K / F elsewhere): take the wheel / float this terminal.
   if ((mac ? event.shiftKey : event.altKey) && event.code === "KeyK") return "take-wheel"
   if ((mac ? event.shiftKey : event.altKey) && event.code === "KeyF") return "float"
+  if ((mac ? event.shiftKey : event.altKey) && event.code === "KeyO") return "go-session"
   // Cmd+Shift+[ / ] (Ctrl+Shift+[ / ] elsewhere): previous / next session, like terminal apps' tabs.
   if (event.shiftKey && event.code === "BracketLeft") return "prev-session"
   if (event.shiftKey && event.code === "BracketRight") return "next-session"

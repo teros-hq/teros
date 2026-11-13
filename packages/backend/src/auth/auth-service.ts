@@ -468,6 +468,9 @@ export class AuthService {
       ipAddress: params.ipAddress,
     });
     await this.userService.updateLastLogin(user.userId);
+    // The installer's admin never signs in with a password: its Private workspace
+    // and default agent are created here, as for any other sign-in (ALOGIN-REQ-8)
+    await this.ensureSignInDefaults(user.userId);
     await auditLogger.log({
       event: 'login.success',
       actorUserId: user.userId,
@@ -746,8 +749,34 @@ export class AuthService {
     }
 
     // Find the password identity for this email
-    const identity = await this.identityService.getByProvider('password', normalizedEmail);
-    const user = identity ? await this.userService.getByUserId(identity.userId) : null;
+    let identity = await this.identityService.getByProvider('password', normalizedEmail);
+    let user = identity ? await this.userService.getByUserId(identity.userId) : null;
+
+    // An account that signs in only through an OAuth provider has no password
+    // identity, so this lookup misses and the request dead-ends in the decoy: the
+    // user is told a code was sent and none is. Give the account a password
+    // identity nobody can sign in with (see provisionUnusablePasswordIdentity)
+    // so the reset can proceed and the user can choose their first password.
+    // Proving control of the mailbox by entering the emailed code is the check
+    // that authorises this; a suspended account stays in the decoy below so a
+    // ban cannot be lifted through self-service.
+    if (!identity) {
+      const owner = await this.findUserByEmail(normalizedEmail);
+      if (owner && owner.status !== 'suspended') {
+        identity = await this.identityService.provisionUnusablePasswordIdentity(
+          owner.userId,
+          normalizedEmail,
+        );
+        user = owner;
+        await auditLogger.log({
+          event: 'password_reset.provisioned_identity',
+          actorUserId: owner.userId,
+          ip: meta?.ipAddress,
+          userAgent: meta?.userAgent,
+          detail: { email: normalizedEmail },
+        });
+      }
+    }
 
     if (!identity || !user) {
       // Decoy challenge: same shape, same timing, but will never verify

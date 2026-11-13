@@ -67,6 +67,7 @@ export const browserWindowDefinition: WindowTypeDefinition<BrowserWindowProps> =
   color: "#9C6BFF",
 
   component: isDesktopShell() ? NativeBrowserContent : BrowserWindowContent,
+  capabilities: { canFloat: !isDesktopShell() },
 
   defaultSize: { width: 900, height: 640 },
   minSize: { width: 480, height: 360 },
