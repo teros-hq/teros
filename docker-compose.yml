@@ -77,6 +77,9 @@ services:
       # Invalid writes to schema'd collections: warn (default) | error
       DB_SCHEMA_WRITES: ${DB_SCHEMA_WRITES:-warn}
       STATIC_BASE_URL: http://localhost:10001/static
+      # MCA containers call the core back via host.docker.internal, i.e. the
+      # HOST-published port (10001), not the in-container PORT (3000).
+      MCA_CALLBACK_PORT: 10001
       # Where the web app lives: OAuth redirects and, through it, the CORS
       # allowlist (CORSAPP-REQ-4). Extra origins go in CORS_ALLOWED_ORIGINS.
       APP_URL: ${APP_URL:-http://localhost:10002}
@@ -146,6 +149,43 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - teros-network
+    # Override the image's HEALTHCHECK (which probes the backend on :3000):
+    # the agent listens on CONTAINER_AGENT_PORT and serves an unauthenticated /health.
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:10011/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # MCA containers live on per-workspace networks (teros_ws_*). The backend and
+  # the container-agent reach them by IP (health checks, tool calls), which
+  # Docker blocks across bridge networks. This sidecar keeps both attached to
+  # every teros_ws_* network, including ones created later and after the two
+  # services are recreated (docker network connect is idempotent).
+  ws-network-attacher:
+    image: docker:27-cli
+    restart: unless-stopped
+    # Talks to the Docker daemon over the socket only; needs no network.
+    network_mode: none
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        project=$$(docker inspect "$$(hostname)" --format '{{index .Config.Labels "com.docker.compose.project"}}')
+        while true; do
+          targets=$$(docker ps -q --filter "label=com.docker.compose.project=$$project" \
+            --filter label=com.docker.compose.service=backend; \
+            docker ps -q --filter "label=com.docker.compose.project=$$project" \
+            --filter label=com.docker.compose.service=container-agent)
+          for n in $$(docker network ls --format '{{.Name}}' | grep '^teros_ws_'); do
+            for c in $$targets; do
+              docker network connect "$$n" "$$c" >/dev/null 2>&1 && echo "connected $$c -> $$n"
+            done
+          done
+          sleep 3
+        done
 
   # Frontend Web App
   # The image is built once with no backend URL inside (WEBCFG-REQ-9/10): the
